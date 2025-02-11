@@ -17,7 +17,8 @@ SpiceyPy docs: https://spiceypy.readthedocs.io/en/stable/documentation.html#
 WebGeocalc: http://spice.esac.esa.int/webgeocalc/#NewCalculation
 """
 
-metakernel_path = "/home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm" # for example ...SPICE/HERA/kernels/mk/hera_ops.tm
+# Add metakernel path
+metakernel_path = "" # for example ...SPICE/HERA/kernels/mk/hera_ops.tm
 	  
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
