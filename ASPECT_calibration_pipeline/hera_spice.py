@@ -3,6 +3,8 @@ import pyperclip
 import io
 import sys
 
+# Work in progress
+
 """
 This is a file for using HERA SPICE kernels.
 To use this file, you need to have HERA SPICE kernel dataset installed.
@@ -241,7 +243,7 @@ def print_pool_variables(metakernel_path: str):
 		pyperclip.copy(output_text)  # Copy text to clipboard
 		print("Output copied to clipboard!")
 				
-# print_pool_variables(metakernel_path) # This is good
+# print_pool_variables(metakernel_path)
 
 def query_spacecraft_position_vectors(
 		metakernel_path: str,
@@ -321,3 +323,67 @@ def query_spacecraft_solar_distance(
     return None
 
 # print(query_spacecraft_solar_distance(metakernel_path))
+
+def query_spacecraft_quaternions(
+		metakernel_path: str,
+		utc_time: str = '2025-12-27T00:01:00',
+		inertial_frame: str = 'J2000',
+		spacecraft_frame: str = 'HERA_DIDYMOS_NPO'
+	):
+    """
+    Query the quaternion representing the orientation of the spacecraft.
+    
+    This function loads the specified SPICE kernels, computes the rotation matrix
+    from the given inertial frame to the spacecraft's body-fixed frame at the 
+    specified UTC time, converts it to a quaternion, and returns the quaternion 
+    in the order (W, X, Y, Z).
+
+    Parameters:
+      metakernel_path (str): Path to the SPICE metakernel file.
+      utc_time (str): The UTC time for which the quaternion is queried.
+      inertial_frame (str): The inertial reference frame (default is 'J2000').
+      spacecraft_frame (str): The spacecraft's body-fixed frame (default is 'HERA_FIXED').
+
+    Returns:
+      tuple: A tuple (W, X, Y, Z) representing the spacecraft quaternion.
+      
+    Note:
+      Ensure that the necessary CK kernels (providing the spacecraft's orientation)
+      are available and correctly referenced in the metakernel.
+    """
+    # Load the SPICE kernels
+    spice.furnsh(metakernel_path)
+    
+    # Convert UTC time to ephemeris time (ET)
+    et = spice.str2et(utc_time)
+    
+    # Get the rotation matrix from the inertial frame to the spacecraft frame.
+    # This matrix represents the spacecraft's orientation at time et.
+    rot_matrix = spice.pxform(inertial_frame, spacecraft_frame, et)
+    
+    # Convert the rotation matrix to a quaternion (W, X, Y, Z).
+    quat = spice.m2q(rot_matrix)
+    
+    # Clear kernels to free resources.
+    spice.kclear()
+    
+    return quat
+
+# print(query_spacecraft_quaternions(metakernel_path))
+
+def list_available_frames(metakernel_path: str):
+    # Load SPICE kernels
+    spice.furnsh(metakernel_path)
+    
+    # Get a list of all available frames
+    frame_count = spice.ktotal("ALL")
+    print(f"Total number of frames: {frame_count}")
+    
+    for i in range(frame_count):
+        frame_name = spice.kdata(i, "ALL")
+        print(f"Frame {i+1}: {frame_name}")
+    
+    # Clear SPICE kernels
+    spice.kclear()
+
+# list_available_frames(metakernel_path)

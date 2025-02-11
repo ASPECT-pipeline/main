@@ -4,8 +4,11 @@ import json
 from datetime import datetime
 import hera_spice as spice
 
+# Work in progress
+
 """
 This is a file for retrieving and writing missing fits metadata.
+Remember to add spice_metakernel_path.
 """
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
@@ -292,6 +295,49 @@ def get_spacecraft_solar_distance(
     except Exception as e:
         print(f"An error occurred while retrieving spacecraft-solar distance: {e}")
 
+def get_spacecraft_quaternions(
+        spice_metakernel_path: str,
+        utc_time: str = '2025-12-27T00:00:00',
+        inertial_frame: str = 'J2000',
+        spacecraft_frame: str = 'HERA_DIDYMOS_NPO'
+    ):
+    """
+    Get the spacecraft quaternions.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    utc_time (str): The UTC time for which the position vectors are required.
+    inertial_frame (str): The reference frame for the position vectors.
+    spacecraft_frame (str): The spacecraft frame.
+
+    Returns:
+    dict: A dictionary containing quaternions.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position vectors using HERA SPICE toolkit
+        quaternions = spice.query_spacecraft_quaternions(
+            spice_metakernel_path,
+            utc_time,
+            inertial_frame,
+            spacecraft_frame
+        )
+        
+        return {
+            "SC_QUATW": (quaternions[0], "Spacecraft quaternions"),
+            "SC_QUATX": (quaternions[1], "Spacecraft quaternions"),
+            "SC_QUATY": (quaternions[2], "Spacecraft quaternions"),
+            "SC_QUATZ": (quaternions[3], "Spacecraft quaternions"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft quaternions: {e}")
+
 # Work in progress
 def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metakernel_path: str, test: bool = False):
     """
@@ -310,19 +356,21 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     origfile = get_origfile(fits_path)
     sc_pos = get_spacecraft_position_vectors(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
     scsoldst = get_spacecraft_solar_distance(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
+    quaternions = get_spacecraft_quaternions(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
     # Continue with the rest of the dynamic metadata retrieval...
     
     dynamic_metadata.update(date_obs)
     dynamic_metadata.update(origfile)
     dynamic_metadata.update(sc_pos)
     dynamic_metadata.update(scsoldst)
+    dynamic_metadata.update(quaternions)
 
     if test:
         print(dynamic_metadata)
     else:
         return dynamic_metadata
 
-def main(fits_path: str, telemetry_path: str, config_path: str, spice_path: str, output_path: str, static_metadata: dict):
+def main(fits_path: str, telemetry_path: str, config_path: str, spice_metakernel_path: str, output_path: str, static_metadata: dict):
     """
     Main function to update FITS metadata with static and dynamic metadata.
     
@@ -330,10 +378,10 @@ def main(fits_path: str, telemetry_path: str, config_path: str, spice_path: str,
     input_path (str): Path to the original FITS file.
     telemetry_path (str): Path to the telemetry JSON file.
     config_path (str): Path to the configuration JSON file.
-    spice_path (str): Path to the SPICE kernel directory.
+    spice_metakernel_path (str): Path to the SPICE metakernel.
     output_path (str): Path to save the updated FITS file.
     """
-    dynamic_metadata = retrieve_dynamic_metadata(telemetry_path, config_path, spice_path)
+    dynamic_metadata = retrieve_dynamic_metadata(telemetry_path, config_path, spice_metakernel_path)
     
     # Update the FITS file with the combined metadata
     combined_metadata = {**static_metadata, **dynamic_metadata}
