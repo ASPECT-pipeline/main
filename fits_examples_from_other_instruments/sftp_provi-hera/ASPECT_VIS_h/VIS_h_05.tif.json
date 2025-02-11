@@ -1,0 +1,29 @@
+{
+    "product_information": {
+        "schema_id": "https://www.joanneum.at/jim/product_information.schema.json",
+        "schema_version": 7262,
+        "product_type": "image",
+        "product_state": "imported",
+        "creator_id": "ImportFits",
+        "creation_datetime": "2025-01-22T13:50:31.810463+0000"
+    },
+    "image_width": 1024,
+    "image_height": 1024,
+    "channels": 1,
+    "data_type": "uint16",
+    "file_md5": "7c21415a0b1abdb140b24a0efcc5c700",
+    "mission_name": "",
+    "camera_system": "",
+    "exposure": 1250,
+    "wavelength": 733,
+    "image_statistics": [
+        {
+            "minimum": 420,
+            "maximum": 2209,
+            "mean": 680.3981838226318,
+            "median": 651.3222134434425,
+            "standard_deviation": 138.73504769082794,
+            "variance": 19247.413457776303
+        }
+    ]
+}

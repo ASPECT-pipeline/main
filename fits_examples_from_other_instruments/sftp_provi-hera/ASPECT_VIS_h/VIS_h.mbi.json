@@ -1,0 +1,77 @@
+{
+    "product_information": {
+        "schema_id": "https://www.joanneum.at/jim/product_information.schema.json",
+        "schema_version": 7262,
+        "product_type": "multiband image",
+        "product_state": "imported",
+        "creator_id": "ImportFits",
+        "creation_datetime": "2025-01-22T13:50:31.010630+0000"
+    },
+    "original_file_name": "VIS_h.fits",
+    "image_width": 1024,
+    "image_height": 1024,
+    "bits_per_pixel": 16,
+    "channels": 10,
+    "bands": [
+        {
+            "index": 1,
+            "file_path": "VIS_h_01.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 2,
+            "file_path": "VIS_h_02.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 3,
+            "file_path": "VIS_h_03.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 4,
+            "file_path": "VIS_h_04.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 5,
+            "file_path": "VIS_h_05.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 6,
+            "file_path": "VIS_h_06.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 7,
+            "file_path": "VIS_h_07.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 8,
+            "file_path": "VIS_h_08.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 9,
+            "file_path": "VIS_h_09.tif",
+            "label": "xxx",
+            "description": "xxx"
+        },
+        {
+            "index": 10,
+            "file_path": "VIS_h_10.tif",
+            "label": "xxx",
+            "description": "xxx"
+        }
+    ]
+}
