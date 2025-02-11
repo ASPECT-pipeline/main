@@ -4,8 +4,11 @@ import io
 import sys
 
 """
+This is a file for using HERA SPICE kernels.
 To use this file, you need to have HERA SPICE kernel dataset installed.
+You may need to write the correct path to the kernel folder specified in metakernel.
 The SPICE dataset has too large file sizes to be uploaded into github.
+Refer to the readme files in SPICE dataset for more information about SPICE kernels.
 """
 
 """
@@ -14,18 +17,14 @@ SpiceyPy docs: https://spiceypy.readthedocs.io/en/stable/documentation.html#
 WebGeocalc: http://spice.esac.esa.int/webgeocalc/#NewCalculation
 """
 
-metakernel_path = "" # for example ...SPICE/HERA/kernels/mk/hera_ops.tm
-		
-def load_kernels(metakernel_path: str):
-	spice.furnsh(metakernel_path)
+metakernel_path = "/home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm" # for example ...SPICE/HERA/kernels/mk/hera_ops.tm
 	  
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
 
-def spice_example():
+def spice_example_query(metakernel_path):
 	# Load SPICE kernels
-	load_kernels()
-	# print_kernel_info()
+	spice.furnsh(metakernel_path)
 
 	# Specify target, observer, and time
 	target = "DIDYMOS_BARYCENTER"
@@ -58,10 +57,9 @@ def spice_example():
 	print(f"Distance between {observer} and {target}: {distance:.3f} km")
 
 	# Unload SPICE kernels
-	# unload_kernels()
 	spice.kclear()
 
-# spice_example()
+# spice_example_query()
 
 def explore_kernel_info():
 	"""
@@ -194,7 +192,7 @@ def print_pool_variables(metakernel_path: str):
 	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
-	varnames = spice.gnpool("*", 0, 1000)
+	varnames = spice.gnpool("*ver*", 0, 1000)
 	print(len(varnames))
 	if not varnames:
 		print("No kernel pool variables found.")
@@ -214,6 +212,12 @@ def print_pool_variables(metakernel_path: str):
 			if dvals:
 				print(f"{name} (numeric): {dvals}")
 				printed = True
+				try:
+					cvals = spice.gcpool(name, 0, 1000)
+					if cvals:
+						print(f"{name} (character): {cvals}")
+				except Exception:
+					pass
 		except Exception:
 			# If the variable does not have numeric values, ignore the exception.
 			pass
@@ -237,3 +241,82 @@ def print_pool_variables(metakernel_path: str):
 		print("Output copied to clipboard!")
 				
 # print_pool_variables(metakernel_path) # This is good
+
+def query_spacecraft_position_vectors(
+		metakernel_path: str,
+		target: str = 'HERA',
+		utc_time: str = '2025-12-27T00:00:00',
+		frame: str = 'J2000',
+		observer: str = 'EARTH',
+		test: bool = False
+	):
+	"""
+	Query the position vectors of spacecrafts in a specified time frame.
+	"""
+	spice.furnsh(metakernel_path)
+	
+	et = spice.str2et(utc_time)
+	
+	# Get state vectors for the spacecraft
+	state, _ = spice.spkezr(target, et, frame, "NONE", observer)
+	position = state[:3] # X, Y, Z
+	velocity = state[3:]
+	distance = compute_distance(position)
+	spice.kclear()
+	
+	if test:
+		print(f"Target: {target}")
+		print(f"UTC Time: {utc_time}")
+		print(f"Frame: {frame}")
+		print(f"Observer: {observer}")
+		print(f"Position: {position}")
+		print(f"Velocity: {velocity}")
+		print(f"Distance: {distance:.3f} km\n")
+	else:
+		return position
+
+# query_spacecraft_position_vectors(metakernel_path, test=True)
+
+def query_spacecraft_solar_distance(
+        spice_metakernel_path: str,
+        target: str = 'HERA',
+        utc_time: str = '2025-12-27T00:00:00',
+        frame: str = 'J2000',
+        observer: str = 'SUN'
+    ):
+    """
+    Query the distance between a spacecraft and the Sun.
+    
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    target (str): The spacecraft of interest.
+    utc_time (str): The UTC time for which the distance is required.
+    frame (str): The reference frame for calculations.
+    observer (str): The observing body (default is the Sun).
+    
+    Returns:
+    float: Distance between the spacecraft and the Sun in kilometers.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position relative to the Sun
+        position = query_spacecraft_position_vectors(
+            spice_metakernel_path, target, utc_time, frame, observer
+        )
+        
+        # Compute the distance from the Sun
+        distance = compute_distance(position)
+        
+        return distance
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft solar distance: {e}")
+    
+    return None
+
+# print(query_spacecraft_solar_distance(metakernel_path))

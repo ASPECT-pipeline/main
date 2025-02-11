@@ -2,10 +2,15 @@ from astropy.io import fits
 import numpy as np
 import json
 from datetime import datetime
+import hera_spice as spice
+
+"""
+This is a file for retrieving and writing missing fits metadata.
+"""
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
-spice_path = ""
+spice_metakernel_path = "/home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm" # for example ...SPICE/HERA/kernels/mk/hera_ops.tm
 fits_path = "test_data/D1D2_simulated_cube.fits"
 output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
 
@@ -197,8 +202,98 @@ def get_origfile(file_path: str):
     """
     return {"ORIGFILE": (get_file_name(file_path), 'Original file name')}
 
+def get_spacecraft_position_vectors(
+        spice_metakernel_path: str,
+        target: str = 'HERA',
+        utc_time: str = '2025-12-27T00:00:00',                            
+        frame: str = 'J2000',
+        observer: str = 'EARTH'
+    ):
+    """
+    Get the spacecraft position vectors based on provided attributes.
+    
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    target (str): The spacecraft or celestial body of interest.
+    utc_time (str): The UTC time for which the position vectors are required.
+    frame (str): The reference frame for the position vectors.
+    observer (str): The observing body (e.g., EARTH).
+    
+    Returns:
+    dict: A dictionary containing position vectors.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position vectors using HERA SPICE toolkit
+        position = spice.query_spacecraft_position_vectors(
+            spice_metakernel_path,
+            target=target,
+            utc_time=utc_time,
+            frame=frame,
+            observer=observer
+        )
+        
+        return {
+            "SC_POSX": (position[0], "Spacecraft position vector X"),
+            "SC_POSY": (position[1], "Spacecraft position vector Y"),
+            "SC_POSZ": (position[2], "Spacecraft position vector Z"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft position vectors: {e}")
+    
+    return None
+
+def get_spacecraft_solar_distance(
+        spice_metakernel_path: str,
+        target: str = 'HERA',
+        utc_time: str = '2025-12-27T00:00:00',                            
+        frame: str = 'J2000',
+        observer: str = 'SUN'
+    ):
+    """
+    Get the distance between the spacecraft and the Sun.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    target (str): The spacecraft or celestial body of interest.
+    utc_time (str): The UTC time for which the position vectors are required.
+    frame (str): The reference frame for the position vectors.
+    observer (str): The observing body (e.g., SUN).
+    
+    Returns:
+    dict: A dictionary containing distance.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position vectors using HERA SPICE toolkit
+        distance = spice.query_spacecraft_solar_distance(
+            spice_metakernel_path,
+            target=target,
+            utc_time=utc_time,
+            frame=frame,
+            observer=observer
+        )
+        
+        return {
+            "SCSOLDST": (distance, "Spacecraft Solar distance"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft-solar distance: {e}")
+
 # Work in progress
-def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_path: str, test: bool = False):
+def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metakernel_path: str, test: bool = False):
     """
     Retrieve dynamic metadata from telemetry, config, and SPICE.
     
@@ -213,10 +308,14 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_path:
     dynamic_metadata = {}
     date_obs = get_acq_date(telemetry_path)
     origfile = get_origfile(fits_path)
+    sc_pos = get_spacecraft_position_vectors(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
+    scsoldst = get_spacecraft_solar_distance(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
     # Continue with the rest of the dynamic metadata retrieval...
     
     dynamic_metadata.update(date_obs)
     dynamic_metadata.update(origfile)
+    dynamic_metadata.update(sc_pos)
+    dynamic_metadata.update(scsoldst)
 
     if test:
         print(dynamic_metadata)
@@ -242,8 +341,8 @@ def main(fits_path: str, telemetry_path: str, config_path: str, spice_path: str,
 
 if test_main:
     print_fits_metadata_with_summary(fits_path)
-    main(fits_path, telemetry_path, config_path, spice_path, output_path, static_metadata)
+    main(fits_path, telemetry_path, config_path, spice_metakernel_path, output_path, static_metadata)
     print_fits_metadata_with_summary(output_path)
 
 if test_dynamic_metadata_retrieval:
-    retrieve_dynamic_metadata(telemetry_path, config_path, spice_path, test=True)
+    retrieve_dynamic_metadata(telemetry_path, config_path, spice_metakernel_path, test=True)
