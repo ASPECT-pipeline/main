@@ -53,15 +53,10 @@ static_metadata = {
     'SPICE_MK': ('', 'SPICE metakernel'), # For example '2024-10-10T21:25:06.789'
     'HIERARCH SPICE_SC_CLK_START_SEC': ('', 'Spacecraft clock seconds'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
     'HIERARCH SPICE_SC_CLK_START_FRACT': ('', 'Spacecraft clock fraction'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
-    'CAM_RA': ('', 'Camera pointing'),
+    'CAM_RA': ('', 'Camera pointing'), # Is this SPICE data?
     'CAM_DEC': ('', 'Camera pointing'),
     'CAM_NAZ': ('', 'Camera pointing'),
     'CELN_CLK': ('', ''),
-    'SOL_ELNG': ('', 'Solar elongation'),
-    'PHAS_ANG': ('', ''),
-    'TRG_POSX': ('', 'Target position vector X'),
-    'TRG_POSY': ('', 'Target position vector Y'),
-    'TRG_POSZ': ('', 'Target position vector Z'),
     'HIERARCH AFC_IMAGE_TYPE': ('', ''), # For example 'NAV' (Navigation image)
     'HIERARCH AFC_UNITID': ('', 'Tm afc_unitId'),
     'HIERARCH AFC_BIN_EN': ('', 'Tm afc_BIN_EN'),
@@ -255,7 +250,7 @@ def get_origfile(file_path: str):
     """
     return {"ORIGFILE": (get_file_name(file_path), 'Original file name')}
 
-def get_spacecraft_position_vectors(
+def get_target_position_vectors(
         spice_metakernel_path: str,
         target: str = 'HERA',
         utc_time: str = '2025-12-27T00:00:00',                            
@@ -289,11 +284,18 @@ def get_spacecraft_position_vectors(
             observer=observer
         )
         
-        return {
-            "SC_POSX": (position[0], "Spacecraft position vector X"),
-            "SC_POSY": (position[1], "Spacecraft position vector Y"),
-            "SC_POSZ": (position[2], "Spacecraft position vector Z"),
-        }
+        if target == 'HERA':
+            return {
+                "SC_POSX": (position[0], "Spacecraft position vector X"),
+                "SC_POSY": (position[1], "Spacecraft position vector Y"),
+                "SC_POSZ": (position[2], "Spacecraft position vector Z"),
+            }
+        else:
+            return {
+                'TRG_POSX': (position[0], 'Target position vector X'),
+                'TRG_POSY': (position[1], 'Target position vector Y'),
+                'TRG_POSZ': (position[2], 'Target position vector Z'),
+            }
     
     except ValueError as ve:
         print(f"ValueError: {ve}")
@@ -388,6 +390,74 @@ def get_spacecraft_quaternions(
     except Exception as e:
         print(f"An error occurred while retrieving spacecraft quaternions: {e}")
 
+def get_solar_elongation(
+        spice_metakernel_path: str,
+        utc_time: str = '2025-12-27T00:00:00',
+		target: str = 'DIDYMOS_BARYCENTER',
+		observer: str = 'HERA'
+	):
+    """
+    Get the solar elongation angle.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    utc_time (str): The UTC time for which the position vectors are required.
+    target (str): The target body.
+    observer (str): The observing body.
+
+    Returns:
+    dict: A dictionary containing solar elongation angle.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position vectors using HERA SPICE toolkit
+        solar_elongation = spice.query_solar_elongation(
+            spice_metakernel_path,
+            utc_time,
+            target,
+            observer
+        )
+        
+        return {
+            "SOL_ELNG": (solar_elongation, "Solar elongation [Deg]"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving solar elongation angle: {e}")
+
+def get_phase_angle(solar_elongation: dict):
+    """
+    Derive the phase angle from the solar elongation angle.
+    (Phase angle = 180 [Deg] - solar elongation [Deg])
+
+    Parameters:
+    solar_elongation (dict): A dictionary containing the solar elongation angle.
+
+    Returns:
+    dict: A dictionary containing the phase angle.
+    """
+    try:
+        # Ensure the solar elongation angle is provided
+        if "SOL_ELNG" not in solar_elongation:
+            raise ValueError("Solar elongation angle (SOL_ELNG) is required.")
+        
+        # Calculate the phase angle
+        phase_angle = 180 - solar_elongation["SOL_ELNG"][0]
+        
+        return {
+            "PHAS_ANG": (phase_angle, "Phase angle [Deg]"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while calculating the phase angle: {e}")
+
 # Work in progress
 def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metakernel_path: str, test: bool = False):
     """
@@ -403,17 +473,24 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     """
     dynamic_metadata = {}
     date_obs = get_acq_date(telemetry_path)
-    origfile = get_origfile(fits_path)
-    sc_pos = get_spacecraft_position_vectors(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
-    scsoldst = get_spacecraft_solar_distance(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
+    original_file_name = get_origfile(fits_path)
+    spacecraft_position = get_target_position_vectors(spice_metakernel_path, target="HERA", utc_time=date_obs["DATE-OBS"][0])
+    spacecraft_solar_distance = get_spacecraft_solar_distance(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
     quaternions = get_spacecraft_quaternions(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
+    solar_elongation = get_solar_elongation(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
+    phase_angle = get_phase_angle(solar_elongation)
+    target_position = get_target_position_vectors(spice_metakernel_path, target="DIDYMOS_BARYCENTER", utc_time=date_obs["DATE-OBS"][0])
+    
     # Continue with the rest of the dynamic metadata retrieval...
     
     dynamic_metadata.update(date_obs)
-    dynamic_metadata.update(origfile)
-    dynamic_metadata.update(sc_pos)
-    dynamic_metadata.update(scsoldst)
+    dynamic_metadata.update(original_file_name)
+    dynamic_metadata.update(spacecraft_position)
+    dynamic_metadata.update(spacecraft_solar_distance)
     dynamic_metadata.update(quaternions)
+    dynamic_metadata.update(solar_elongation)
+    dynamic_metadata.update(phase_angle)
+    dynamic_metadata.update(target_position)
 
     if test:
         print(dynamic_metadata)

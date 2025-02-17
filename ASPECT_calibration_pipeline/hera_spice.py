@@ -2,6 +2,7 @@ import spiceypy as spice
 import pyperclip
 import io
 import sys
+import numpy as np
 
 # Work in progress
 
@@ -387,3 +388,57 @@ def list_available_frames(metakernel_path: str):
     spice.kclear()
 
 # list_available_frames(metakernel_path)
+
+def query_solar_elongation(
+		metakernel_path: str,
+		utc_time: str = '2025-12-27T00:00:00',
+		target: str = 'DIDYMOS_BARYCENTER',
+		observer: str = 'HERA'
+	):
+	"""
+	Calculates the solar elongation angle for a given target as observed from the HERA spacecraft.
+
+	Solar elongation is the angle between the vector from the observer to the target 
+	and the vector from the observer to the Sun.
+
+	Args:
+		metakernel_path (str): Path to the SPICE meta-kernel file containing necessary kernels.
+		utc_time (str): UTC time of the observation, in the format 'YYYY-MM-DDTHH:MM:SS'. 
+						Default is '2025-12-27T00:00:00'.
+		target (str): Name of the target body for which the solar elongation is to be computed.
+		observer (str): Name of the observing spacecraft or body.
+
+	Returns:
+		float: Solar elongation angle in degrees.
+	"""
+	try:
+		# --- Load SPICE kernels (update the path to your Hera meta-kernel) ---
+		spice.furnsh(metakernel_path)  # This meta-kernel should load HERA, SUN, and target ephemeris
+
+		# --- Set the epoch of interest ---
+		et = spice.str2et(utc_time)
+
+		# --- Retrieve state vectors from HERA ---
+		# Get the state vector of the target relative to HERA
+		state_target, lt_target = spice.spkezr(target, et, "J2000", "NONE", observer)
+		# Get the state vector of the Sun relative to HERA
+		state_sun, lt_sun = spice.spkezr("SUN", et, "J2000", "NONE", observer)
+
+		# Extract the position (first 3 components) from the state vectors
+		vec_target = state_target[:3]
+		vec_sun    = state_sun[:3]
+
+		# --- Compute solar elongation ---
+		# The solar elongation is the angular separation between the two vectors:
+		angle_rad = spice.vsep(vec_target, vec_sun)
+		angle_deg = np.degrees(angle_rad)
+
+		# --- Clean up ---
+		spice.kclear()
+
+		return angle_deg
+
+	except Exception as e:
+		print(f"An error occurred while computing solar elongation: {e}")
+
+# print(query_solar_elongation(metakernel_path))
