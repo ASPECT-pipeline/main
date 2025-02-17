@@ -9,6 +9,8 @@ import hera_spice as spice
 """
 This is a file for retrieving and writing missing fits metadata.
 Remember to add spice_metakernel_path to this file and hera_spice.py if retrieving SPICE info.
+"main" funtion is the main function to be called, and it calls other
+functions to retrieve metadata and creates an updated fits.
 """
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
@@ -23,11 +25,12 @@ test_dynamic_metadata_retrieval = False
 # Manually add metadata
 """
 This dictionary is serving as a temporary placeholder for some of the
-metadata fields until an automatic retrieval is implemented for them.
-These fields are copied from AFC and HSH FITS files, and are examples
+metadata fields until an automatic retrieval from telemetry.json,
+config.json, or elsewhere is implemented for them.
+These variables are copied from AFC and HSH FITS files, and are examples
 for ASPECT FITS files. All data fields are therefore not mandatory,
-and their inclusion should be decided based on relevancy to ASPECT data.
-at the moment all of these fields are wrote into the primary HDU,
+and their inclusion should be decided based on relevancy to ASPECT.
+at the moment all of these fields are written into the primary HDU,
 whereas some of them should possibly be in the image HDUs.
 
 Feel free to implement automatic retrieval for any of these fields, or
