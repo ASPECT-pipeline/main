@@ -21,7 +21,7 @@ WebGeocalc: http://spice.esac.esa.int/webgeocalc/#NewCalculation
 """
 
 # Add metakernel path
-metakernel_path = "" # for example ...SPICE/HERA/kernels/mk/hera_ops.tm
+metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm
 	  
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
@@ -169,7 +169,7 @@ def explore_kernel_info():
 	except:
 		print("Unable to retrieve frame information")
 
-def list_available_spice_info(metakernel_path: str):
+def list_available_spice_info(metakernel_path: str): # Lists file paths
 	# Load your kernels first
 	spice.furnsh(metakernel_path)
 	
@@ -179,7 +179,7 @@ def list_available_spice_info(metakernel_path: str):
 		# Always clean up
 		spice.kclear()
 		
-# list_available_spice_info(metakernel_path) # Lists file paths
+# list_available_spice_info(metakernel_path)
 
 def print_pool_variables(metakernel_path: str):
 	"""
@@ -196,7 +196,7 @@ def print_pool_variables(metakernel_path: str):
 	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
-	varnames = spice.gnpool("*ver*", 0, 1000)
+	varnames = spice.gnpool("*SCLK_PARTITION_START*", 0, 1000)
 	print(len(varnames))
 	if not varnames:
 		print("No kernel pool variables found.")
@@ -320,8 +320,6 @@ def query_spacecraft_solar_distance(
         print(f"ValueError: {ve}")
     except Exception as e:
         print(f"An error occurred while retrieving spacecraft solar distance: {e}")
-    
-    return None
 
 # print(query_spacecraft_solar_distance(metakernel_path))
 
@@ -442,3 +440,66 @@ def query_solar_elongation(
 		print(f"An error occurred while computing solar elongation: {e}")
 
 # print(query_solar_elongation(metakernel_path))
+
+def query_spacecraft_clock_start(metakernel_path: str, pool_variable: str = "SCLK_PARTITION_START_9102"): # Work in progress
+    """
+    Retrieves the spacecraft clock start (i.e. the SCLK partition start)
+    from the HERA SPICE kernel dataset.
+
+    This function loads the meta-kernel (which should furnish the necessary
+    SCLK kernel for HERA), retrieves the SCLK partition start value from the
+    kernel pool, and decodes it to a spacecraft clock string.
+
+    Args:
+        metakernel_path (str): Path to the SPICE meta-kernel file containing the
+                               necessary kernels for HERA.
+        pool_variable (str): The name of the kernel pool variable that holds
+                             the spacecraft clock start value.
+                             Default is "SCLK_PARTITION_START_HERA".
+
+    Returns:
+        tuple: (sclk_start (float), sclk_start_str (str))
+            where sclk_start is the raw numeric SCLK start value (in clock ticks)
+            and sclk_start_str is the corresponding decoded SCLK string.
+    """
+    try:
+        # Load the SPICE kernels
+        spice.furnsh(metakernel_path)
+        
+        # Retrieve the SCLK partition start value from the kernel pool.
+        # gdpool returns an array of doubles.
+        sclk_start_array = spice.gdpool(pool_variable, 0, 1)
+        sclk_start = sclk_start_array[0]
+        
+        # Decode the SCLK start value to a SCLK string.
+        # The first argument ('HERA') identifies the spacecraft (it should match the
+        # spacecraft clock kernel's internal label).
+        sclk_start_str = spice.scdecd('HERA', sclk_start)
+        
+        # Clear the loaded kernels
+        spice.kclear()
+        
+        return sclk_start, sclk_start_str
+
+    except Exception as e:
+        print(f"An error occurred while retrieving the spacecraft clock start: {e}")
+        spice.kclear()
+        return None, None
+	
+# Work in progress
+# print(query_spacecraft_clock_start(metakernel_path)) # Returns None
+"""
+(3.10.3) sysa@lx9-fuxi015:~/HERA/github/main$ /home/sysa/.pyenv/versions/3.10.3/bin/python /home/sysa/HERA/github/main/ASPECT_calibration_pipeline/hera_spice.py
+5
+Kernel Pool Variables:
+SCLK_PARTITION_START_91: error retrieving values (Spice returns not found for function: gcpool)
+SCLK_PARTITION_START_15513: error retrieving values (Spice returns not found for function: gcpool)
+SCLK_PARTITION_START_9102: error retrieving values (Spice returns not found for function: gcpool)
+SCLK_PARTITION_START_658031: error retrieving values (Spice returns not found for function: gcpool)
+SCLK_PARTITION_START_91999: error retrieving values (Spice returns not found for function: gcpool)
+An error occurred while retrieving the spacecraft clock start: 'str' object cannot be interpreted as an integer
+(None, None)
+(3.10.3) sysa@lx9-fuxi015:~/HERA/github/main$ /home/sysa/.pyenv/versions/3.10.3/bin/python /home/sysa/HERA/github/main/ASPECT_calibration_pipeline/hera_spice.py
+An error occurred while retrieving the spacecraft clock start: 'str' object cannot be interpreted as an integer
+(None, None)
+"""
