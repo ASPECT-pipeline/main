@@ -21,8 +21,8 @@ spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SP
 fits_path = "test_data/D1D2_simulated_cube.fits"
 output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
 
-test_main = False
-test_dynamic_metadata_retrieval = True
+test_main = True
+test_dynamic_metadata_retrieval = False
 
 # Manually add metadata
 """
