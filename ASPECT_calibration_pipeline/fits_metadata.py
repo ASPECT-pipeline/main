@@ -8,7 +8,7 @@ import hera_spice as spice
 
 """
 This is a file for retrieving and writing missing fits metadata.
-Remember to add spice_metakernel_path.
+Remember to add spice_metakernel_path to this file and hera_spice.py if retrieving SPICE info.
 """
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
@@ -21,10 +21,57 @@ test_main = True
 test_dynamic_metadata_retrieval = False
 
 # Manually add metadata
-# Structure: {keyword: (value, comment)}
+"""
+This dictionary is serving as a temporary placeholder for some of the
+metadata fields until an automatic retrieval is implemented for them.
+These fields are copied from AFC and HSH FITS files, and are examples
+for ASPECT FITS files. All data fields are therefore not mandatory,
+and their inclusion should be decided based on relevancy to ASPECT data.
+at the moment all of these fields are wrote into the primary HDU,
+whereas some of them should possibly be in the image HDUs.
+
+Feel free to implement automatic retrieval for any of these fields, or
+delete irrelevant fields. There are some examples or data retrieval
+functions below (e.g. get_acq_date which is called in retrieve_dynamic_metadata).
+
+Structure: {keyword: (value, comment)}
+"""
 static_metadata = {
     'INSTRUME': ('ASPECT', ''),
     'ORIGIN': ('ESA - HERA', 'HERA imaging instruments'),
+    'MISSPHAS': ('', 'HERA Mission Phase ID'), # For example 'COMMISSIONING'
+    'OSERV_ID': ('', 'HERA Observation ID'), # For example '0001_EARTH_MOON'
+    'FILENAME': ('', ''), # What are the correct naming conventions? AFC example: AF1_009FEQ_241010T212506_1A.fits (ORIGFILE: af1_009FEQ_241010T212506_0.FITS)
+    'SWCREATE': ('', 'Software used'), # For example 'HERACAL' / BME-MOGI HeraCal (c) 2024 G. Kovacs
+    'DATE': ('', 'File creation time UTC'), # Is this original creation time or last modification time?
+    'PROCLEVL': ('', ''), # For example '1A'
+    'SC_CLK': ('', 'Spacecraft clock start'), # For example '310746:369199'. SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
+    'OBJECT': ('', 'Observation target ID'), # For example 'UNK'. Is this provided by telemetry or SPICE or manual input?
+    'EXPOSURE': ('', 'Exposure command [Sec]'), # For example 0.000416. Is this provided in config file ("exposurePrirotiy": [list])?
+    'CCDTEMP': ('', 'Detector temp [K]'),
+    'SPICEVER': ('', 'SPICE version'), # For example '2024-10-10T21:25:06.789'
+    'SPICE_MK': ('', 'SPICE metakernel'), # For example '2024-10-10T21:25:06.789'
+    'HIERARCH SPICE_SC_CLK_START_SEC': ('', 'Spacecraft clock seconds'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
+    'HIERARCH SPICE_SC_CLK_START_FRACT': ('', 'Spacecraft clock fraction'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
+    'CAM_RA': ('', 'Camera pointing'),
+    'CAM_DEC': ('', 'Camera pointing'),
+    'CAM_NAZ': ('', 'Camera pointing'),
+    'CELN_CLK': ('', ''),
+    'SOL_ELNG': ('', 'Solar elongation'),
+    'PHAS_ANG': ('', ''),
+    'TRG_POSX': ('', 'Target position vector X'),
+    'TRG_POSY': ('', 'Target position vector Y'),
+    'TRG_POSZ': ('', 'Target position vector Z'),
+    'HIERARCH AFC_IMAGE_TYPE': ('', ''), # For example 'NAV' (Navigation image)
+    'HIERARCH AFC_UNITID': ('', 'Tm afc_unitId'),
+    'HIERARCH AFC_BIN_EN': ('', 'Tm afc_BIN_EN'),
+    'HIERARCH AFC_BIN_FAC': ('', 'Tm afc_BIN_FAC'),
+    'HIERARCH AFC_TEMP_RAW': ('', 'Tm afc_temp_raw'),
+    'HIERARCH AFC_FULL_EXPOSURE': ('', 'Tm afc_Rdclfullexp us'),
+    'HIERARCH AFC_PIXEL_CLK': ('', 'Tm afc_Rdfrpixclock'),
+    'HIERARCH AFC_REFRLINES': ('', 'Tm afc_Rdfrlines'),
+    'HIERARCH TEMP_AFC_A_TEMP': ('', 'AFC_A sensor temp [K]'), # Temps in telemetry?
+    'Other relevant metadata': ('', '')
 }
 
 def read_json_var(input_path: str, var: str):
@@ -121,6 +168,8 @@ def print_fits_metadata_with_summary(file_path: str):
         print(f"Error: File not found at {file_path}")
     except Exception as e:
         print(f"An error occurred: {e}")
+
+# print_fits_metadata_with_summary('/home/sysa/HERA/github/main/fits_examples_from_other_instruments/sftp_provi-hera/AFC1/AF1_009FEQ_241010T212506_1A.fits')
 
 def update_fits_metadata(input_path: str, metadata: dict, output_path: str = None):
     """
