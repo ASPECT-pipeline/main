@@ -21,6 +21,7 @@ test_main = True
 test_dynamic_metadata_retrieval = False
 
 # Manually add metadata
+# Structure: {keyword: (value, comment)}
 static_metadata = {
     'INSTRUME': ('ASPECT', ''),
     'ORIGIN': ('ESA - HERA', 'HERA imaging instruments'),
