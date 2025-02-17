@@ -8,6 +8,8 @@ import hera_spice as spice
 
 """
 This is a file for retrieving and writing missing fits metadata.
+You need to have HERA SPICE kernel dataset installed to use functions that query SPICE data.
+HERA SPICE kernel dataset: https://s2e2.cosmos.esa.int/bitbucket/projects/SPICE_KERNELS/repos/hera/browse
 Remember to add spice_metakernel_path to this file and hera_spice.py if retrieving SPICE info.
 "main" funtion is the main function to be called, and it calls other
 functions to retrieve metadata and creates an updated fits.
@@ -15,12 +17,12 @@ functions to retrieve metadata and creates an updated fits.
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
-spice_metakernel_path = "" # Add metakernel path, for example ...SPICE/HERA/kernels/mk/hera_ops.tm
+spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm
 fits_path = "test_data/D1D2_simulated_cube.fits"
 output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
 
-test_main = True
-test_dynamic_metadata_retrieval = False
+test_main = False
+test_dynamic_metadata_retrieval = True
 
 # Manually add metadata
 """
