@@ -196,7 +196,7 @@ def print_pool_variables(metakernel_path: str):
 	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
-	varnames = spice.gnpool("*SCLK_PARTITION_START*", 0, 1000)
+	varnames = spice.gnpool("*VERSION*", 0, 1000)
 	print(len(varnames))
 	if not varnames:
 		print("No kernel pool variables found.")
@@ -251,17 +251,24 @@ def query_spacecraft_position_vectors(
 		target: str = 'HERA',
 		utc_time: str = '2025-12-27T00:00:00',
 		frame: str = 'J2000',
-		observer: str = 'EARTH',
+		observer: str = 'SUN',
 		test: bool = False
 	):
 	"""
-	Query the position vectors of spacecrafts in a specified time frame.
+	Query the position vectors of spacecraft in a specified time frame.
+
+	Parameters:
+	metakernel_path (str): Path to the SPICE metakernel file.
+	target (str): The spacecraft of interest.
+	utc_time (str): The UTC time for which the position vectors are required.
+	frame (str): The reference frame.
+	observer (str): The observing body.
+	test (bool): If True, print the results to the console.
 	"""
 	spice.furnsh(metakernel_path)
 	
 	et = spice.str2et(utc_time)
 	
-	# Get state vectors for the spacecraft
 	state, _ = spice.spkezr(target, et, frame, "NONE", observer)
 	position = state[:3] # X, Y, Z
 	velocity = state[3:]
@@ -441,8 +448,10 @@ def query_solar_elongation(
 
 # print(query_solar_elongation(metakernel_path))
 
-def query_spacecraft_clock_start(metakernel_path: str, pool_variable: str = "SCLK_PARTITION_START_9102"): # Work in progress
+def query_spacecraft_clock_start(metakernel_path: str, pool_variable: str = "SCLK_PARTITION_START_9102"):
     """
+	Disclaimer: SCLK contains fictional data (updated 2025-02-10)
+
     Retrieves the spacecraft clock start (i.e. the SCLK partition start)
     from the HERA SPICE kernel dataset.
 
@@ -474,32 +483,29 @@ def query_spacecraft_clock_start(metakernel_path: str, pool_variable: str = "SCL
         # Decode the SCLK start value to a SCLK string.
         # The first argument ('HERA') identifies the spacecraft (it should match the
         # spacecraft clock kernel's internal label).
-        sclk_start_str = spice.scdecd('HERA', sclk_start)
+        # sclk_start_str = spice.scdecd('HERA', sclk_start)
         
         # Clear the loaded kernels
         spice.kclear()
         
-        return sclk_start, sclk_start_str
+        return sclk_start#, sclk_start_str
 
     except Exception as e:
         print(f"An error occurred while retrieving the spacecraft clock start: {e}")
         spice.kclear()
-        return None, None
+        return None#, None
 	
 # Work in progress
-# print(query_spacecraft_clock_start(metakernel_path)) # Returns None
-"""
-(3.10.3) sysa@lx9-fuxi015:~/HERA/github/main$ /home/sysa/.pyenv/versions/3.10.3/bin/python /home/sysa/HERA/github/main/ASPECT_calibration_pipeline/hera_spice.py
-5
-Kernel Pool Variables:
-SCLK_PARTITION_START_91: error retrieving values (Spice returns not found for function: gcpool)
-SCLK_PARTITION_START_15513: error retrieving values (Spice returns not found for function: gcpool)
-SCLK_PARTITION_START_9102: error retrieving values (Spice returns not found for function: gcpool)
-SCLK_PARTITION_START_658031: error retrieving values (Spice returns not found for function: gcpool)
-SCLK_PARTITION_START_91999: error retrieving values (Spice returns not found for function: gcpool)
-An error occurred while retrieving the spacecraft clock start: 'str' object cannot be interpreted as an integer
-(None, None)
-(3.10.3) sysa@lx9-fuxi015:~/HERA/github/main$ /home/sysa/.pyenv/versions/3.10.3/bin/python /home/sysa/HERA/github/main/ASPECT_calibration_pipeline/hera_spice.py
-An error occurred while retrieving the spacecraft clock start: 'str' object cannot be interpreted as an integer
-(None, None)
-"""
+# print_pool_variables(metakernel_path)
+# print(query_spacecraft_clock_start(metakernel_path))
+
+def spice_dataset_version(metakernel_path: str):
+	"""
+	Get the version of the HERA SPICE dataset from the metakernel.
+	"""
+	spice.furnsh(metakernel_path)
+	version = spice.gcpool("SKD_VERSION", 0, 1)
+	spice.kclear()
+	return version[0]
+
+# print(spice_dataset_version(metakernel_path))

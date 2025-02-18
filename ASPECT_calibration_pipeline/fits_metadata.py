@@ -3,6 +3,7 @@ import numpy as np
 import json
 from datetime import datetime
 import hera_spice as spice
+import os
 
 # Work in progress
 
@@ -10,7 +11,7 @@ import hera_spice as spice
 This is a file for retrieving and writing missing fits metadata.
 You need to have HERA SPICE kernel dataset installed to use functions that query SPICE data.
 HERA SPICE kernel dataset: https://s2e2.cosmos.esa.int/bitbucket/projects/SPICE_KERNELS/repos/hera/browse
-Remember to add spice_metakernel_path to this file and hera_spice.py if retrieving SPICE info.
+Remember to add spice_metakernel_path below if retrieving SPICE info.
 "main" funtion is the main function to be called, and it calls other
 functions to retrieve metadata and creates an updated fits.
 """
@@ -50,12 +51,9 @@ static_metadata = {
     'SWCREATE': ('', 'Software used'), # For example 'HERACAL' / BME-MOGI HeraCal (c) 2024 G. Kovacs
     'DATE': ('', 'File creation time UTC'), # Is this original creation time or last modification time?
     'PROCLEVL': ('', ''), # For example '1A'
-    'SC_CLK': ('', 'Spacecraft clock start'), # For example '310746:369199'. SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
     'OBJECT': ('', 'Observation target ID'), # For example 'UNK'. Is this provided by telemetry or SPICE or manual input?
     'EXPOSURE': ('', 'Exposure command [Sec]'), # For example 0.000416. Is this provided in config file ("exposurePrirotiy": [list])?
-    'CCDTEMP': ('', 'Detector temp [K]'),
-    'SPICEVER': ('', 'SPICE version'), # For example '2024-10-10T21:25:06.789'
-    'SPICE_MK': ('', 'SPICE metakernel'), # For example '2024-10-10T21:25:06.789'
+    'CCDTEMP': ('', 'Detector temp [K]'), # Temps in telemetry.json?
     'HIERARCH SPICE_SC_CLK_START_SEC': ('', 'Spacecraft clock seconds'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
     'HIERARCH SPICE_SC_CLK_START_FRACT': ('', 'Spacecraft clock fraction'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
     'CAM_RA': ('', 'Camera pointing'), # Is this SPICE data?
@@ -70,7 +68,7 @@ static_metadata = {
     'HIERARCH AFC_FULL_EXPOSURE': ('', 'Tm afc_Rdclfullexp us'),
     'HIERARCH AFC_PIXEL_CLK': ('', 'Tm afc_Rdfrpixclock'),
     'HIERARCH AFC_REFRLINES': ('', 'Tm afc_Rdfrlines'),
-    'HIERARCH TEMP_AFC_A_TEMP': ('', 'AFC_A sensor temp [K]'), # Temps in telemetry?
+    'HIERARCH TEMP_AFC_A_TEMP': ('', 'AFC_A sensor temp [K]'), # Temps in telemetry.json?
     'Other relevant metadata': ('', '')
 }
 
@@ -260,7 +258,7 @@ def get_target_position_vectors(
         target: str = 'HERA',
         utc_time: str = '2025-12-27T00:00:00',                            
         frame: str = 'J2000',
-        observer: str = 'EARTH'
+        observer: str = 'SUN'
     ):
     """
     Get the spacecraft position vectors based on provided attributes.
@@ -270,7 +268,7 @@ def get_target_position_vectors(
     target (str): The spacecraft or celestial body of interest.
     utc_time (str): The UTC time for which the position vectors are required.
     frame (str): The reference frame for the position vectors.
-    observer (str): The observing body (e.g., EARTH).
+    observer (str): The observing body (e.g., SUN or EARTH).
     
     Returns:
     dict: A dictionary containing position vectors.
@@ -463,7 +461,77 @@ def get_phase_angle(solar_elongation: dict):
     except Exception as e:
         print(f"An error occurred while calculating the phase angle: {e}")
 
-# Work in progress
+def get_spacecraft_clock_start(
+        spice_metakernel_path: str,
+        pool_variable: str = "SCLK_PARTITION_START_9102"
+    ):
+    """
+    Disclaimer: SCLK contains fictional data (updated 2025-02-10)
+
+    Get the spacecraft clock start time.
+    
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    pool_variable (str): The pool variable containing the spacecraft clock start time.
+
+    Returns:
+    dict: A dictionary containing the spacecraft clock start time.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft clock start time using HERA SPICE toolkit
+        spacecraft_clock_start = spice.query_spacecraft_clock_start(
+            spice_metakernel_path,
+            pool_variable
+        )
+        
+        return {
+            "SC_CLK": (spacecraft_clock_start, "Spacecraft clock start (fictional data)"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft clock start time: {e}")
+
+def get_spice_version(spice_metakernel_path: str):
+    """
+    Get the SPICE version from the metakernel file.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+
+    Returns:
+    dict: A dictionary containing the SPICE version.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query SPICE version using HERA SPICE toolkit
+        spice_version = spice.spice_dataset_version(spice_metakernel_path)
+        
+        return {
+            "SPICEVER": (spice_version, "SPICE version"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving the SPICE version: {e}")
+
+def get_filename(file_path: str) -> str:
+    """Returns the file name from a given file path."""
+    return os.path.basename(file_path)
+
+def get_spice_metakernel(spice_metakernel_path: str):
+    """Returns the SPICE metakernel file path."""
+    return {"SPICE_MK": (get_filename(spice_metakernel_path), "SPICE metakernel")}
+
 def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metakernel_path: str, test: bool = False):
     """
     Retrieve dynamic metadata from telemetry, config, and SPICE.
@@ -485,8 +553,9 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     solar_elongation = get_solar_elongation(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
     phase_angle = get_phase_angle(solar_elongation)
     target_position = get_target_position_vectors(spice_metakernel_path, target="DIDYMOS_BARYCENTER", utc_time=date_obs["DATE-OBS"][0])
-    
-    # Continue with the rest of the dynamic metadata retrieval...
+    spacecraft_clock_start = get_spacecraft_clock_start(spice_metakernel_path)
+    spice_version = get_spice_version(spice_metakernel_path)
+    spice_metakernel = get_spice_metakernel(spice_metakernel_path)
     
     dynamic_metadata.update(date_obs)
     dynamic_metadata.update(original_file_name)
@@ -496,6 +565,9 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     dynamic_metadata.update(solar_elongation)
     dynamic_metadata.update(phase_angle)
     dynamic_metadata.update(target_position)
+    dynamic_metadata.update(spacecraft_clock_start)
+    dynamic_metadata.update(spice_version)
+    dynamic_metadata.update(spice_metakernel)
 
     if test:
         print(dynamic_metadata)
