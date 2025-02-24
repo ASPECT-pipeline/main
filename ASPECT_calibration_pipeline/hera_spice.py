@@ -20,50 +20,19 @@ SpiceyPy docs: https://spiceypy.readthedocs.io/en/stable/documentation.html#
 WebGeocalc: http://spice.esac.esa.int/webgeocalc/#NewCalculation
 """
 
+"""
+Memo:
+- hera_plan.tm metakernel provides Milani long term predicted trajectory;
+whereas hera_ops.tm does not contain asteroid phase cubesat trajectories.
+"""
+
 # Add metakernel path
-metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm
-	  
+metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+
+test_time = '2027-01-02T05:40:46'
+
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
-
-def spice_example_query(metakernel_path):
-	# Load SPICE kernels
-	spice.furnsh(metakernel_path)
-
-	# Specify target, observer, and time
-	target = "DIDYMOS_BARYCENTER"
-	observer = "HERA"
-	frame = "J2000"
-	utc_time = "2025-12-27T00:00:00"
-
-	# Convert time to ET
-	et = spice.str2et(utc_time)
-
-	# Get state vector (position and velocity) of the target relative to the observer
-	state, light_time = spice.spkezr(target, et, frame, "NONE", observer)
-
-	# Extract position and velocity
-	position = state[:3]  # x, y, z coordinates (km)
-	velocity = state[3:]  # vx, vy, vz components (km/s)
-
-	distance = compute_distance(position)
-
-	# Print results
-	print(f"UTC Time: {utc_time}")
-	print(f"Position of {target} relative to {observer}:")
-	print(f"  X: {position[0]:.3f} km")
-	print(f"  Y: {position[1]:.3f} km")
-	print(f"  Z: {position[2]:.3f} km")
-	print(f"Velocity of {target} relative to {observer}:")
-	print(f"  VX: {velocity[0]:.3f} km/s")
-	print(f"  VY: {velocity[1]:.3f} km/s")
-	print(f"  VZ: {velocity[2]:.3f} km/s")
-	print(f"Distance between {observer} and {target}: {distance:.3f} km")
-
-	# Unload SPICE kernels
-	spice.kclear()
-
-# spice_example_query()
 
 def explore_kernel_info():
 	"""
@@ -196,7 +165,7 @@ def print_pool_variables(metakernel_path: str):
 	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
-	varnames = spice.gnpool("*VERSION*", 0, 1000)
+	varnames = spice.gnpool("*milani*", 0, 1000)
 	print(len(varnames))
 	if not varnames:
 		print("No kernel pool variables found.")
@@ -248,10 +217,10 @@ def print_pool_variables(metakernel_path: str):
 
 def query_spacecraft_position_vectors(
 		metakernel_path: str,
-		target: str = 'HERA',
-		utc_time: str = '2025-12-27T00:00:00',
-		frame: str = 'J2000',
-		observer: str = 'SUN',
+		target: str = 'Milani',
+		utc_time: str = test_time,
+		frame: str = "DIMORPHOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		observer: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
 		test: bool = False
 	):
 	"""
@@ -288,10 +257,16 @@ def query_spacecraft_position_vectors(
 
 # query_spacecraft_position_vectors(metakernel_path, test=True)
 
+def test_meta():
+	spice.furnsh("/home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm")
+	spice.kclear()
+
+# test_meta()
+
 def query_spacecraft_solar_distance(
         spice_metakernel_path: str,
-        target: str = 'HERA',
-        utc_time: str = '2025-12-27T00:00:00',
+        target: str = 'Milani',
+        utc_time: str = test_time,
         frame: str = 'J2000',
         observer: str = 'SUN'
     ):
@@ -332,9 +307,9 @@ def query_spacecraft_solar_distance(
 
 def query_spacecraft_quaternions(
 		metakernel_path: str,
-		utc_time: str = '2025-12-27T00:01:00',
-		inertial_frame: str = 'J2000',
-		spacecraft_frame: str = 'HERA_DIDYMOS_NPO'
+		utc_time: str = test_time,
+		inertial_frame: str = "DIMORPHOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		spacecraft_frame: str = 'MILANI_SPACECRAFT'
 	):
     """
     Query the quaternion representing the orientation of the spacecraft.
@@ -396,12 +371,12 @@ def list_available_frames(metakernel_path: str):
 
 def query_solar_elongation(
 		metakernel_path: str,
-		utc_time: str = '2025-12-27T00:00:00',
-		target: str = 'DIDYMOS_BARYCENTER',
-		observer: str = 'HERA'
+		utc_time: str = test_time,
+		target: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
+		observer: str = 'Milani'
 	):
 	"""
-	Calculates the solar elongation angle for a given target as observed from the HERA spacecraft.
+	Calculates the solar elongation angle for a given target as observed from the spacecraft.
 
 	Solar elongation is the angle between the vector from the observer to the target 
 	and the vector from the observer to the Sun.
@@ -448,7 +423,10 @@ def query_solar_elongation(
 
 # print(query_solar_elongation(metakernel_path))
 
-def query_spacecraft_clock_start(metakernel_path: str, pool_variable: str = "SCLK_PARTITION_START_9102"):
+def query_spacecraft_clock_start(
+		metakernel_path: str,
+		pool_variable: str = "SCLK_PARTITION_START_9102"
+	):
     """
 	Disclaimer: SCLK contains fictional data (updated 2025-02-10)
 

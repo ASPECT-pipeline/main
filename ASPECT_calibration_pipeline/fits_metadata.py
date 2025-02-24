@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import hera_spice as spice
 import os
+import json
 
 # Work in progress
 
@@ -18,9 +19,11 @@ functions to retrieve metadata and creates an updated fits.
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
-spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_ops.tm
+spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 fits_path = "test_data/D1D2_simulated_cube.fits"
 output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
+
+image_target = "dimorphos" # didymos or dimorphos
 
 test_main = True
 test_dynamic_metadata_retrieval = False
@@ -105,6 +108,8 @@ def parse_acq_date(acq_date: str):
         print(f"Error parsing ACQ_DATE: {e}")
         return None
     
+test_time = '2027-01-02T05:40:46'
+
 def get_acq_date(telemetry_path: str):
     """
     Retrieve the acquisition date from the telemetry JSON file.
@@ -255,13 +260,13 @@ def get_origfile(file_path: str):
 
 def get_target_position_vectors(
         spice_metakernel_path: str,
-        target: str = 'HERA',
-        utc_time: str = '2025-12-27T00:00:00',                            
-        frame: str = 'J2000',
-        observer: str = 'SUN'
+        target: str = 'Milani', # Milani or HERA
+        utc_time: str = test_time,                            
+        frame: str = "DIMORPHOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+        observer: str = "Dimorphos" # Didymos or Dimorphos, or Didymos_barycenter
     ):
     """
-    Get the spacecraft position vectors based on provided attributes.
+    Get the target position vectors based on provided attributes.
     
     Parameters:
     spice_metakernel_path (str): Path to the SPICE metakernel file.
@@ -287,7 +292,7 @@ def get_target_position_vectors(
             observer=observer
         )
         
-        if target == 'HERA':
+        if target in ['HERA', 'Milani']:
             return {
                 "SC_POSX": (position[0], "Spacecraft position vector X"),
                 "SC_POSY": (position[1], "Spacecraft position vector Y"),
@@ -309,8 +314,8 @@ def get_target_position_vectors(
 
 def get_spacecraft_solar_distance(
         spice_metakernel_path: str,
-        target: str = 'HERA',
-        utc_time: str = '2025-12-27T00:00:00',                            
+        target: str = 'Milani',
+        utc_time: str = test_time,                            
         frame: str = 'J2000',
         observer: str = 'SUN'
     ):
@@ -352,9 +357,9 @@ def get_spacecraft_solar_distance(
 
 def get_spacecraft_quaternions(
         spice_metakernel_path: str,
-        utc_time: str = '2025-12-27T00:00:00',
-        inertial_frame: str = 'J2000',
-        spacecraft_frame: str = 'HERA_DIDYMOS_NPO'
+        utc_time: str = test_time,
+        inertial_frame: str = "DIMORPHOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+        spacecraft_frame: str = 'MILANI_SPACECRAFT'
     ):
     """
     Get the spacecraft quaternions.
@@ -395,9 +400,9 @@ def get_spacecraft_quaternions(
 
 def get_solar_elongation(
         spice_metakernel_path: str,
-        utc_time: str = '2025-12-27T00:00:00',
-		target: str = 'DIDYMOS_BARYCENTER',
-		observer: str = 'HERA'
+        utc_time: str = test_time,
+		target: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
+		observer: str = 'Milani'
 	):
     """
     Get the solar elongation angle.
@@ -545,14 +550,55 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     dict: A dictionary containing the dynamic metadata.
     """
     dynamic_metadata = {}
+
+    if image_target == "didymos":
+        spacecraft_position_frame = "DIDYMOS_FIXED"
+        spacecraft_position_observer = "Didymos"
+        quaternions_inertial_frame = "DIDYMOS_FIXED"
+        solar_elongation_target = "Didymos"
+        target_position_target = "Didymos"
+        target_position_frame = "DIDYMOS_FIXED"
+    elif image_target == "dimorphos":
+        spacecraft_position_frame = "DIMORPHOS_FIXED"
+        spacecraft_position_observer = "Dimorphos"
+        quaternions_inertial_frame = "DIMORPHOS_FIXED"
+        solar_elongation_target = "Dimorphos"
+        target_position_target = "Dimorphos"
+        target_position_frame = "DIMORPHOS_FIXED"
+    else:
+        raise ValueError("Invalid image target. Choose 'didymos' or 'dimorphos'.")
+
     date_obs = get_acq_date(telemetry_path)
     original_file_name = get_origfile(fits_path)
-    spacecraft_position = get_target_position_vectors(spice_metakernel_path, target="HERA", utc_time=date_obs["DATE-OBS"][0])
-    spacecraft_solar_distance = get_spacecraft_solar_distance(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
-    quaternions = get_spacecraft_quaternions(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
-    solar_elongation = get_solar_elongation(spice_metakernel_path, utc_time=date_obs["DATE-OBS"][0])
+    spacecraft_position = get_target_position_vectors(
+        spice_metakernel_path,
+        frame=spacecraft_position_frame,
+        observer=spacecraft_position_observer,
+        target="Milani",
+        utc_time=date_obs["DATE-OBS"][0]
+    )
+    spacecraft_solar_distance = get_spacecraft_solar_distance(
+        spice_metakernel_path,
+        utc_time=date_obs["DATE-OBS"][0]
+    )
+    quaternions = get_spacecraft_quaternions(
+        spice_metakernel_path,
+        inertial_frame=quaternions_inertial_frame,
+        utc_time=date_obs["DATE-OBS"][0]
+    )
+    solar_elongation = get_solar_elongation(
+        spice_metakernel_path,
+        target=solar_elongation_target,
+        utc_time=date_obs["DATE-OBS"][0]
+    )
     phase_angle = get_phase_angle(solar_elongation)
-    target_position = get_target_position_vectors(spice_metakernel_path, target="DIDYMOS_BARYCENTER", utc_time=date_obs["DATE-OBS"][0])
+    target_position = get_target_position_vectors(
+        spice_metakernel_path,
+        target=target_position_target,
+        frame=target_position_frame,
+        observer='Milani',
+        utc_time=date_obs["DATE-OBS"][0]
+    )
     spacecraft_clock_start = get_spacecraft_clock_start(spice_metakernel_path)
     spice_version = get_spice_version(spice_metakernel_path)
     spice_metakernel = get_spice_metakernel(spice_metakernel_path)
@@ -570,7 +616,7 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     dynamic_metadata.update(spice_metakernel)
 
     if test:
-        print(dynamic_metadata)
+        print(json.dumps(dynamic_metadata, indent=4))
     else:
         return dynamic_metadata
 
