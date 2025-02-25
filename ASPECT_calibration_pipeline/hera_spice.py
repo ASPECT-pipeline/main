@@ -165,7 +165,7 @@ def print_pool_variables(metakernel_path: str):
 	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
-	varnames = spice.gnpool("*milani*", 0, 1000)
+	varnames = spice.gnpool("*FRAME*", 0, 1000)
 	print(len(varnames))
 	if not varnames:
 		print("No kernel pool variables found.")
