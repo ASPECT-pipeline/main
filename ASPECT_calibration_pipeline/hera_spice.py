@@ -7,7 +7,7 @@ import numpy as np
 # Work in progress
 
 """
-This is a file for using HERA SPICE kernels.
+This is a Python file for using HERA SPICE kernels.
 To use this file, you need to have HERA SPICE kernel dataset installed.
 You may need to write the correct path to the kernel folder specified in metakernel.
 The SPICE dataset has too large file sizes to be uploaded into github.
@@ -31,13 +31,14 @@ metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_pl
 
 test_time = '2027-01-02T05:40:46'
 
+if metakernel_path == "":
+	raise ValueError("Please provide the path to the SPICE metakernel file.")
+
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
 
 def explore_kernel_info():
-	"""
-	Comprehensive function to explore different types of information available in SPICE kernels
-	"""
+	
 	def print_section(title):
 		print(f"\n{'='*20} {title} {'='*20}")
 	
@@ -138,7 +139,7 @@ def explore_kernel_info():
 	except:
 		print("Unable to retrieve frame information")
 
-def list_available_spice_info(metakernel_path: str): # Lists file paths
+def list_available_spice_info(metakernel_path: str):
 	# Load your kernels first
 	spice.furnsh(metakernel_path)
 	
@@ -152,7 +153,8 @@ def list_available_spice_info(metakernel_path: str): # Lists file paths
 
 def print_pool_variables(metakernel_path: str):
 	"""
-	Prints all kernel pool variables and their values.
+	Prints all specified kernel pool variables and their values.
+	Edit the search pattern as needed.
 	
 	It uses:
 	  - gnpool() to get the list of variable names in the pool,
@@ -165,7 +167,7 @@ def print_pool_variables(metakernel_path: str):
 	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
-	varnames = spice.gnpool("*FRAME*", 0, 1000)
+	varnames = spice.gnpool("*FRAME*", 0, 1000) # Edit the search pattern as needed
 	print(len(varnames))
 	if not varnames:
 		print("No kernel pool variables found.")
@@ -314,7 +316,7 @@ def query_spacecraft_quaternions(
     """
     Query the quaternion representing the orientation of the spacecraft.
     
-    This function loads the specified SPICE kernels, computes the rotation matrix
+    This function computes the rotation matrix
     from the given inertial frame to the spacecraft's body-fixed frame at the 
     specified UTC time, converts it to a quaternion, and returns the quaternion 
     in the order (W, X, Y, Z).
@@ -327,10 +329,6 @@ def query_spacecraft_quaternions(
 
     Returns:
       tuple: A tuple (W, X, Y, Z) representing the spacecraft quaternion.
-      
-    Note:
-      Ensure that the necessary CK kernels (providing the spacecraft's orientation)
-      are available and correctly referenced in the metakernel.
     """
     # Load the SPICE kernels
     spice.furnsh(metakernel_path)
@@ -351,23 +349,6 @@ def query_spacecraft_quaternions(
     return quat
 
 # print(query_spacecraft_quaternions(metakernel_path))
-
-def list_available_frames(metakernel_path: str):
-    # Load SPICE kernels
-    spice.furnsh(metakernel_path)
-    
-    # Get a list of all available frames
-    frame_count = spice.ktotal("ALL")
-    print(f"Total number of frames: {frame_count}")
-    
-    for i in range(frame_count):
-        frame_name = spice.kdata(i, "ALL")
-        print(f"Frame {i+1}: {frame_name}")
-    
-    # Clear SPICE kernels
-    spice.kclear()
-
-# list_available_frames(metakernel_path)
 
 def query_solar_elongation(
 		metakernel_path: str,
@@ -428,14 +409,14 @@ def query_spacecraft_clock_start(
 		pool_variable: str = "SCLK_PARTITION_START_9102"
 	):
     """
-	Disclaimer: SCLK contains fictional data (updated 2025-02-10)
+	Disclaimer: SCLK contains fictional data (last checked 2025-02-10)
 
     Retrieves the spacecraft clock start (i.e. the SCLK partition start)
     from the HERA SPICE kernel dataset.
 
     This function loads the meta-kernel (which should furnish the necessary
     SCLK kernel for HERA), retrieves the SCLK partition start value from the
-    kernel pool, and decodes it to a spacecraft clock string.
+    kernel pool.
 
     Args:
         metakernel_path (str): Path to the SPICE meta-kernel file containing the
@@ -445,9 +426,7 @@ def query_spacecraft_clock_start(
                              Default is "SCLK_PARTITION_START_HERA".
 
     Returns:
-        tuple: (sclk_start (float), sclk_start_str (str))
-            where sclk_start is the raw numeric SCLK start value (in clock ticks)
-            and sclk_start_str is the corresponding decoded SCLK string.
+        float: sclk_start
     """
     try:
         # Load the SPICE kernels
