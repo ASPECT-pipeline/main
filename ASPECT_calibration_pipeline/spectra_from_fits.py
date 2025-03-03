@@ -5,6 +5,9 @@ nir1_path = "test_data/spectra_extraction/NIR1_h.fits"
 nir2_path = "test_data/spectra_extraction/NIR2_h.fits"
 output_path = "test_data/test_outputs/extracted_fits_spectra.npz"
 
+create_test_spectra = False
+test_combined_pixel_spectra = True
+
 def print_npz(file_path):
     try:
         with np.load(file_path) as data:
@@ -81,5 +84,42 @@ def save_combined_pixel_spectra(nir1_path, nir2_path, output_path, coordinates: 
     except Exception as e:
         print(f"An error occurred: {e}")
 
-save_combined_pixel_spectra(nir1_path, nir2_path, output_path)
-print_npz(output_path)
+def create_test_spectra_npz(wavelengths, spectra, output_path):
+    """
+    Creates a test NPZ file with given wavelength and spectra lists.
+    
+    Parameters:
+    wavelengths (list or np.ndarray): List or array of wavelengths.
+    spectra (list or np.ndarray): List or array of corresponding spectral values.
+    output_path (str): Path to save the NPZ file.
+    """
+    try:
+        wavelengths = np.array(wavelengths, dtype=float)
+        spectra = np.array(spectra, dtype=float)
+        
+        if wavelengths.shape[0] != spectra.shape[0]:
+            raise ValueError("Wavelengths and spectra must have the same length.")
+        
+        np.savez_compressed(output_path, wavelengths=wavelengths, spectra=spectra)
+        print(f"Test spectra NPZ file saved to: {output_path}")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+
+if create_test_spectra:
+    wavelengths = [675, 690, 705, 720, 735, 750, 765, 780, 795, 810, 825, 875, 904, 933, 963,
+                992, 1021, 1050, 1079, 1108, 1138, 1167, 1196, 1225, 1254, 1283, 1313, 1342,
+                1371, 1400, 1429, 1458, 1488, 1517, 1546, 1575]
+    spectra = [8091.0, 8056.91, 8022.83, 7988.74, 7954.66, 7920.57, 7886.49, 7852.4, 
+    7818.31, 7784.23, 7750.14, 7716.06, 7681.97, 7647.89, 7613.8, 7579.71, 
+    7545.63, 7511.54, 7477.46, 7443.37, 7409.29, 7375.2, 7341.11, 7307.03, 
+    7272.94, 7238.86, 7204.77, 7170.69, 7136.6, 7102.51, 7068.43, 7034.34, 
+    7000.26, 6966.17, 6932.09, 6898.0]
+    output_path = "test_data/test_outputs/test_spectra.npz"
+
+    create_test_spectra_npz(wavelengths, spectra, output_path)
+    print_npz(output_path)
+
+if test_combined_pixel_spectra:
+    save_combined_pixel_spectra(nir1_path, nir2_path, output_path)
+    print_npz(output_path)
