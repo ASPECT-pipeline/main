@@ -19,7 +19,7 @@ functions to retrieve metadata and creates an updated fits.
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
-spice_metakernel_path = "/home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 fits_path = "test_data/D1D2_simulated_cube.fits"
 output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
 
@@ -72,7 +72,6 @@ static_metadata = {
     'HIERARCH AFC_PIXEL_CLK': ('', 'Tm afc_Rdfrpixclock'),
     'HIERARCH AFC_REFRLINES': ('', 'Tm afc_Rdfrlines'),
     'HIERARCH TEMP_AFC_A_TEMP': ('', 'AFC_A sensor temp [K]'), # Temps in telemetry.json?
-    'Other relevant metadata': ('', '')
 }
 
 def read_json_var(input_path: str, var: str):
@@ -848,6 +847,7 @@ def main(fits_path: str, telemetry_path: str, config_path: str, spice_metakernel
     # Update the FITS file with the combined metadata
     combined_metadata = {**static_metadata, **dynamic_metadata}
     update_fits_metadata(fits_path, combined_metadata, output_path)
+    # update_fits_metadata(fits_path, dynamic_metadata, output_path)
 
 if test_main:
     print_fits_metadata_with_summary(fits_path)
