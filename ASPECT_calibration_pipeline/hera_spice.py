@@ -22,8 +22,8 @@ WebGeocalc: http://spice.esac.esa.int/webgeocalc/#NewCalculation
 
 """
 Memo:
-- hera_plan.tm metakernel provides Milani long term predicted trajectory;
-whereas hera_ops.tm does not contain asteroid phase cubesat trajectories.
+- hera_plan.tm metakernel provides Milani long term predicted trajectory
+- hera_ops.tm is later updated with asteroid phase cubesat trajectories
 """
 
 # Add metakernel path
@@ -33,6 +33,10 @@ test_time = '2027-01-02T05:40:46'
 
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
+
+def km_to_au(km):
+    AU_PER_KM = 149597870.7
+    return km / AU_PER_KM
 
 def explore_kernel_info():
 	
@@ -264,10 +268,10 @@ def test_meta():
 
 def query_spacecraft_solar_distance(
         spice_metakernel_path: str,
-        target: str = 'Milani',
+        target: str = 'SUN',
         utc_time: str = test_time,
         frame: str = 'J2000',
-        observer: str = 'SUN'
+        observer: str = 'Milani'
     ):
     """
     Query the distance between a spacecraft and the Sun.
@@ -295,7 +299,7 @@ def query_spacecraft_solar_distance(
         # Compute the distance from the Sun
         distance = compute_distance(position)
         
-        return distance
+        return km_to_au(distance)
     
     except ValueError as ve:
         print(f"ValueError: {ve}")
@@ -463,3 +467,137 @@ def spice_dataset_version(metakernel_path: str):
 	return version[0]
 
 # print(spice_dataset_version(metakernel_path))
+
+def query_sun_position_vectors(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame: str = 'J2000', # Is this the correct frame?
+		observer: str = 'Milani'
+	):
+	"""
+	Query the position vectors of the Sun in a specified time frame.
+
+	Parameters:
+	metakernel_path (str): Path to the SPICE metakernel file.
+	utc_time (str): The UTC time for which the position vectors are required.
+	frame (str): The reference frame.
+	observer (str): The observing body.
+
+	Returns:
+	tuple: A tuple (X, Y, Z) representing the Sun's position vector.
+	"""
+	spice.furnsh(metakernel_path)
+	
+	et = spice.str2et(utc_time)
+	
+	state, _ = spice.spkezr("SUN", et, frame, "NONE", observer)
+	position = state[:3] # X, Y, Z
+	spice.kclear()
+	
+	return position
+
+# print(query_sun_position_vectors(metakernel_path))
+
+def query_earth_position_vectors(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame: str = 'J2000', # Is this the correct frame?
+		observer: str = 'Milani'
+	):
+	"""
+	Query the position vectors of the Earth in a specified time frame.
+
+	Parameters:
+	metakernel_path (str): Path to the SPICE metakernel file.
+	utc_time (str): The UTC time for which the position vectors are required.
+	frame (str): The reference frame.
+	observer (str): The observing body.
+
+	Returns:
+	tuple: A tuple (X, Y, Z) representing the Earth's position vector.
+	"""
+	spice.furnsh(metakernel_path)
+	
+	et = spice.str2et(utc_time)
+	
+	state, _ = spice.spkezr("EARTH", et, frame, "NONE", observer)
+	position = state[:3] # X, Y, Z
+	spice.kclear()
+	
+	return position
+
+def query_spacecraft_earth_distance(
+        spice_metakernel_path: str,
+        target: str = 'EARTH',
+        utc_time: str = test_time,
+        frame: str = 'J2000',
+        observer: str = 'Milani'
+    ):
+    """
+    Query the distance between a spacecraft and the Earth.
+    
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    target (str): The spacecraft of interest.
+    utc_time (str): The UTC time for which the distance is required.
+    frame (str): The reference frame for calculations.
+    observer (str): The observing body (default is the Earth).
+    
+    Returns:
+    float: Distance between the spacecraft and the Earth in kilometers.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position relative to the Sun
+        position = query_spacecraft_position_vectors(
+            spice_metakernel_path, target, utc_time, frame, observer
+        )
+        
+        # Compute the distance from the Sun
+        distance = compute_distance(position)
+        
+        return km_to_au(distance)
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft solar distance: {e}")
+
+# print(query_spacecraft_earth_distance(metakernel_path))
+
+def query_target_distance(
+		metakernel_path: str,
+		target: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
+		utc_time: str = test_time,
+		frame: str = 'DIMORPHOS_FIXED',
+		observer: str = 'Milani'
+	):
+	"""
+	Query the distance between the observer and the target body.
+
+	Parameters:
+	metakernel_path (str): Path to the SPICE metakernel file.
+	target (str): The target body for which the distance is required.
+	utc_time (str): The UTC time for which the distance is required.
+	frame (str): The reference frame.
+	observer (str): The observing body.
+
+	Returns:
+	float: The distance between the observer and the target body in kilometers.
+	"""
+	spice.furnsh(metakernel_path)
+	
+	et = spice.str2et(utc_time)
+	
+	state, _ = spice.spkezr(target, et, frame, "NONE", observer)
+	position = state[:3] # X, Y, Z
+	distance = compute_distance(position)
+	
+	spice.kclear()
+	
+	return km_to_au(distance)
+
+# print(query_target_distance(metakernel_path))

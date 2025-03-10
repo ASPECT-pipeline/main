@@ -19,11 +19,11 @@ functions to retrieve metadata and creates an updated fits.
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
-spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+spice_metakernel_path = "/home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 fits_path = "test_data/D1D2_simulated_cube.fits"
 output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
 
-image_target = "dimorphos" # didymos or dimorphos
+image_target = "Dimorphos" # Didymos or Dimorphos
 
 test_main = True
 test_dynamic_metadata_retrieval = False
@@ -55,7 +55,7 @@ static_metadata = {
     'DATE': ('', 'File creation time UTC'), # Is this original creation time or last modification time?
     'PROCLEVL': ('', ''), # For example '1A'
     'OBJECT': ('', 'Observation target ID'), # For example 'UNK'. Is this provided by telemetry or SPICE or manual input?
-    'EXPOSURE': ('', 'Exposure command [Sec]'), # For example 0.000416. Is this provided in config file ("exposurePrirotiy": [list])?
+    'EXPOSURE': ('', 'Exposure commanded [Sec]'), # For example 0.000416. Is this provided in config file ("exposurePrirotiy": [list])?
     'CCDTEMP': ('', 'Detector temp [K]'), # Temps in telemetry.json?
     'HIERARCH SPICE_SC_CLK_START_SEC': ('', 'Spacecraft clock seconds'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
     'HIERARCH SPICE_SC_CLK_START_FRACT': ('', 'Spacecraft clock fraction'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
@@ -314,10 +314,10 @@ def get_target_position_vectors(
 
 def get_spacecraft_solar_distance(
         spice_metakernel_path: str,
-        target: str = 'Milani',
+        target: str = 'SUN',
         utc_time: str = test_time,                            
         frame: str = 'J2000',
-        observer: str = 'SUN'
+        observer: str = 'Milani'
     ):
     """
     Get the distance between the spacecraft and the Sun.
@@ -347,7 +347,7 @@ def get_spacecraft_solar_distance(
         )
         
         return {
-            "SCSOLDST": (distance, "Spacecraft Solar distance"),
+            "SOLAR_D": (distance, "Spacecraft Solar distance [AU]"),
         }
     
     except ValueError as ve:
@@ -387,10 +387,10 @@ def get_spacecraft_quaternions(
         )
         
         return {
-            "SC_QUATW": (quaternions[0], "Spacecraft quaternions"),
-            "SC_QUATX": (quaternions[1], "Spacecraft quaternions"),
-            "SC_QUATY": (quaternions[2], "Spacecraft quaternions"),
-            "SC_QUATZ": (quaternions[3], "Spacecraft quaternions"),
+            "SC_QUAT0": (quaternions[0], "Spacecraft quaternions"),
+            "SC_QUAT1": (quaternions[1], "Spacecraft quaternions"),
+            "SC_QUAT2": (quaternions[2], "Spacecraft quaternions"),
+            "SC_QUAT3": (quaternions[3], "Spacecraft quaternions"),
         }
     
     except ValueError as ve:
@@ -534,8 +534,194 @@ def get_filename(file_path: str) -> str:
     return os.path.basename(file_path)
 
 def get_spice_metakernel(spice_metakernel_path: str):
-    """Returns the SPICE metakernel file path."""
-    return {"SPICE_MK": (get_filename(spice_metakernel_path), "SPICE metakernel")}
+    """Returns the SPICE metakernel name and SPICE version."""
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query SPICE version using HERA SPICE toolkit
+        filename = get_filename(spice_metakernel_path)
+        # filename = filename.replace(".tm", "_")
+        # spice_version = spice.spice_dataset_version(spice_metakernel_path)
+        # filename = filename + spice_version
+        
+        return {"SPICE_MK": (filename, "SPICE metakernel")}
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving the SPICE version: {e}")
+
+def get_sun_position(
+        spice_metakernel_path: str,
+        utc_time: str = test_time,
+        frame: str = 'J2000', # Is this the correct frame?
+        observer: str = 'Milani'
+    ):
+    """
+    Get the Sun's position vector.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    utc_time (str): The UTC time for which the position vectors are required.
+    frame (str): The reference frame for the position vectors.
+    observer (str): The observing body.
+
+    Returns:
+    dict: A dictionary containing the Sun's position vector.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query Sun's position vector using HERA SPICE toolkit
+        position = spice.query_sun_position_vectors(
+            spice_metakernel_path,
+            utc_time=utc_time,
+            frame=frame,
+            observer=observer
+        )
+        
+        return {
+            "SUN_POSX": (position[0], "Sun position vector X [km]"),
+            "SUN_POSY": (position[1], "Sun position vector Y [km]"),
+            "SUN_POSZ": (position[2], "Sun position vector Z [km]"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving the Sun's position vector: {e}")
+
+def get_earth_position(
+        spice_metakernel_path: str,
+        utc_time: str = test_time,
+        frame: str = 'J2000', # Is this the correct frame?
+        observer: str = 'Milani'
+    ):
+    """
+    Get the Earth's position vector.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    utc_time (str): The UTC time for which the position vectors are required.
+    frame (str): The reference frame for the position vectors.
+    observer (str): The observing body.
+
+    Returns:
+    dict: A dictionary containing the Sun's position vector.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query Earth's position vector using HERA SPICE toolkit
+        position = spice.query_earth_position_vectors(
+            spice_metakernel_path,
+            utc_time=utc_time,
+            frame=frame,
+            observer=observer
+        )
+        
+        return {
+            "EARTPOSX": (position[0], "Earth position vector X [km]"),
+            "EARTPOSY": (position[1], "Earth position vector Y [km]"),
+            "EARTPOSZ": (position[2], "Earth position vector Z [km]"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving the Earth's position vector: {e}")
+
+def get_earth_distance(
+        spice_metakernel_path: str,
+        target: str = 'EARTH',
+        utc_time: str = test_time,
+        frame: str = 'J2000', # Is this the correct frame?
+        observer: str = 'Milani'
+    ):
+    """
+    Get the distance between the spacecraft and the Earth.
+
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    target (str): The spacecraft or celestial body of interest.
+    utc_time (str): The UTC time for which the position vectors are required.
+    frame (str): The reference frame for the position vectors.
+    observer (str): The observing body.
+    
+    Returns:
+    dict: A dictionary containing distance.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position vectors using HERA SPICE toolkit
+        distance = spice.query_spacecraft_earth_distance(
+            spice_metakernel_path,
+            target=target,
+            utc_time=utc_time,
+            frame=frame,
+            observer=observer
+        )
+        
+        return {
+            "EARTH_D": (distance, "Spacecraft Earth distance [AU]"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft-Earth distance: {e}")
+
+def get_target_distance(
+        spice_metakernel_path: str,
+        target: str = image_target,
+        utc_time: str = test_time,
+        frame: str = 'DIMORPHOS_FIXED',
+        observer: str = 'Milani'
+    ):
+    """
+    Get the distance between the spacecraft and the target body.
+    
+    Parameters:
+    spice_metakernel_path (str): Path to the SPICE metakernel file.
+    target (str): The target body.
+    utc_time (str): The UTC time for which the position vectors are required.
+    frame (str): The reference frame for the position vectors.
+    observer (str): The observing body.
+
+    Returns:
+    dict: A dictionary containing distance.
+    """
+    try:
+        # Ensure the metakernel path is provided
+        if not spice_metakernel_path:
+            raise ValueError("SPICE metakernel path is required.")
+        
+        # Query spacecraft position vectors using HERA SPICE toolkit
+        distance = spice.query_target_distance(
+            spice_metakernel_path,
+            target=target,
+            utc_time=utc_time,
+            frame=frame,
+            observer=observer
+        )
+        
+        return {
+            "TRG_DIST": (distance, "Target distance [AU]"),
+        }
+    
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An error occurred while retrieving spacecraft-target distance: {e}")
 
 def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metakernel_path: str, test: bool = False):
     """
@@ -551,29 +737,23 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     """
     dynamic_metadata = {}
 
-    if image_target == "didymos":
+    if image_target == "Didymos":
         spacecraft_position_frame = "DIDYMOS_FIXED"
-        spacecraft_position_observer = "Didymos"
         quaternions_inertial_frame = "DIDYMOS_FIXED"
-        solar_elongation_target = "Didymos"
-        target_position_target = "Didymos"
         target_position_frame = "DIDYMOS_FIXED"
-    elif image_target == "dimorphos":
+    elif image_target == "Dimorphos":
         spacecraft_position_frame = "DIMORPHOS_FIXED"
-        spacecraft_position_observer = "Dimorphos"
         quaternions_inertial_frame = "DIMORPHOS_FIXED"
-        solar_elongation_target = "Dimorphos"
-        target_position_target = "Dimorphos"
         target_position_frame = "DIMORPHOS_FIXED"
     else:
-        raise ValueError("Invalid image target. Choose 'didymos' or 'dimorphos'.")
+        raise ValueError("Invalid image target. Choose 'Didymos' or 'Dimorphos'.")
 
     date_obs = get_acq_date(telemetry_path)
     original_file_name = get_origfile(fits_path)
     spacecraft_position = get_target_position_vectors(
         spice_metakernel_path,
         frame=spacecraft_position_frame,
-        observer=spacecraft_position_observer,
+        observer=image_target,
         target="Milani",
         utc_time=date_obs["DATE-OBS"][0]
     )
@@ -588,32 +768,64 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     )
     solar_elongation = get_solar_elongation(
         spice_metakernel_path,
-        target=solar_elongation_target,
+        target=image_target,
         utc_time=date_obs["DATE-OBS"][0]
     )
     phase_angle = get_phase_angle(solar_elongation)
     target_position = get_target_position_vectors(
         spice_metakernel_path,
-        target=target_position_target,
+        target=image_target,
         frame=target_position_frame,
         observer='Milani',
         utc_time=date_obs["DATE-OBS"][0]
     )
     spacecraft_clock_start = get_spacecraft_clock_start(spice_metakernel_path)
-    spice_version = get_spice_version(spice_metakernel_path)
     spice_metakernel = get_spice_metakernel(spice_metakernel_path)
+    spice_version = get_spice_version(spice_metakernel_path)
+    sun_position = get_sun_position(
+        spice_metakernel_path,
+        utc_time=date_obs["DATE-OBS"][0],
+        frame='J2000',
+        observer='Milani'
+    )
+    earth_position = get_earth_position(
+        spice_metakernel_path,
+        utc_time=date_obs["DATE-OBS"][0],
+        frame='J2000',
+        observer='Milani'
+    )
+    earth_distance = get_earth_distance(
+        spice_metakernel_path,
+        target='EARTH',
+        utc_time=date_obs["DATE-OBS"][0],
+        frame='J2000',
+        observer='Milani'
+    )
+    target = {"TARGET": (image_target.upper(), "")}
+    target_distance = get_target_distance(
+        spice_metakernel_path,
+        target=image_target,
+        utc_time=date_obs["DATE-OBS"][0],
+        frame=target_position_frame,
+        observer='Milani'
+    )
     
     dynamic_metadata.update(date_obs)
+    dynamic_metadata.update(spacecraft_clock_start)
     dynamic_metadata.update(original_file_name)
-    dynamic_metadata.update(spacecraft_position)
+    dynamic_metadata.update(spice_metakernel)
+    dynamic_metadata.update(spice_version)
+    dynamic_metadata.update(sun_position)
     dynamic_metadata.update(spacecraft_solar_distance)
-    dynamic_metadata.update(quaternions)
     dynamic_metadata.update(solar_elongation)
     dynamic_metadata.update(phase_angle)
+    dynamic_metadata.update(earth_position)
+    dynamic_metadata.update(earth_distance)
+    dynamic_metadata.update(target)
     dynamic_metadata.update(target_position)
-    dynamic_metadata.update(spacecraft_clock_start)
-    dynamic_metadata.update(spice_version)
-    dynamic_metadata.update(spice_metakernel)
+    dynamic_metadata.update(target_distance)
+    dynamic_metadata.update(spacecraft_position)
+    dynamic_metadata.update(quaternions)
 
     if test:
         print(json.dumps(dynamic_metadata, indent=4))
