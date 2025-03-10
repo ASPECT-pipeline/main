@@ -31,9 +31,6 @@ metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_pl
 
 test_time = '2027-01-02T05:40:46'
 
-if metakernel_path == "":
-	raise ValueError("Please provide the path to the SPICE metakernel file.")
-
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
 
