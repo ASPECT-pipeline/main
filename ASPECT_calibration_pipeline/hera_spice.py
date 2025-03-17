@@ -29,7 +29,7 @@ Memo:
 # Add metakernel path
 metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 
-test_time = '2027-01-02T05:40:46'
+test_time = '2027-01-02T05:40:46.6666'
 
 def compute_distance(position):
 	return (position[0]**2 + position[1]**2 + position[2]**2) ** 0.5
