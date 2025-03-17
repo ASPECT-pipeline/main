@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def combine_headers(vis, nir1, nir2, swir):
@@ -76,10 +77,37 @@ def filter_by_orientation(matches, keypoints1, keypoints2, threshold=10):
 
 def estimate_matrix(vis, nir):
 
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(vis, cmap='gray')
+    plt.title(f'vis')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(nir, cmap='gray')
+    plt.title(f'nir')
+    plt.axis('off')
+
+    plt.show()
+
+
     # Step 1: Edge detection
     # Edges for Bilateral filtered image
     edges1 = laplacian(vis)
     edges2 = laplacian(nir)
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(edges1, cmap='gray')
+    plt.title(f'vis edges')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(edges2, cmap='gray')
+    plt.title(f'nir edges')
+    plt.axis('off')
+
+    plt.show()
 
     # Step 2: Feature detection using ORB
     # create ORB feature detector
@@ -87,6 +115,26 @@ def estimate_matrix(vis, nir):
     # keypoints and binary descriptions
     keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
     keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
+
+    # Visualize ORB keypoints
+    img1_keypoints = cv2.drawKeypoints(edges1, keypoints1, None, color=(0, 255, 0))
+    img2_keypoints = cv2.drawKeypoints(edges2, keypoints2, None, color=(0, 255, 0))
+
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(img1_keypoints)
+    plt.title('VIS Keypoints')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(img2_keypoints)
+    plt.title('NIR Keypoints')
+    plt.axis('off')
+
+    plt.suptitle('Oriented FAST and Rotated Brief (ORB) feature detecting')
+    plt.show()
+
 
     # Step 3: Match features
     # FLANN
@@ -101,8 +149,23 @@ def estimate_matrix(vis, nir):
     flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2)
     matches = [m for match in flann_matches for m in match]
 
+    img_matches = cv2.drawMatches(edges1, keypoints1, edges2, keypoints2, matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    print(f'Matches: {len(matches)}')
+    plt.figure(figsize=(12, 6))
+    plt.imshow(img_matches)
+    plt.title('Feature Matches ORB')
+    plt.axis('off')
+    plt.show()
+
     # Filter the mismatched based on the orientation claculated by ORB
     matches = filter_by_orientation(matches, keypoints1, keypoints2, threshold=10)
+
+    img_matches = cv2.drawMatches(edges1, keypoints1, edges2, keypoints2, matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    plt.figure(figsize=(12, 6))
+    plt.imshow(img_matches)
+    plt.title('Feature Matches')
+    plt.axis('off')
+    plt.show()
 
     # Step 4: Extract location of good matches and estimate transformation matrix
     # arrays to store x and y coordinates
@@ -116,6 +179,29 @@ def estimate_matrix(vis, nir):
 
     # Estimate transformation matrix
     H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
+
+    height, width = nir.shape[:2]
+    aligned_image = cv2.warpPerspective(vis, H, (width, height), flags=cv2.INTER_CUBIC)
+
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1,3,1)
+    plt.imshow(vis, cmap='gray' )
+    plt.title('Original VIS image')
+    plt.axis('off')
+
+    plt.subplot(1,3,2)
+    plt.imshow(aligned_image, cmap='gray')
+    plt.title('Aligned VIS image')
+    plt.axis('off')
+
+    plt.subplot(1,3,3)
+    plt.imshow(nir, cmap='gray')
+    plt.title('Original NIR image')
+    plt.axis('off')
+    plt.show()
+
+
+
     
     #Return the transformation matrix
     return(H)

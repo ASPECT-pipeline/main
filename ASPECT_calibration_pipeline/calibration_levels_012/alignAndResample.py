@@ -53,7 +53,7 @@ import utilities
 
 """
 
-def alignFitsFiles(vis_file, nir1_file, nir2_file, swir_file, output, align):
+def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output, align):
 
     # Open both FITS files simultaneously for image alignment
     with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul, fits.open(swir_file) as swir_hdul:
@@ -65,8 +65,10 @@ def alignFitsFiles(vis_file, nir1_file, nir2_file, swir_file, output, align):
         # NIR1 data
         nir1_img_HDU = nir1_hdul[1] # Image HDU
         nir1_header = nir1_img_HDU.header # Image HDU header
-        nir_height = nir1_img_HDU.header.get('NAXIS1') # NIR image height
-        nir_width = nir1_img_HDU.header.get('NAXIS2') # NIR image width
+        nir_width = nir1_img_HDU.header.get('NAXIS1') # NIR image height
+        nir_height = nir1_img_HDU.header.get('NAXIS2') # NIR image width
+        print(f'nir height: {nir_height}')
+        print(f'nir width: {nir_width}')
 
         # NIR2 data
         nir2_img_HDU = nir2_hdul[1] # Image HDU
@@ -116,6 +118,9 @@ def alignFitsFiles(vis_file, nir1_file, nir2_file, swir_file, output, align):
         for image in nir2_img_HDU.data:
             imageDataList.append(image)
         
+        # for i, img in enumerate(imageDataList):
+            
+            # print(f'frame {i}: {img.shape}')
         data_cube = np.stack(imageDataList, axis=0)
 
         # Add data to the data cube
