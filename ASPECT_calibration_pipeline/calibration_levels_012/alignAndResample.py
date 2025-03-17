@@ -2,6 +2,7 @@ import os
 import numpy as np
 import cv2
 from astropy.io import fits
+import utilities
 
 """
     Function for aligning and resampling vis channel images with nir channel images 
@@ -24,7 +25,7 @@ from astropy.io import fits
         Applying the transformation matrix to map the visible image to have the same dimensions os nir image
         so that the asteroid appears same sized at the same (x,y) location on the image
     
-    Function: filterByOrientation 
+    Function: filterByOrientation (utilities.py)
         Parameters:
             - matches: keypoint matches made with FLANN of BF-matcher
             - keypoints1: keypoints detected from query image 
@@ -34,7 +35,7 @@ from astropy.io import fits
             Iterates over all matches and calculates what is the difference in orientation between the keypoints. 
             If the difference is less than 10 degrees the match is added to filtered_matches, that is returned.
 
-    Function: estimateMatrix
+    Function: estimateMatrix (utilities.py)
         Parameters: 
             - vis: visible channel image
             - nir: near-infrared channel image
@@ -52,134 +53,77 @@ from astropy.io import fits
 
 """
 
-def laplacian(img):
-    try:
-
-        # Check if the image was loaded successfully
-        if img is None:
-            print("Error: Image not found or unable to open")
-            return
-
-        # Apply Laplacian operator
-        laplacian = cv2.Laplacian(img, cv2.CV_64F)
-
-        # Convert to uint8
-        laplacianAbs = cv2.convertScaleAbs(laplacian)
-
-        return (laplacianAbs)
-    
-    except Exception as e:
-        print(f"Error: {e}")
-
-def filterByOrientation(matches, keypoints1, keypoints2, threshold=10):
-    filtered_matches = []
-    for m in matches:
-        angle1 = keypoints1[m.queryIdx].angle
-        angle2 = keypoints2[m.trainIdx].angle
-        angle_diff = abs(angle1 - angle2)
-        if angle_diff < threshold or angle_diff > (360 - threshold):
-            filtered_matches.append(m)
-    return filtered_matches
-
-def estimateMatrix(vis, nir):
-
-    # Step 1: Edge detection
-
-    # Edges for Bilateral filtered image
-    edges1 = laplacian(vis)
-    edges2 = laplacian(nir)
-
-
-    # Step 2: Feature detection using ORB
-
-    # create ORB feature detector
-    orb = cv2.ORB_create(nfeatures=2000)
-    # keypoints and binary descriptions
-    keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
-
-
-    # Step 3: Match features
-
-    # FLANN
-    index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
-                    table_number=30,  # Number of hash tables
-                    key_size=20,     # Size of the key
-                    multi_probe_level=2)  # Number of probes
-        
-    search_params = dict(checks=100)
-
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-    flannMatches = flann.knnMatch(descriptors1, descriptors2, k=2)
-    matches = [m for match in flannMatches for m in match]
-
-    # Filter the mismatched based on the orientation claculated by ORB
-    matches = filterByOrientation(matches, keypoints1, keypoints2, threshold=10)
-
-    # Step 4: Extract location of good matches and estimate transformation matrix
-    # arrays to store x and y coordinates
-    points1 = np.zeros((len(matches), 2), dtype=np.float32)
-    points2 = np.zeros((len(matches), 2), dtype=np.float32)
-
-    #Extract keypoint coordinates 
-    for i, match in enumerate(matches):
-        points1[i, :] = keypoints1[match.queryIdx].pt
-        points2[i, :] = keypoints2[match.trainIdx].pt
-
-    # Estimate transformation matrix
-    H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
-    
-    #Return the transformation matrix
-    return(H)
-
-def alignFitsFiles(vis_file, nir1_file, nir2_file, output):
+def alignFitsFiles(vis_file, nir1_file, nir2_file, swir_file, output, align):
 
     # Open both FITS files simultaneously for image alignment
-    with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul:
+    with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul, fits.open(swir_file) as swir_hdul:
 
-        #VIS data
-        vis_primary_HDU = vis_hdul[0] # Primary HDU
-        vis_image_HDU = vis_hdul[1] # Image HDU
+        # VIS data
+        vis_img_HDU = vis_hdul[1] # Image HDU
+        vis_header = vis_img_HDU.header # Image HDU header
 
-        #NIR1 data
-        nir1_primary_HDU = nir1_hdul[0] # Primary HDU
-        nir1_image_HDU = nir1_hdul[1] # Image HDU
-        nir_height = nir1_image_HDU.header.get('NAXIS1') # NIR image height
-        nir_width = nir1_image_HDU.header.get('NAXIS2') # NIR image width
+        # NIR1 data
+        nir1_img_HDU = nir1_hdul[1] # Image HDU
+        nir1_header = nir1_img_HDU.header # Image HDU header
+        nir_height = nir1_img_HDU.header.get('NAXIS1') # NIR image height
+        nir_width = nir1_img_HDU.header.get('NAXIS2') # NIR image width
 
-        #NIR2 data
-        nir2_primary_HDU = nir2_hdul[0] # Primary HDU
-        nir2_image_HDU = nir2_hdul[1] # Image HDU
+        # NIR2 data
+        nir2_img_HDU = nir2_hdul[1] # Image HDU
+        nir2_header = nir2_img_HDU.header # Image HDU header
 
-        # Calculate the transformation matrix from the first images of vis and nir cubes
+        # SWIR data
+        swir_img_HDU = swir_hdul[1]
+        swir_header = swir_img_HDU.header
 
-        vis_image = vis_image_HDU.data[0] # First image of vis cube
-        nir_image = nir1_image_HDU.data[0]  # First image of nir1 cube
-
-        transforamtionMatrix = estimateMatrix(vis_image, nir_image)
-
-        #Creating and empty primary HDU
+        # Creating and empty primary HDU
         primaryHdu = fits.PrimaryHDU()
         primaryHdu.header['EXTEND'] = True  # This indicates that there are extensions (following image HDU)
+
+        # Create new list of HDU's and append the primary HDU, new image HDU and other extensions
+        HDUs = []
+        HDUs.insert(0, primaryHdu)
+
+        # Combine all header data into one dictionary
+        header_dict = utilities.combine_headers(vis_header, nir1_header, nir2_header, swir_header)
+        #New image HDU to contain the whole data cube
+        new_image_HDU = fits.ImageHDU()
+        #Add metadata
+        new_image_HDU = utilities.append_header(new_image_HDU, header_dict)
+
+
+        # Calculate the transformation matrix from the first images of vis and nir cubes
+        vis_image = vis_img_HDU.data[0] # First image of vis cube
+        nir_image = nir1_img_HDU.data[0]  # First image of nir1 cube
+
+        if align:
+            transforamtionMatrix = utilities.estimate_matrix(vis_image, nir_image)
 
         #List that will contain all the 2D images
         imageDataList = []
 
         # Align all the vis images with the transformation matrix
         # Loop over the 2D images
-        for image in enumerate(vis_image_HDU.data):
-            imageDataList.append(cv2.warpPerspective(image, transforamtionMatrix, (nir_width, nir_height), flags=cv2.INTER_CUBIC))
+        for image in vis_img_HDU.data:
+            if align:
+                imageDataList.append(cv2.warpPerspective(image, transforamtionMatrix, (nir_width, nir_height), flags=cv2.INTER_CUBIC))
+            else:
+                imageDataList.append(image)
         # Add all the 2D images of the nir file
-        for image in enumerate(nir1_image_HDU.data):
+        for image in nir1_img_HDU.data:
             imageDataList.append(image)
         
-        for image in enumerate(nir2_image_HDU.data):
+        for image in nir2_img_HDU.data:
             imageDataList.append(image)
         
         data_cube = np.stack(imageDataList, axis=0)
-        #Create an image HDU
-        new_image_HDU = fits.ImageHDU(data_cube)
+
+        # Add data to the data cube
+        new_image_HDU.data = data_cube
+
+        # Append the new image cube and swir
+        HDUs.append(new_image_HDU)
+        HDUs.append(swir_img_HDU)
 
         # vlaHdu = nirHdul[2]
         # Extract HDUs containing the binary tables
@@ -187,21 +131,30 @@ def alignFitsFiles(vis_file, nir1_file, nir2_file, output):
         vlaHdu2 = nir2_hdul[2]
 
         # Verify both HDUs are variable-length tables
-        assert 'VLA' in vlaHdu1.header['TFORM1'], "Table 1 is not a variable-length table"
-        assert 'VLA' in vlaHdu2.header['TFORM1'], "Table 2 is not a variable-length table"
+        assert vlaHdu1.header['TFORM1'].startswith('P'), "Table 1 is not a variable-length table"
+        assert vlaHdu1.header['TFORM2'].startswith('P'), "Table 2 is not a variable-length table"
 
-        # Combine the columns from both tables
-        new_columns = fits.ColDefs(vlaHdu1.columns + vlaHdu2.columns)
+        # Extract columns from both tables
+        columns1 = vlaHdu1.columns
+        columns2 = vlaHdu2.columns
+        # Create a combined list of columns
+        new_columns = []
+        for i, col in enumerate(columns1 + columns2):  # First vlaHdu1, then vlaHdu2
+            new_col_name = f"Col_{i+1}"  # Renaming columns in increasing order
+            new_columns.append(fits.Column(name=new_col_name, format=col.format, array=col.array))
 
-        # Create a new binary table HDU
+        # Create a new binary table HDU with renamed columns
         new_vlaHdu = fits.BinTableHDU.from_columns(new_columns)
+        HDUs.append(new_vlaHdu)
 
-        new_hdul = fits.HDUList([primaryHdu, new_image_HDU, new_vlaHdu])
-
-        file_name = 'complete_cube.fits'
+        if align:
+            file_name = 'simulated_full_datacube.fits'
+        else:
+            file_name = 'ASPECT_full_datacube.fits'
         fits_file = os.path.join(output, file_name)
 
-        hdulist = fits.HDUList(new_hdul)
+        # create the new fits file with combined datacube
+        hdulist = fits.HDUList(HDUs)
         hdulist.writeto(fits_file, overwrite=True)
 
         return(fits_file)

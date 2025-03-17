@@ -76,7 +76,8 @@ def extract_diagnostic_pixels(fits_path, output_folder):
         channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
 
         # This step is not done to VIS or SWIR images
-        if (channel == 'VIS' or 'SWIR'):
+        if channel in ('VIS', 'SWIR'):
+            print(f'Returning same file in ramove diasnostics for channle: {channel}')
             return fits_path
         
         #Get image dimensions
