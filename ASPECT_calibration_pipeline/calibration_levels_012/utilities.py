@@ -147,3 +147,19 @@ def estimate_matrix(vis, nir):
     
     #Return the transformation matrix
     return(H)
+
+def asteroid_mask(image):
+    edges = laplacian(image) # Detect asteroid edges
+
+    _, binary_mask = cv2.threshold(edges, 10, 255, cv2.THRESH_BINARY) # convert to binary mask
+
+    kernel = np.ones((5,5), np.uint8)
+    closed_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel) # Apply morphological closing
+
+    contours, _ = cv2.findContours(closed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # Find the outermost contours
+
+    asteroid_mask = np.zeros_like(image, dtype=np.uint16)
+
+    cv2.drawContours(asteroid_mask, contours, -1, 65535, thickness=cv2.FILLED) # Draw the asteroid mask
+
+    return asteroid_mask

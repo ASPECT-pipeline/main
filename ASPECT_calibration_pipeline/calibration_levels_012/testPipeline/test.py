@@ -21,6 +21,7 @@ sys.path.append(parent_dir)
 import calibrationMain
 import utilities
 import alignAndResample
+import extractAsteroid
 
 #Path to VIS, NIR1 and NIR2
 vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_lo_600w_2500")
@@ -35,6 +36,7 @@ swir_fits = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1
 
 output = os.path.join(main_dir, "test_data/levels_012_test/test_output")
 outputPath = os.path.join(output, "test_1")
+
 
 # calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, outputPath)
 
@@ -70,7 +72,7 @@ def read_output_files():
 
     simulated_full = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits")
 
-
+    extractAsteroid.extract_asteroid(simulated_full)
     # read_fits_file(vis)
     # read_fits_file(nir1)
     # read_fits_file(nir2)
@@ -79,7 +81,7 @@ def read_output_files():
     # read_fits_file(simulated_vis)
     # read_fits_file(simulated_nir1)
     # read_fits_file(simulated_nir2)
-    read_fits_file(simulated_full)
+    # read_fits_file(simulated_full)
 
 read_output_files()
 
