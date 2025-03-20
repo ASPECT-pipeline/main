@@ -17,32 +17,22 @@ import utilities
     3. Feature matching
         FLANN with LSH for matching keypoints from vis image to nir image keypoints 
         based on approximating their descriptor similarity with hash functions.
-        The matches are filtered based on the orientation of FAST keypoints to filter out
-        mismatches.
+        The matches are filtered either based on the orientation of FAST keypoints, or by the distance between the first and the second match candidate.
     4. Estimating transformation matrix
         Estimating a 3x3 transformation matrix based on the feature matches using RANSAC
     5. Aligning the image
         Applying the transformation matrix to map the visible image to have the same dimensions os nir image
         so that the asteroid appears same sized at the same (x,y) location on the image
     
-    Function: filterByOrientation (utilities.py)
-        Parameters:
-            - matches: keypoint matches made with FLANN of BF-matcher
-            - keypoints1: keypoints detected from query image 
-            - keypoints2: keypoints detected from train image 
-            - threshold: highest allowed angle difference between keypoint orientation. Default is 10.
-        Description:
-            Iterates over all matches and calculates what is the difference in orientation between the keypoints. 
-            If the difference is less than 10 degrees the match is added to filtered_matches, that is returned.
 
-    Function: estimateMatrix (utilities.py)
+    Function: estimate_matrix (utilities.py)
         Parameters: 
             - vis: visible channel image
             - nir: near-infrared channel image
         Description:
             Performs the alignment method described above returning the estimated transformation matrix
     
-    Function: alignFitsFiles
+    Function: align_fits_files
         Parameters:
             - fitsPath: path to the FITS file
             - outputFolder: path to the folder where the new file is stored
@@ -53,7 +43,7 @@ import utilities
 
 """
 
-def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output, align):
+def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output):
 
     # Open both FITS files simultaneously for image alignment
     with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul, fits.open(swir_file) as swir_hdul:
@@ -67,8 +57,6 @@ def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output, align):
         nir1_header = nir1_img_HDU.header # Image HDU header
         nir_width = nir1_img_HDU.header.get('NAXIS1') # NIR image height
         nir_height = nir1_img_HDU.header.get('NAXIS2') # NIR image width
-        print(f'nir height: {nir_height}')
-        print(f'nir width: {nir_width}')
 
         # NIR2 data
         nir2_img_HDU = nir2_hdul[1] # Image HDU
@@ -93,13 +81,11 @@ def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output, align):
         #Add metadata
         new_image_HDU = utilities.append_header(new_image_HDU, header_dict)
 
-
         # Calculate the transformation matrix from the first images of vis and nir cubes
         vis_image = vis_img_HDU.data[0] # First image of vis cube
         nir_image = nir1_img_HDU.data[0]  # First image of nir1 cube
 
-        if align:
-            transforamtionMatrix = utilities.estimate_matrix(vis_image, nir_image)
+        transforamtionMatrix = utilities.estimate_matrix(vis_image, nir_image)
 
         #List that will contain all the 2D images
         imageDataList = []
@@ -107,10 +93,8 @@ def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output, align):
         # Align all the vis images with the transformation matrix
         # Loop over the 2D images
         for image in vis_img_HDU.data:
-            if align:
-                imageDataList.append(cv2.warpPerspective(image, transforamtionMatrix, (nir_width, nir_height), flags=cv2.INTER_CUBIC))
-            else:
-                imageDataList.append(image)
+            imageDataList.append(cv2.warpPerspective(image, transforamtionMatrix, (nir_width, nir_height), flags=cv2.INTER_CUBIC))
+
         # Add all the 2D images of the nir file
         for image in nir1_img_HDU.data:
             imageDataList.append(image)
@@ -152,10 +136,8 @@ def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output, align):
         new_vlaHdu = fits.BinTableHDU.from_columns(new_columns)
         HDUs.append(new_vlaHdu)
 
-        if align:
-            file_name = 'simulated_full_datacube.fits'
-        else:
-            file_name = 'ASPECT_full_datacube.fits'
+        file_name = 'simulated_full_datacube.fits'
+
         fits_file = os.path.join(output, file_name)
 
         # create the new fits file with combined datacube

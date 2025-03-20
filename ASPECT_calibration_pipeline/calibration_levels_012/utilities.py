@@ -46,21 +46,38 @@ def append_header(hdu, dict):
         header[key] = value
     return hdu
 
+def normalize_to_8bit(img):
+    # Compute min and max values in the image
+    min_val = np.min(img)
+    max_val = np.max(img)
+
+    # Avoid division by zero in case all values are the same
+    if max_val - min_val == 0:
+        return np.zeros_like(img, dtype=np.uint8)
+
+    # Normalize image to range 0-255
+    normalized = (img - min_val) / (max_val - min_val) * 255.0
+
+    # Convert to 8-bit integer
+    return normalized.astype(np.uint8)
+
 def laplacian(img):
     try:
-
         # Check if the image was loaded successfully
         if img is None:
             print("Error: Image not found or unable to open")
             return
+        
+        # Normalize the image to 8 bit integers
+        img = normalize_to_8bit(img)
+
+        # Apply gaussian blur
+        img = cv2.GaussianBlur(img, (3, 3), sigmaX=0, sigmaY=0)
 
         # Apply Laplacian operator
-        laplacian = cv2.Laplacian(img, cv2.CV_64F)
+        laplacian = cv2.Laplacian(img, cv2.CV_8U, ksize=3)
 
-        # Convert to uint8
-        laplacianAbs = cv2.convertScaleAbs(laplacian)
-
-        return (laplacianAbs)
+        return laplacian
     
     except Exception as e:
         print(f"Error: {e}")
@@ -75,66 +92,28 @@ def filter_by_orientation(matches, keypoints1, keypoints2, threshold=10):
             filtered_matches.append(m)
     return filtered_matches
 
+def filter_by_distance(matches):
+    ratio_thresh = 0.90  # Adjust as needed
+    good_matches = []
+    for m, n in matches:
+        if m.distance < ratio_thresh * n.distance:
+            good_matches.append(m)
+    distance_thresh = 65  # Adjust based on your data
+    good_matches = [m for m in good_matches if m.distance < distance_thresh]
+    return good_matches
+
 def estimate_matrix(vis, nir):
 
-    plt.figure(figsize=(10, 5))
-    plt.subplot(1, 2, 1)
-    plt.imshow(vis, cmap='gray')
-    plt.title(f'vis')
-    plt.axis('off')
-
-    plt.subplot(1, 2, 2)
-    plt.imshow(nir, cmap='gray')
-    plt.title(f'nir')
-    plt.axis('off')
-
-    plt.show()
-
-
     # Step 1: Edge detection
-    # Edges for Bilateral filtered image
     edges1 = laplacian(vis)
     edges2 = laplacian(nir)
 
-    plt.figure(figsize=(10, 5))
-    plt.subplot(1, 2, 1)
-    plt.imshow(edges1, cmap='gray')
-    plt.title(f'vis edges')
-    plt.axis('off')
-
-    plt.subplot(1, 2, 2)
-    plt.imshow(edges2, cmap='gray')
-    plt.title(f'nir edges')
-    plt.axis('off')
-
-    plt.show()
 
     # Step 2: Feature detection using ORB
-    # create ORB feature detector
-    orb = cv2.ORB_create(nfeatures=2000)
+    orb = cv2.ORB_create(nfeatures=2000) # create ORB feature detector
     # keypoints and binary descriptions
     keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
     keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
-
-    # Visualize ORB keypoints
-    img1_keypoints = cv2.drawKeypoints(edges1, keypoints1, None, color=(0, 255, 0))
-    img2_keypoints = cv2.drawKeypoints(edges2, keypoints2, None, color=(0, 255, 0))
-
-
-    plt.figure(figsize=(10, 5))
-    plt.subplot(1, 2, 1)
-    plt.imshow(img1_keypoints)
-    plt.title('VIS Keypoints')
-    plt.axis('off')
-
-    plt.subplot(1, 2, 2)
-    plt.imshow(img2_keypoints)
-    plt.title('NIR Keypoints')
-    plt.axis('off')
-
-    plt.suptitle('Oriented FAST and Rotated Brief (ORB) feature detecting')
-    plt.show()
-
 
     # Step 3: Match features
     # FLANN
@@ -144,28 +123,13 @@ def estimate_matrix(vis, nir):
                     multi_probe_level=2)  # Number of probes
         
     search_params = dict(checks=100)
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2)
-    matches = [m for match in flann_matches for m in match]
+    flann = cv2.FlannBasedMatcher(index_params, search_params) # Initialize the FLANN
 
-    img_matches = cv2.drawMatches(edges1, keypoints1, edges2, keypoints2, matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    print(f'Matches: {len(matches)}')
-    plt.figure(figsize=(12, 6))
-    plt.imshow(img_matches)
-    plt.title('Feature Matches ORB')
-    plt.axis('off')
-    plt.show()
+    flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2) # Match features
 
-    # Filter the mismatched based on the orientation claculated by ORB
-    matches = filter_by_orientation(matches, keypoints1, keypoints2, threshold=10)
-
-    img_matches = cv2.drawMatches(edges1, keypoints1, edges2, keypoints2, matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    plt.figure(figsize=(12, 6))
-    plt.imshow(img_matches)
-    plt.title('Feature Matches')
-    plt.axis('off')
-    plt.show()
+    #Filter the matches based on the distance. Other option is filter_by_orientation
+    matches = filter_by_distance(flann_matches)
 
     # Step 4: Extract location of good matches and estimate transformation matrix
     # arrays to store x and y coordinates
@@ -178,29 +142,7 @@ def estimate_matrix(vis, nir):
         points2[i, :] = keypoints2[match.trainIdx].pt
 
     # Estimate transformation matrix
-    H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
-
-    height, width = nir.shape[:2]
-    aligned_image = cv2.warpPerspective(vis, H, (width, height), flags=cv2.INTER_CUBIC)
-
-    plt.figure(figsize=(15, 5))
-    plt.subplot(1,3,1)
-    plt.imshow(vis, cmap='gray' )
-    plt.title('Original VIS image')
-    plt.axis('off')
-
-    plt.subplot(1,3,2)
-    plt.imshow(aligned_image, cmap='gray')
-    plt.title('Aligned VIS image')
-    plt.axis('off')
-
-    plt.subplot(1,3,3)
-    plt.imshow(nir, cmap='gray')
-    plt.title('Original NIR image')
-    plt.axis('off')
-    plt.show()
-
-
+    H, mask = cv2.findHomography(points1, points2, cv2.RANSAC, 10.0)
 
     
     #Return the transformation matrix

@@ -36,7 +36,7 @@ swir_fits = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1
 output = os.path.join(main_dir, "test_data/levels_012_test/test_output")
 outputPath = os.path.join(output, "test_1")
 
-calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, outputPath)
+# calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, outputPath)
 
 def read_fits_file(path):
     with fits.open(path) as hdul:
@@ -81,7 +81,7 @@ def read_output_files():
     # read_fits_file(simulated_nir2)
     read_fits_file(simulated_full)
 
-# read_output_files()
+read_output_files()
 
 """
 Function to create manually an example fits file 
