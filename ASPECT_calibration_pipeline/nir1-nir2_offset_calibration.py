@@ -1,5 +1,15 @@
 import numpy as np
 
+"""
+NIR2 offset correction calculates an offset for all NIR2 spectra values which
+is used to allign NIR1 and NIR2, forming a continuous spectrum and correcting
+a possible error gap in measurements caused by the hardware and its physical environment.
+
+The offset is calculated by fitting a linear regression to the last 3 values of NIR1 and
+the first 3 values of NIR2, and then calculating the difference between the linear regressions
+at the wavelength 1225. The offset is then added to all NIR2 spectra values.
+"""
+
 test_spectra = "test_data/test_outputs/test_spectra_with_duplicate_1225.npz"
 
 test_nir2_correction = False

@@ -1,7 +1,4 @@
 import spiceypy as spice
-import pyperclip
-import io
-import sys
 import numpy as np
 
 # Work in progress
@@ -165,7 +162,6 @@ def print_pool_variables(metakernel_path: str):
 	Note: Make sure that one or more kernels have been loaded (e.g. via furnsh)
 	before calling this function.
 	"""
-	copy_to_clipboard = False
 	spice.furnsh(metakernel_path)
 	# Retrieve all kernel pool variable names (allowing up to 1000 values per variable)
 	varnames = spice.gnpool("*FRAME*", 0, 1000) # Edit the search pattern as needed
@@ -174,10 +170,6 @@ def print_pool_variables(metakernel_path: str):
 		print("No kernel pool variables found.")
 		return
 	
-	if copy_to_clipboard:
-		output = io.StringIO()  # Create a buffer to capture output
-		sys.stdout = output  # Redirect print output
-
 	print("Kernel Pool Variables:")
 	for name in varnames:
 		printed = False
@@ -209,12 +201,6 @@ def print_pool_variables(metakernel_path: str):
 			except Exception as e:
 				print(f"{name}: error retrieving values ({e})")
 	spice.kclear()
-
-	if copy_to_clipboard:
-		sys.stdout = sys.__stdout__  # Restore normal print behavior
-		output_text = output.getvalue()  # Get captured text
-		pyperclip.copy(output_text)  # Copy text to clipboard
-		print("Output copied to clipboard!")
 				
 # print_pool_variables(metakernel_path)
 

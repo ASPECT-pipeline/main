@@ -4,7 +4,6 @@ import json
 from datetime import datetime
 import hera_spice as spice
 import os
-import json
 
 # Work in progress
 
@@ -18,7 +17,7 @@ functions to retrieve metadata and creates an updated fits.
 """
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
-config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
+config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json" # Not used at the moment
 spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 fits_path = "/home/sysa/HERA/github/main/test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits"
 output_path = "test_data/test_outputs/simulated_full_datacube.fits"
