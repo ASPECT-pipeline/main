@@ -20,8 +20,8 @@ functions to retrieve metadata and creates an updated fits.
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json"
 spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
-fits_path = "test_data/D1D2_simulated_cube.fits"
-output_path = "test_data/test_outputs/D1D2_simulated_cube_updated.fits"
+fits_path = "/home/sysa/HERA/github/main/test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits"
+output_path = "test_data/test_outputs/simulated_full_datacube.fits"
 
 image_target = "Dimorphos" # Didymos or Dimorphos
 
@@ -47,31 +47,31 @@ Structure: {keyword: (value, comment)}
 """
 static_metadata = {
     'INSTRUME': ('ASPECT', ''),
-    'ORIGIN': ('ESA - HERA', 'HERA imaging instruments'),
-    'MISSPHAS': ('', 'HERA Mission Phase ID'), # For example 'COMMISSIONING'
-    'OSERV_ID': ('', 'HERA Observation ID'), # For example '0001_EARTH_MOON'
-    'FILENAME': ('', ''), # What are the correct naming conventions? AFC example: AF1_009FEQ_241010T212506_1A.fits (ORIGFILE: af1_009FEQ_241010T212506_0.FITS)
-    'SWCREATE': ('', 'Software used'), # For example 'HERACAL' / BME-MOGI HeraCal (c) 2024 G. Kovacs
-    'DATE': ('', 'File creation time UTC'), # Is this original creation time or last modification time?
-    'PROCLEVL': ('', ''), # For example '1A'
-    'OBJECT': ('', 'Observation target ID'), # For example 'UNK'. Is this provided by telemetry or SPICE or manual input?
-    'EXPOSURE': ('', 'Exposure commanded [Sec]'), # For example 0.000416. Is this provided in config file ("exposurePrirotiy": [list])?
-    'CCDTEMP': ('', 'Detector temp [K]'), # Temps in telemetry.json?
-    'HIERARCH SPICE_SC_CLK_START_SEC': ('', 'Spacecraft clock seconds'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
-    'HIERARCH SPICE_SC_CLK_START_FRACT': ('', 'Spacecraft clock fraction'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
-    'CAM_RA': ('', 'Camera pointing'), # Is this SPICE data?
-    'CAM_DEC': ('', 'Camera pointing'),
-    'CAM_NAZ': ('', 'Camera pointing'),
-    'CELN_CLK': ('', ''),
-    'HIERARCH AFC_IMAGE_TYPE': ('', ''), # For example 'NAV' (Navigation image)
-    'HIERARCH AFC_UNITID': ('', 'Tm afc_unitId'),
-    'HIERARCH AFC_BIN_EN': ('', 'Tm afc_BIN_EN'),
-    'HIERARCH AFC_BIN_FAC': ('', 'Tm afc_BIN_FAC'),
-    'HIERARCH AFC_TEMP_RAW': ('', 'Tm afc_temp_raw'),
-    'HIERARCH AFC_FULL_EXPOSURE': ('', 'Tm afc_Rdclfullexp us'),
-    'HIERARCH AFC_PIXEL_CLK': ('', 'Tm afc_Rdfrpixclock'),
-    'HIERARCH AFC_REFRLINES': ('', 'Tm afc_Rdfrlines'),
-    'HIERARCH TEMP_AFC_A_TEMP': ('', 'AFC_A sensor temp [K]'), # Temps in telemetry.json?
+    'ORIGIN': ('ESA - HERA/Milani', 'HERA/Milani imaging instruments'),
+    # 'MISSPHAS': ('', 'HERA Mission Phase ID'), # For example 'COMMISSIONING'
+    # 'OSERV_ID': ('', 'HERA Observation ID'), # For example '0001_EARTH_MOON'
+    # 'FILENAME': ('', ''), # What are the correct naming conventions? AFC example: AF1_009FEQ_241010T212506_1A.fits (ORIGFILE: af1_009FEQ_241010T212506_0.FITS)
+    # 'SWCREATE': ('', 'Software used'), # For example 'HERACAL' / BME-MOGI HeraCal (c) 2024 G. Kovacs
+    # 'DATE': ('', 'File creation time UTC'), # Is this original creation time or last modification time?
+    # 'PROCLEVL': ('', ''), # For example '1A'
+    # 'OBJECT': ('', 'Observation target ID'), # For example 'UNK'. Is this provided by telemetry or SPICE or manual input?
+    # 'EXPOSURE': ('', 'Exposure commanded [Sec]'), # For example 0.000416. Is this provided in config file ("exposurePrirotiy": [list])?
+    # 'CCDTEMP': ('', 'Detector temp [K]'), # Temps in telemetry.json?
+    # 'HIERARCH SPICE_SC_CLK_START_SEC': ('', 'Spacecraft clock seconds'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
+    # 'HIERARCH SPICE_SC_CLK_START_FRACT': ('', 'Spacecraft clock fraction'), # SPICE spacecraft clock kernel (SCLK) contains fictional data (updated 2025-02-10).
+    # 'CAM_RA': ('', 'Camera pointing'), # Is this SPICE data?
+    # 'CAM_DEC': ('', 'Camera pointing'),
+    # 'CAM_NAZ': ('', 'Camera pointing'),
+    # 'CELN_CLK': ('', ''),
+    # 'HIERARCH AFC_IMAGE_TYPE': ('', ''), # For example 'NAV' (Navigation image)
+    # 'HIERARCH AFC_UNITID': ('', 'Tm afc_unitId'),
+    # 'HIERARCH AFC_BIN_EN': ('', 'Tm afc_BIN_EN'),
+    # 'HIERARCH AFC_BIN_FAC': ('', 'Tm afc_BIN_FAC'),
+    # 'HIERARCH AFC_TEMP_RAW': ('', 'Tm afc_temp_raw'),
+    # 'HIERARCH AFC_FULL_EXPOSURE': ('', 'Tm afc_Rdclfullexp us'),
+    # 'HIERARCH AFC_PIXEL_CLK': ('', 'Tm afc_Rdfrpixclock'),
+    # 'HIERARCH AFC_REFRLINES': ('', 'Tm afc_Rdfrlines'),
+    # 'HIERARCH TEMP_AFC_A_TEMP': ('', 'AFC_A sensor temp [K]'), # Temps in telemetry.json?
 }
 
 def read_json_var(input_path: str, var: str):
@@ -293,15 +293,15 @@ def get_target_position_vectors(
         
         if target in ['HERA', 'Milani']:
             return {
-                "SC_POSX": (position[0], "Spacecraft position vector X"),
-                "SC_POSY": (position[1], "Spacecraft position vector Y"),
-                "SC_POSZ": (position[2], "Spacecraft position vector Z"),
+                "SC_POSX": (position[0], f"Spacecraft position vector X (observer: {observer})"),
+                "SC_POSY": (position[1], f"Spacecraft position vector Y (observer: {observer})"),
+                "SC_POSZ": (position[2], f"Spacecraft position vector Z (observer: {observer})")
             }
         else:
             return {
-                'TRG_POSX': (position[0], 'Target position vector X'),
-                'TRG_POSY': (position[1], 'Target position vector Y'),
-                'TRG_POSZ': (position[2], 'Target position vector Z'),
+                'TRG_POSX': (position[0], f'Target position vector X (observer: {observer})'),
+                'TRG_POSY': (position[1], f'Target position vector Y (observer: {observer})'),
+                'TRG_POSZ': (position[2], f'Target position vector Z (observer: {observer})')
             }
     
     except ValueError as ve:
@@ -386,10 +386,10 @@ def get_spacecraft_quaternions(
         )
         
         return {
-            "SC_QUAT0": (quaternions[0], "Spacecraft quaternions"),
-            "SC_QUAT1": (quaternions[1], "Spacecraft quaternions"),
-            "SC_QUAT2": (quaternions[2], "Spacecraft quaternions"),
-            "SC_QUAT3": (quaternions[3], "Spacecraft quaternions"),
+            "SC_QUAT0": (quaternions[0], f"Spacecraft quaternions (frame: {inertial_frame})"),
+            "SC_QUAT1": (quaternions[1], f"Spacecraft quaternions (frame: {inertial_frame})"),
+            "SC_QUAT2": (quaternions[2], f"Spacecraft quaternions (frame: {inertial_frame})"),
+            "SC_QUAT3": (quaternions[3], f"Spacecraft quaternions (frame: {inertial_frame})"),
         }
     
     except ValueError as ve:
@@ -429,7 +429,7 @@ def get_solar_elongation(
         )
         
         return {
-            "SOL_ELNG": (solar_elongation, "Solar elongation [Deg]"),
+            "SOL_ELNG": (solar_elongation, f"Solar elongation [Deg] (observer: {observer})"),
         }
     
     except ValueError as ve:
@@ -584,9 +584,9 @@ def get_sun_position(
         )
         
         return {
-            "SUN_POSX": (position[0], "Sun position vector X [km]"),
-            "SUN_POSY": (position[1], "Sun position vector Y [km]"),
-            "SUN_POSZ": (position[2], "Sun position vector Z [km]"),
+            "SUN_POSX": (position[0], f"Sun position vector X [km] (observer: {observer})"),
+            "SUN_POSY": (position[1], f"Sun position vector Y [km] (observer: {observer})"),
+            "SUN_POSZ": (position[2], f"Sun position vector Z [km] (observer: {observer})")
         }
     
     except ValueError as ve:
@@ -626,9 +626,9 @@ def get_earth_position(
         )
         
         return {
-            "EARTPOSX": (position[0], "Earth position vector X [km]"),
-            "EARTPOSY": (position[1], "Earth position vector Y [km]"),
-            "EARTPOSZ": (position[2], "Earth position vector Z [km]"),
+            "EARTPOSX": (position[0], f"Earth position vector X [km] (observer: {observer})"),
+            "EARTPOSY": (position[1], f"Earth position vector Y [km] (observer: {observer})"),
+            "EARTPOSZ": (position[2], f"Earth position vector Z [km] (observer: {observer})")
         }
     
     except ValueError as ve:
