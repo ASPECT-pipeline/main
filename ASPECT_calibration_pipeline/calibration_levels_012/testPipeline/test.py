@@ -21,7 +21,7 @@ sys.path.append(parent_dir)
 import calibrationMain
 import utilities
 import alignAndResample
-import extractAsteroid
+import ASPECT_calibration_pipeline.calibration_levels_012.dataFiltering as dataFiltering
 
 #Path to VIS, NIR1 and NIR2
 vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_lo_600w_2500")
@@ -72,7 +72,7 @@ def read_output_files():
 
     simulated_full = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits")
 
-    extractAsteroid.extract_asteroid(simulated_full)
+    dataFiltering.extract_asteroid(simulated_full)
     # read_fits_file(vis)
     # read_fits_file(nir1)
     # read_fits_file(nir2)

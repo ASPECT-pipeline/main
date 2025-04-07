@@ -1,7 +1,17 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Literal, Iterable, Callable
+from numpy.lib.stride_tricks import sliding_window_view
+from scipy.interpolate import LinearNDInterpolator, interp1d
+import inspect
+from scipy.ndimage import gaussian_filter1d
+from scipy.integrate import trapezoid
+from scipy.stats import norm
+import warnings
 
+# numerical eps
+_num_eps = 1e-5
 
 def combine_headers(vis, nir1, nir2, swir):
     header_dict = {}
@@ -93,12 +103,12 @@ def filter_by_orientation(matches, keypoints1, keypoints2, threshold=10):
     return filtered_matches
 
 def filter_by_distance(matches):
-    ratio_thresh = 0.90  # Adjust as needed
+    ratio_thresh = 0.90  # Adjustable
     good_matches = []
     for m, n in matches:
         if m.distance < ratio_thresh * n.distance:
             good_matches.append(m)
-    distance_thresh = 65  # Adjust based on your data
+    distance_thresh = 65  # Adjustable
     good_matches = [m for m in good_matches if m.distance < distance_thresh]
     return good_matches
 
@@ -163,3 +173,190 @@ def asteroid_mask(image):
     cv2.drawContours(asteroid_mask, contours, -1, 65535, thickness=cv2.FILLED) # Draw the asteroid mask
 
     return asteroid_mask
+
+def extract_asteroid(image_cube, mask_index=0):
+    image = image_cube[mask_index]
+
+    asteroid_mask = asteroid_mask(image)
+
+    #Store the coordinates of the image where mask has value of non 0
+    coords = np.argwhere(asteroid_mask != 0)
+
+    #Extract the corresponding spectra for coords
+    spectra = np.array([image_cube[:, y, x] for y, x in coords])
+
+    #Combine coords and the spectra
+    combined = list(zip(coords, spectra))
+
+    return combined
+
+def cropND(img: np.ndarray, bounding: tuple[int, int]) -> np.ndarray:
+    start = tuple(map(lambda a, da: (a - da) // 2, np.shape(img), bounding))
+    end = tuple(map(np.add, start, bounding))
+    slices = tuple(map(slice, start, end))
+    return img[slices]
+
+def accepts_n_params(func, nparams: int):
+    if not callable(func):
+        return False
+    sig = inspect.signature(func)
+    return len(sig.parameters) == nparams
+
+def return_ddof(array: np.ndarray, axis: int | None = None) -> int:
+    return 1 if np.size(array, axis) > 1 else 0
+
+def sliding_window(image: np.ndarray, kernel: np.ndarray,
+                   func: Literal["conv2", "min", "max", "median", "mean", "std", "sum"] | callable,
+                   mode: Literal["full", "same", "valid"] = "same") -> np.ndarray:
+    """
+    Optimized sliding window function using NumPy's stride tricks.
+    !!!!! func must be computed along axis=(2, 3) !!!!!
+    e.g. func=lambda im, k: np.var(im, axis=(2, 3))
+    """
+    if not (accepts_n_params(func, nparams=2) or func in ["conv2", "min", "max", "median",  "mean", "std", "sum"]):
+        raise ValueError('"func" must be func(image, kernel) or be in ["conv2", "min", "max", "median",  "mean", "std", "sum"]')
+    if mode not in ["full", "same", "valid"]:
+        raise ValueError('"mode" must be in ["full", "same", "valid"]')
+    kernel = np.array(kernel, dtype=float)
+    image = np.array(image, dtype=float)
+    kern_h, kern_w = kernel.shape
+    if mode == "full":
+        pad_h = (kern_h - 1, kern_h - 1)
+        pad_w = (kern_w - 1, kern_w - 1)
+    elif mode == "same":
+        pad_h = (kern_h // 2, (kern_h - 1) // 2)  # Adjust for even-sized kernels
+        pad_w = (kern_w // 2, (kern_w - 1) // 2)  # Adjust for even-sized kernels
+    else:  # valid
+        pad_h = (0, 0)
+        pad_w = (0, 0)
+    # Pad the image
+    image_padded = np.pad(image, (pad_h, pad_w), mode="constant", constant_values=np.nan)
+    # Create strided view of the image
+    windows = sliding_window_view(image_padded, window_shape=(kern_h, kern_w))
+    # Perform operation
+    if callable(func):
+        result = func(windows, kernel)
+    elif func == "conv2":
+        result = np.nansum(windows * np.rot90(kernel, 2), axis=(2, 3))
+    elif func == "sum":
+        result = np.nansum(windows, axis=(2, 3))
+    elif func == "median":
+        result = np.nanmedian(windows, axis=(2, 3))
+    elif func == "mean":
+        result = np.nanmean(windows, axis=(2, 3))
+    elif func == "std":
+        result = np.nanstd(windows, ddof=return_ddof(kernel), axis=(2, 3))
+    elif func == "max":
+        result = np.nanmax(windows, axis=(2, 3))
+    elif func == "min":
+        result = np.nanmin(windows, axis=(2, 3))
+    else:
+        raise ValueError("Invalid function")
+    return result
+
+def interpolate_mask_1d(spectrum: np.ndarray, mask: np.ndarray | None = None,
+                        interp_nans: bool = True, fill_value: float = np.nan) -> np.ndarray:
+    
+    if spectrum.ndim == 2 and spectrum.shape[0] == 1:
+        spectrum = spectrum.flatten()
+        mask = mask.flatten()
+    if mask is None:
+        mask = np.zeros_like(spectrum, dtype=bool)
+    if interp_nans:
+        mask = np.logical_or(mask, ~np.isfinite(spectrum))
+    if np.all(~mask):  # No missing values, return as is
+        return spectrum
+    
+def remove_outliers_2d(image: np.ndarray,
+                       kernel_size: int = 7,
+                       n_std: float = 3.,
+                       interp_nans: bool = True,
+                       maximum_value: float | None = None) -> np.ndarray:
+    
+    kernel = np.ones((1, kernel_size))
+    kernel /= np.sum(kernel)
+    sliding_mean = sliding_window(image=image, kernel=kernel, func="mean")
+    sliding_std = sliding_window(image=image, kernel=kernel, func="std")
+    mask = np.abs(image - sliding_mean) > n_std * sliding_std
+    if maximum_value is not None:
+        mask[np.abs(image) > maximum_value] = True
+    interp_image = interpolate_mask_1d(image, mask, interp_nans=interp_nans, fill_value=np.nan)
+    image = np.asarray(image).flatten()
+    interp_image = np.asarray(interp_image).flatten()
+    invalid_mask = ~np.isfinite(interp_image)
+    interp_image[invalid_mask] = image[invalid_mask]
+    return interp_image
+
+def normalise_array(array: np.ndarray,
+                    axis: int | None = None,
+                    norm_vector: np.ndarray | None = None,
+                    norm_constant: float = 1.,
+                    num_eps: float = _num_eps) -> np.ndarray:
+    if norm_vector is None:
+        norm_vector = np.nansum(array, axis=axis, keepdims=True)
+
+    # to force correct dimensions (e.g. when passing the output of interp1d)
+    if np.ndim(norm_vector) != np.ndim(array) and np.ndim(norm_vector) > 0:
+        norm_vector = np.expand_dims(norm_vector, axis=axis)
+
+    if np.any(np.abs(norm_vector) < num_eps):
+        warnings.warn("You normalise with (almost) zero values. Check the normalisation vector.")
+
+    return array / norm_vector * norm_constant
+
+def normalise_in_columns(array: np.ndarray,
+                         norm_vector: np.ndarray | None = None,
+                         norm_constant: float = 1.) -> np.ndarray:
+    return normalise_array(array, axis=0, norm_vector=norm_vector, norm_constant=norm_constant)
+
+
+
+def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
+                  remove_mean: bool = False, sum_or_int: Literal["sum", "int"] = "sum") -> np.ndarray:
+    if x is None:
+        x = np.arange(0., np.shape(array)[-1])  # 0. to convert it to float
+
+    equidistant_measure = np.var(np.diff(x))
+
+    if equidistant_measure == 0.:  # equidistant step -> gaussian_filter1d is faster
+        step = x[1] - x[0]
+        correction = gaussian_filter1d(np.ones(len(x)), sigma=sigma / step, mode="constant")
+        array_denoised = gaussian_filter1d(array, sigma=sigma / step, mode="constant")
+
+        array_denoised = normalise_in_columns(array_denoised, norm_vector=correction)
+
+    else:  # transmission application
+        # Gaussian filters in columns
+        gaussian = norm.pdf(np.reshape(x, (len(x), 1)), loc=x, scale=sigma)
+
+        # need num_filters x num_wavelengths
+        if np.ndim(gaussian) == 1:
+            gaussian = np.reshape(gaussian, (1, -1))
+        if np.ndim(gaussian) > 2:
+            raise ValueError("Filter must be 1-D or 2-D array.")
+
+        if sum_or_int == "sum":
+            gaussian = normalise_in_columns(gaussian)
+            array_denoised = array @ gaussian
+        else:
+            gaussian = normalise_in_columns(gaussian, trapezoid(y=gaussian, x=x))
+            array_denoised = trapezoid(y=np.einsum("...j, kj -> ...kj", array, gaussian), x=x)
+
+    if remove_mean:  # here I assume that the noise has a zero mean
+        mn = np.mean(array_denoised - array, axis=-1, keepdims=True)
+    else:
+        mn = 0.
+
+    return array_denoised - mn
+
+def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | None = 7.) -> np.ndarray:
+    if sigma_nm is None:
+        return data
+
+    if sigma_nm <= 0.:
+        raise ValueError(f'"sigma_nm" must be positive float but equals {sigma_nm}')
+
+    if np.ndim(data) == 1:
+        data = np.reshape(data, (1, len(data)))
+
+    return denoise_array(data, sigma=sigma_nm, x=wavelength)
