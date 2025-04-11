@@ -136,7 +136,7 @@ def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output):
         new_vlaHdu = fits.BinTableHDU.from_columns(new_columns)
         HDUs.append(new_vlaHdu)
 
-        file_name = 'simulated_full_datacube.fits'
+        file_name = 'D1D2v5_simulated_full_datacube.fits'
 
         fits_file = os.path.join(output, file_name)
 

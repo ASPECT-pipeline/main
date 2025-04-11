@@ -100,5 +100,5 @@ def pipeline(vis, nir1, nir2, swir, output):
     # nir2 = calibration_pipeline(nir2, os.path.join(output, "NIR2"))
     # swir = calibration_pipeline(swir, os.path.join(output, "SWIR"))
 
-    aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output, True)
+    aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
     # print(f"New file created: {aligned_fits}")

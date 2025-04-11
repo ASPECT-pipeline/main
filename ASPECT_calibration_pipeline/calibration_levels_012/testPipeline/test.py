@@ -21,7 +21,7 @@ sys.path.append(parent_dir)
 import calibrationMain
 import utilities
 import alignAndResample
-import ASPECT_calibration_pipeline.calibration_levels_012.dataFiltering as dataFiltering
+import dataFiltering
 
 #Path to VIS, NIR1 and NIR2
 vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_lo_600w_2500")
@@ -29,16 +29,16 @@ nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/nir1_lo_600w_
 nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/nir2_lo_600w_2500")
 swir = os.path.join(main_dir, "test_data/levels_012_test/test_data/swir_test22")
 
-simulated_vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_VIS.fits")
-simulated_nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR1.fits")
-simulated_nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR2.fits")
+simulated_vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-0.05ms_simulated_VIS.fits")
+simulated_nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR1.fits")
+simulated_nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR2.fits")
 swir_fits = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/SWIR/SWIR_1B_Rc.fits")
 
 output = os.path.join(main_dir, "test_data/levels_012_test/test_output")
-outputPath = os.path.join(output, "test_1")
+outputPath = os.path.join(output, "test_2")
 
 
-# calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, outputPath)
+# calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, output)
 
 def read_fits_file(path):
     with fits.open(path) as hdul:
@@ -66,14 +66,14 @@ def read_output_files():
     swir = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/SWIR/SWIR_1B_Rc.fits")
     combined = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/ASPECT_full_datacube.fits")
 
-    simulated_vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_VIS.fits")
-    simulated_nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR1.fits")
-    simulated_nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR2.fits")
+    simulated_vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-0.05ms_simulated_VIS.fits")
+    simulated_nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR1.fits")
+    simulated_nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR2.fits")
 
-    simulated_full = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits")
+    simulated_full = os.path.join(main_dir, "test_data/levels_012_test/test_output/D1D2v5_simulated_full_datacube.fits")
 
-    dataFiltering.extract_asteroid(simulated_full)
-    # read_fits_file(vis)
+    # dataFiltering.extract_asteroid(simulated_full)
+    # read_fits_file(simulated_vis)
     # read_fits_file(nir1)
     # read_fits_file(nir2)
     # read_fits_file(swir)
@@ -81,7 +81,7 @@ def read_output_files():
     # read_fits_file(simulated_vis)
     # read_fits_file(simulated_nir1)
     # read_fits_file(simulated_nir2)
-    # read_fits_file(simulated_full)
+    read_fits_file(simulated_full)
 
 read_output_files()
 
@@ -102,16 +102,17 @@ def add_metadata(simulated_path, data_path):
         simulated_header['EXPOS'] = metadata_header.get('EXPOS') #All exposure times as a string
 
         simulated_hdul.flush() # writes the changes to the file 
-# add_metadata(os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_VIS.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/VIS/VIS_1B_Rc.fits"))
-# add_metadata(os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR1.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR1/NIR1_1B_Rc.fits"))
-# add_metadata(os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR2.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits"))
+# add_metadata(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-0.05ms_simulated_VIS.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/VIS/VIS_1B_Rc.fits"))
+# add_metadata(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR1.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR1/NIR1_1B_Rc.fits"))
+# add_metadata(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR2.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits"))
 
 def add_diagnostics(simulated_path, data_path):
     with fits.open(simulated_path, mode='update') as simulated_hdul, fits.open(data_path) as data_hdul:
         simulated_hdul.append(data_hdul[2]) # append the diagnosti pixels
         simulated_hdul.flush()# writes the changes to the file 
 
-# add_diagnostics(os.path.join(main_dir, "test_data/levels_012_test/test_data/simulated_NIR2.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits"))
+# add_diagnostics(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR1.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR1/NIR1_1B_Rc.fits"))
+# add_diagnostics(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR2.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits"))
 def crop_vis(vis_path, output_folder):
     new_height, new_width = 512, 640 #NIR dimensions
 
