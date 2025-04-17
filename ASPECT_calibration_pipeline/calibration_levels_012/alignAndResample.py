@@ -43,7 +43,7 @@ import utilities
 
 """
 
-def align_fits_files(vis_file, nir1_file, nir2_file, swir_file, output):
+def align_fits_files(vis_file: str, nir1_file: str, nir2_file: str, swir_file: str, output: str):
 
     # Open both FITS files simultaneously for image alignment
     with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul, fits.open(swir_file) as swir_hdul:

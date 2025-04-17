@@ -24,9 +24,9 @@ Function removeBadPixels:
 #  This function assumes that the fits file has
 #  one primary HDU and one Imge HDU. Image HDU 
 #  contains the data cube.
-##################################################
+################################################## 
  
-def remove_bad_pixels(fits_path, output_folder):
+def remove_bad_pixels(fits_path: str, output: str):
 
     #Open the FITS file
     with fits.open(fits_path) as hdul:
@@ -118,9 +118,10 @@ def remove_bad_pixels(fits_path, output_folder):
             if not isinstance(hdul[i], fits.ImageHDU):  # Skip the original Image HDU
                 HDUs.append(hdul[i])
         file_name = f'{channel}_1A_Bp.fits'
-        fits_file = os.path.join(output_folder, file_name)
 
-        hdulist = fits.HDUList(HDUs)
-        hdulist.writeto(fits_file, overwrite=True)
+        hdu_list = fits.HDUList(HDUs)
+        fits_file = os.path.join(output, file_name)
+        hdu_list = fits.HDUList(HDUs)
+        hdu_list.writeto(fits_file, overwrite=True)
 
     return(fits_file)

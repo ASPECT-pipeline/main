@@ -1,70 +1,33 @@
 import os
 import numpy as np
 from astropy.io import fits
+import utilities
 
 """
     This file contains 2 functions used to extract diagnostic pixels from NIR channel images.
-
-    FUNCTIONS:
         
-        extractDiagnosticPixels(image)
-            - takes a 2-Dimensional image as a parameter
-            - returns a new image where diagnostic pixels are cropped out from the sides and
-              a list of rows, where each row contains the diagnostic pixels of the corresponding row in the image
-
-        extractDiagnosticPixels(fitsFile, outputPath)
-            - takes a FITS file and path to output folder as parameter
-            - returns a new FITS file where diagnostic pixels are extracted from the data cube and stored to a Varible Lenght Array Table extention
-            - Variable Array Table (VLA) can be accessed with hdul[2]
-                - VLA contains one column for each 2D image, named as, Image_i, where i is the number of the image
-                - Each column will have 518 rows for each row of the image
-                - each cell of one row will contain a list of diasnostic pixells extacted from the corresponding row and image.
-                - For instance the diagnostic pixels can be accessed:
-                    vla_table = hdul[2].data
-                    # Iterate over each column
-                    for col_name in vla_table.columns.names:
-                        print(f"Column: {col_name}") # The 2D image of the data cube
-                        # Iterate over each row in the column (image)
-                        for i, row in enumerate(vla_table[col_name]):
-                            # Print each cell in the row
-                            print(f"  Row {i+1}: {row}") #row is a list of diagnostic pixels on the corresponding row of the image
-                - each row will have either 648 diasnostic pixels (rows 1-5, and 518) or 8 diasnostic pixels,
-                  where first 4 is form the start of the row and last 4 from the end of the row (rows 6 - 517)
+    extractDiagnosticPixels(fitsFile, outputPath)
+        - takes a FITS file and path to output folder as parameter
+        - returns a new FITS file where diagnostic pixels are extracted from the data cube and stored to a Varible Lenght Array Table extention
+        - Variable Array Table (VLA) can be accessed with hdul[2]
+            - VLA contains one column for each 2D image, named as, Image_i, where i is the number of the image
+            - Each column will have 518 rows for each row of the image
+            - each cell of one row will contain a list of diasnostic pixells extacted from the corresponding row and image.
+            - For instance the diagnostic pixels can be accessed:
+                vla_table = hdul[2].data
+                # Iterate over each column
+                for col_name in vla_table.columns.names:
+                    print(f"Column: {col_name}") # The 2D image of the data cube
+                    # Iterate over each row in the column (image)
+                    for i, row in enumerate(vla_table[col_name]):
+                        # Print each cell in the row
+                        print(f"  Row {i+1}: {row}") #row is a list of diagnostic pixels on the corresponding row of the image
+            - each row will have either 648 diasnostic pixels (rows 1-5, and 518) or 8 diasnostic pixels,
+                where first 4 is form the start of the row and last 4 from the end of the row (rows 6 - 517)
 
 """
 
-def extract_diagnostics(image):
-    # Define diagnostic pixel regions
-    top = 5  # Five lines at the top
-    bottom = 1  # One line at the bottom
-    left = 4  # Four columns on the left
-    right = 4  # Four columns on the right
-    # To store the extracted pixels
-    diagnosticPixels = []
-
-    # Step 1: Extract the first 5 rows
-    for row in image[:top]:
-        diagnosticPixels.append(row.tolist())
-    
-    # Step 2: For the remaining rows (except the last one), extract the first 4 and last 4 values
-    for row in image[top:-bottom]:
-        left_values = row[:left]
-        right_values = row[-right:]
-        combined_row = np.concatenate((left_values, right_values)).tolist()
-        diagnosticPixels.append(combined_row)
-    
-    # Step 3: Extract the last row as a separate list
-    diagnosticPixels.append(image[-1].tolist())
-
-    # Remove diagnostic pixels to create the cleaned image
-    cleanedImage = image[
-        top:-bottom,  # Remove top and bottom rows
-        left:-right  # Remove left and right columns
-    ]
-
-    return (cleanedImage, diagnosticPixels)
-
-def extract_diagnostic_pixels(fits_path, output_folder):
+def extract_diagnostic_pixels(fits_path: str, output: str):
 
     with fits.open(fits_path) as hdul:
 
@@ -99,7 +62,7 @@ def extract_diagnostic_pixels(fits_path, output_folder):
         for i, image in enumerate(img_data):
             
             # Extract the diagnostic data from the slice
-            cleanedImage, diagnostics = extract_diagnostics(image)
+            cleanedImage, diagnostics = utilities.extract_diagnostics(image)
             
             # Create a FITS column for the current slice, with the name indicating the slice
             col_name = f'Image_{i+1}'
@@ -119,10 +82,11 @@ def extract_diagnostic_pixels(fits_path, output_folder):
 
         #File name for new fits
         file_name = f'{channel}_1A_Rd.fits'
-        fits_file = os.path.join(output_folder, file_name)
 
         # create the new fits file with dark-subtracted images
-        hdulist = fits.HDUList(HDUs)
-        hdulist.writeto(fits_file, overwrite=True)
+        hdu_list = fits.HDUList(HDUs)
+        fits_file = os.path.join(output, file_name)
+        hdu_list = fits.HDUList(HDUs)
+        hdu_list.writeto(fits_file, overwrite=True)
 
-        return(fits_file)
+    return(fits_file)

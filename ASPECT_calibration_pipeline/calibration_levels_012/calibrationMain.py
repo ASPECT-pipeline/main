@@ -36,47 +36,49 @@ import alignAndResample
     - pipeline function, which calls the calibrationPipeline for each sensor and aligns and combines to form the complete file.
 """
 
-def calibration_pipeline(path, output):
+def calibration_pipeline(path: str, output: str):
     """
     These functions perform the level 0 and 1 of the pipeline
     Parmeters:
         path: Path to a folder containing data of an acquisition from a single sensor
         output: Path to the folder where the fits files will be stored
     """
+    #create a folder for fits file
+    os.makedirs(output, exist_ok=True)
 
     # Use convert_to_fits function to convert the data in the directory into a FITS file
     fits_file = convertToFits.convert_to_fits(path, output)
-    print(f"Fits file created: {fits_file}")
+    print(f'New file saved: {fits_file}')
 
     # Convert the wavelengths
-    path = os.path.join(output, fits_file)
-    fits_file = convertWavelengths.convert_wl(path, output)
+    # path = os.path.join(output, fits_file)
+    fits_file = convertWavelengths.convert_wl(fits_file, output)
     print(f'New file created: {fits_file}')
 
     #Extract diagnostic pixels. The function will only extract pixels on NIR1 and NIR2 channels
-    path = os.path.join(output, fits_file)
-    fits_file = removeDiagnostic.extract_diagnostic_pixels(path, output)
+    # path = os.path.join(output, fits_file)
+    fits_file = removeDiagnostic.extract_diagnostic_pixels(fits_file, output)
     print(f'New file created: {fits_file}')
 
     # Use removeBadPixels to change the value to the mean of the neighbours
-    path = os.path.join(output, fits_file)
-    fits_file = badPixels.remove_bad_pixels(path, output)
+    # path = os.path.join(output, fits_file)
+    fits_file = badPixels.remove_bad_pixels(fits_file, output)
     print(f'New file created: {fits_file}')
 
     # Use darSubstraction to substract the dark frame from fits file and
     # create a new fits file
-    path = os.path.join(output, fits_file)
-    fits_file = darkSubtraction.dark_subtraction(path, output)
+    # path = os.path.join(output, fits_file)
+    fits_file = darkSubtraction.dark_subtraction(fits_file, output)
     print(f'New file created: {fits_file}')
 
     # Use flatFieldCalibration function
-    path = os.path.join(output, fits_file) 
-    fits_file = flatField.flat_field_calibration(path, output)
+    # path = os.path.join(output, fits_file) 
+    fits_file = flatField.flat_field_calibration(fits_file, output)
     print(f'New file created: {fits_file}')
 
-    # Use radiometricCalbration function
-    path = os.path.join(output, fits_file)
-    fits_file = radiometric.radiometric_calibration(path, output)
+    # # Use radiometricCalbration function
+    # path = os.path.join(output, fits_file)
+    fits_file = radiometric.radiometric_calibration(fits_file, output)
     print(f'New file created: {fits_file}')
 
     #Return radiometrically calibrated FITS file (end of level 1)
@@ -95,10 +97,10 @@ def pipeline(vis, nir1, nir2, swir, output):
 
 
 
-    # vis = calibration_pipeline(vis, os.path.join(output, "VIS"))
-    # nir1 = calibration_pipeline(nir1, os.path.join(output, "NIR1"))
-    # nir2 = calibration_pipeline(nir2, os.path.join(output, "NIR2"))
-    # swir = calibration_pipeline(swir, os.path.join(output, "SWIR"))
+    vis = calibration_pipeline(vis, os.path.join(output, "VIS"))
+    nir1 = calibration_pipeline(nir1, os.path.join(output, "NIR1"))
+    nir2 = calibration_pipeline(nir2, os.path.join(output, "NIR2"))
+    swir = calibration_pipeline(swir, os.path.join(output, "SWIR"))
 
-    aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
+    # aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
     # print(f"New file created: {aligned_fits}")

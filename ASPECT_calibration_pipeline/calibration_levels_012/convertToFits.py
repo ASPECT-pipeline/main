@@ -2,6 +2,7 @@ import os
 import numpy as np
 import json
 from astropy.io import fits
+import utilities
 
 """
 
@@ -34,89 +35,19 @@ where the fits file is created.
 Scroll down to see how to run.
 
 """
-
-###################################################
-#########        HELPER FUNCTIONS      ############
-###################################################
-# 
-# These function are to help the convertToFits function
-# to read the meta data and determine channels, 
-# exposuretimes, and wavelenghts.
-
-# Based on SP1 and channel determine the order.
-# The sp value should be taken from the index 3
-# to prevent miss identification.
-def check_order(sp, channel):
-    match channel:
-        case 'VIS' | 'NIR1':
-            if sp > 19000:
-                return 'h'
-            else:
-                return 'l'
-        case 'NIR2':
-            if sp > 20000:
-                return 'h'
-            else:
-                return 'l'
-        case 'SWIR':
-            return ''
-
-#Extract the cahnnel from calib.json file
-def read_channel(calibPath):
-    with open(calibPath, 'r') as file:
-        data = json.load(file)
-        if data == None: # As the example SWIR files do not have config data
-            return 'SWIR'
-        firstKey = list(data.keys())[0]  # Access the first top-level key
-        secondKey = list(data[firstKey].keys())[0]  # Access the first sub-key
-
-        # Access the key indicating channel
-        channel = list(data[firstKey][secondKey].keys())[0]
-
-    return(channel)
-
-#read the meta data from config file
-def read_config(configPath, channel):
-    with open(configPath, 'r') as file:
-        data = json.load(file)
-
-        #read SP values for each image
-        match channel:
-            case 'VIS':
-                taskFile = data['visTaskFile']
-            case 'NIR1':
-                taskFile = data['nir1TaskFile']
-            case 'NIR2':
-                taskFile = data['nir2TaskFile']
-            case 'SWIR':
-                taskFile = data['swirTaskFile']
-        
-        #Extract sp values from taskValues
-        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
-        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
-        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
-        #Extract exposure times
-        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
-
-        #Check the order based on SP1 index 3
-        order = check_order(sp1Values[3], channel)
-
-    return(order, exposureTimes, sp1Values, sp2Values, sp3Values)
-
 ###################################################
 ###### Reading binary and convering to FITS #######
 ###################################################
 
-def convert_to_fits(dirPath, outputFolder):
+def convert_to_fits(dirPath: str, output:str):
     acquisitionPath = os.path.join(dirPath, "acq_000/") # path to acquisitions
     configPath = os.path.join(dirPath, "meta/config.json") # path to config file
     calibPath = os.path.join(dirPath, "meta/calib.json") # path to calib file
 
     #Extract channel
-    channel = read_channel(calibPath)
+    channel = utilities.read_channel(calibPath)
     #Read config files and extract (order, exposuretimes[])
-    config = read_config(configPath, channel)
+    config = utilities.read_config(configPath, channel)
     order = config[0] # l for low order, h for high order
     exposureTimes = config[1] # each element corresponds to the index in datacube
     sp1Values = config[2] # Piezo values of setpoint 1 that are used to calculate the wavelenghts
@@ -195,17 +126,11 @@ def convert_to_fits(dirPath, outputFolder):
     hdu.header['PIEZO3'] = ','.join(map(str, sp3Values)) # set point 3 values
 
     HDUs.append(hdu)
-
-    #create a folder for fits file
-    os.makedirs(outputFolder, exist_ok=True)
     
     #Create a FITS file (in lack of better naming the file is called channle_order.fits)
-    fileName = f'{channel}.fits' # Adjust to name the file 
-    fitsFile = os.path.join(outputFolder, fileName)
+    file_name = f'{channel}.fits' # Adjust to name the file 
+    fits_file = os.path.join(output, file_name)
+    hdu_list = fits.HDUList(HDUs)
+    hdu_list.writeto(fits_file, overwrite=True)
 
-    #Write the FITS file
-    hdulist = fits.HDUList(HDUs)
-    hdulist.writeto(fitsFile, overwrite=True)
-    
-    #return the path to the created fits file
-    return(fitsFile)
+    return(fits_file)

@@ -17,7 +17,7 @@ Function: darkSubtraction
 
 
 
-def dark_subtraction(fits_path, output_folder):
+def dark_subtraction(fits_path: str, output: str):
 
     # darkFramePath =  os.path.join(os.getcwd(), "outputFiles/dark_VIS_l_1250/dark_VIS_l_1250.fits")
 
@@ -60,9 +60,11 @@ def dark_subtraction(fits_path, output_folder):
                 HDUs.append(hdul[i])
         #File name for new fits
         file_name = f'{channel}_1A_Ds.fits'
-        fits_file = os.path.join(output_folder, file_name)
 
         # create the new fits file with dark-subtracted images
-        hdulist = fits.HDUList(HDUs)
-        hdulist.writeto(fits_file, overwrite=True)
+        hdu_list = fits.HDUList(HDUs)
+        fits_file = os.path.join(output, file_name)
+        hdu_list = fits.HDUList(HDUs)
+        hdu_list.writeto(fits_file, overwrite=True)
+
     return(fits_file)

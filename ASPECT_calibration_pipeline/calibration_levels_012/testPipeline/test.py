@@ -20,8 +20,15 @@ sys.path.append(parent_dir)
 
 import calibrationMain
 import utilities
-import alignAndResample
 import dataFiltering
+import convertToFits
+import convertWavelengths
+import removeDiagnostic
+import badPixels
+import darkSubtraction
+import flatField
+import radiometric
+import alignAndResample
 
 #Path to VIS, NIR1 and NIR2
 vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_lo_600w_2500")
@@ -39,6 +46,12 @@ outputPath = os.path.join(output, "test_2")
 
 
 # calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, output)
+
+
+
+"""
+Function to read fits files
+"""
 
 def read_fits_file(path):
     with fits.open(path) as hdul:
@@ -83,7 +96,7 @@ def read_output_files():
     # read_fits_file(simulated_nir2)
     read_fits_file(simulated_full)
 
-read_output_files()
+# read_output_files()
 
 """
 Function to create manually an example fits file 
@@ -113,47 +126,24 @@ def add_diagnostics(simulated_path, data_path):
 
 # add_diagnostics(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR1.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR1/NIR1_1B_Rc.fits"))
 # add_diagnostics(os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR2.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits"))
-def crop_vis(vis_path, output_folder):
-    new_height, new_width = 512, 640 #NIR dimensions
-
-    with fits.open(vis_path) as hdul:
-        img_HDU = hdul[1] # Contains the image cube (or swir readings)
-        img_header = img_HDU.header # Image HDU header
-        channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
-        data_cube = img_HDU.data
-        num_slices, height, width = data_cube.shape
-
-
-        center_y, center_x = height // 2, width // 2
-        start_y = center_y - new_height // 2
-        end_y = center_y + new_height // 2
-        start_x = center_x - new_width // 2
-        end_x = center_x + new_width // 2
-
-        # Create new list of HDU's and append the cube to it
-        HDUs = []
-        HDUs.insert(0, hdul[0])
-
-        #To store the calibrated datacube
-        cropped_cube = np.empty((num_slices, new_height, new_width), dtype=data_cube.dtype)
-
-        #loop over the 2D images inside the extension
-        for i in range(num_slices):
-            cropped_cube[i] = data_cube[i, start_y:end_y, start_x:end_x]
-        
-       
-        ImageHDU = fits.ImageHDU(data=cropped_cube, header=img_header)
-        HDUs.append(ImageHDU)
-
-        #File name for new fits
-        file_name = f'VIS/{channel}_cropped.fits'
-        fits_file = os.path.join(output_folder, file_name)
-
-        # create the new fits file with cropped vis 
-        hdulist = fits.HDUList(HDUs)
-        hdulist.writeto(fits_file, overwrite=True)
-
-# crop_vis(os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/VIS/VIS_1B_Rc.fits"), outputPath)
 
 
 
+"""
+
+Testing function for the whole pipeline
+
+"""
+
+def test_level_01(path: str, output: str):
+    #Test converting binary files into Fits and calibrating the data
+    # Use convert_to_fits function to convert the data in the directory into a FITS file
+    
+    print(f'Testing level 0 - 1')
+
+    calibrationMain.pipeline(vis, nir1, nir2, swir, output)
+
+
+    return
+
+test_level_01(vis, outputPath)

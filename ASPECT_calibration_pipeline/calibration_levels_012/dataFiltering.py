@@ -20,7 +20,7 @@ Function extract_asteroid:
 
 """
 
-def filter_asteroid_spectra(path):
+def filter_asteroid_spectra(path: str):
     with fits.open(path) as hdul:
         image_hdu = hdul[1]
         image_header = image_hdu.header

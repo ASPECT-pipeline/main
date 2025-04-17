@@ -21,7 +21,7 @@ Function: radiometricCalibration
 #
 ##################################################
 
-def radiometric_calibration(fits_path, output_folder):
+def radiometric_calibration(fits_path: str, output: str):
 
     # Open the fits file
     with fits.open(fits_path) as hdul:
@@ -63,9 +63,11 @@ def radiometric_calibration(fits_path, output_folder):
 
         # File name for new fits
         file_name = f'{channel}_1B_Rc.fits'
-        fits_file = os.path.join(output_folder, file_name)
 
         # Create the new fits file with radio metric calibrated images
-        hdulist = fits.HDUList(HDUs)
-        hdulist.writeto(fits_file, overwrite=True)
+        hdu_list = fits.HDUList(HDUs)
+        fits_file = os.path.join(output, file_name)
+        hdu_list = fits.HDUList(HDUs)
+        hdu_list.writeto(fits_file, overwrite=True)
+
     return(fits_file)

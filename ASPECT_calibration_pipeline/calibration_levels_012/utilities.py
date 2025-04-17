@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 from typing import Literal, Iterable, Callable
 from numpy.lib.stride_tricks import sliding_window_view
@@ -9,11 +10,74 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import trapezoid
 from scipy.stats import norm
 import warnings
+import json
+from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU
 
 # numerical eps
 _num_eps = 1e-5
 
-def combine_headers(vis, nir1, nir2, swir):
+# Based on SP1 and channel determine the order.
+# The sp value should be taken from the index 3
+# to prevent miss identification.
+def check_order(sp: float, channel: str):
+    match channel:
+        case 'VIS' | 'NIR1':
+            if sp > 19000:
+                return 'h'
+            else:
+                return 'l'
+        case 'NIR2':
+            if sp > 20000:
+                return 'h'
+            else:
+                return 'l'
+        case 'SWIR':
+            return ''
+
+#Extract the cahnnel from calib.json file
+def read_channel(calibPath: str):
+    with open(calibPath, 'r') as file:
+        data = json.load(file)
+        if data == None: # As the example SWIR files do not have config data
+            return 'SWIR'
+        firstKey = list(data.keys())[0]  # Access the first top-level key
+        secondKey = list(data[firstKey].keys())[0]  # Access the first sub-key
+
+        # Access the key indicating channel
+        channel = list(data[firstKey][secondKey].keys())[0]
+
+    return(channel)
+
+#read the meta data from config file
+def read_config(configPath: str, channel:str):
+    with open(configPath, 'r') as file:
+        data = json.load(file)
+
+        #read SP values for each image
+        match channel:
+            case 'VIS':
+                taskFile = data['visTaskFile']
+            case 'NIR1':
+                taskFile = data['nir1TaskFile']
+            case 'NIR2':
+                taskFile = data['nir2TaskFile']
+            case 'SWIR':
+                taskFile = data['swirTaskFile']
+        
+        #Extract sp values from taskValues
+        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
+        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
+        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
+        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
+        #Extract exposure times
+        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
+
+        #Check the order based on SP1 index 3
+        order = check_order(sp1Values[3], channel)
+
+    return(order, exposureTimes, sp1Values, sp2Values, sp3Values)
+
+def combine_headers(vis: Header, nir1: Header, nir2: Header, swir: Header):
     header_dict = {}
     #VIS
     header_dict['V_ORDER'] = vis.get('ORDER')
@@ -50,13 +114,13 @@ def combine_headers(vis, nir1, nir2, swir):
 
     return header_dict
 
-def append_header(hdu, dict):
+def append_header(hdu: ImageHDU, dict: Dict[str, Any]):
     header = hdu.header
     for key, value in dict.items():
         header[key] = value
     return hdu
 
-def normalize_to_8bit(img):
+def normalize_to_8bit(img: np.ndarray):
     # Compute min and max values in the image
     min_val = np.min(img)
     max_val = np.max(img)
@@ -71,7 +135,38 @@ def normalize_to_8bit(img):
     # Convert to 8-bit integer
     return normalized.astype(np.uint8)
 
-def laplacian(img):
+def extract_diagnostics(image: np.ndarray):
+    # Define diagnostic pixel regions
+    top = 5  # Five lines at the top
+    bottom = 1  # One line at the bottom
+    left = 4  # Four columns on the left
+    right = 4  # Four columns on the right
+    # To store the extracted pixels
+    diagnosticPixels = []
+
+    # Step 1: Extract the first 5 rows
+    for row in image[:top]:
+        diagnosticPixels.append(row.tolist())
+    
+    # Step 2: For the remaining rows (except the last one), extract the first 4 and last 4 values
+    for row in image[top:-bottom]:
+        left_values = row[:left]
+        right_values = row[-right:]
+        combined_row = np.concatenate((left_values, right_values)).tolist()
+        diagnosticPixels.append(combined_row)
+    
+    # Step 3: Extract the last row as a separate list
+    diagnosticPixels.append(image[-1].tolist())
+
+    # Remove diagnostic pixels to create the cleaned image
+    cleanedImage = image[
+        top:-bottom,  # Remove top and bottom rows
+        left:-right  # Remove left and right columns
+    ]
+
+    return (cleanedImage, diagnosticPixels)
+
+def laplacian(img: np.ndarray):
     try:
         # Check if the image was loaded successfully
         if img is None:
@@ -102,7 +197,7 @@ def filter_by_orientation(matches, keypoints1, keypoints2, threshold=10):
             filtered_matches.append(m)
     return filtered_matches
 
-def filter_by_distance(matches):
+def filter_by_distance(matches: List[List[cv2.DMatch]]):
     ratio_thresh = 0.90  # Adjustable
     good_matches = []
     for m, n in matches:
@@ -112,7 +207,7 @@ def filter_by_distance(matches):
     good_matches = [m for m in good_matches if m.distance < distance_thresh]
     return good_matches
 
-def estimate_matrix(vis, nir):
+def estimate_matrix(vis: np.ndarray, nir: np.ndarray):
 
     # Step 1: Edge detection
     edges1 = laplacian(vis)
@@ -158,7 +253,7 @@ def estimate_matrix(vis, nir):
     #Return the transformation matrix
     return(H)
 
-def asteroid_mask(image):
+def asteroid_mask(image: np.ndarray):
     edges = laplacian(image) # Detect asteroid edges
 
     _, binary_mask = cv2.threshold(edges, 10, 255, cv2.THRESH_BINARY) # convert to binary mask
@@ -174,7 +269,7 @@ def asteroid_mask(image):
 
     return asteroid_mask
 
-def extract_asteroid(image_cube, mask_index=0):
+def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0):
     image = image_cube[mask_index]
 
     asteroid_mask = asteroid_mask(image)

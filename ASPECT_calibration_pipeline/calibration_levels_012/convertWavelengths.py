@@ -8,7 +8,7 @@ This function is to convert the piezo1 setpoints into corresponding wavelength v
 
 """
 
-def convert_wl(fitsPath, outputFolder):
+def convert_wl(fitsPath: str, output: str):
 
     with fits.open(fitsPath) as hdul:
 
@@ -69,10 +69,9 @@ def convert_wl(fitsPath, outputFolder):
         data_HDU.header['WAVELEN'] = ','.join(map(str, wavelengths)) # Add the wavelengths to the header
 
         HDUs.append(data_HDU)
-        fileName = f'{channel}_1A_wl.fits'
-        fitsFile = os.path.join(outputFolder, fileName)
+        file_name = f'{channel}_1A_wl.fits'
+        fits_file = os.path.join(output, file_name)
+        hdu_list = fits.HDUList(HDUs)
+        hdu_list.writeto(fits_file, overwrite=True)
 
-        hdulist = fits.HDUList(HDUs)
-        hdulist.writeto(fitsFile, overwrite=True)
-
-    return(fileName)
+    return(fits_file)
