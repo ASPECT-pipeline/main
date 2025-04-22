@@ -200,9 +200,17 @@ def filter_by_orientation(matches, keypoints1, keypoints2, threshold=10):
 def filter_by_distance(matches: List[List[cv2.DMatch]]):
     ratio_thresh = 0.90  # Adjustable
     good_matches = []
-    for m, n in matches:
-        if m.distance < ratio_thresh * n.distance:
-            good_matches.append(m)
+    for m in matches:
+        if len(m) == 2:
+            match1, match2 = m
+            if match1.distance < ratio_thresh * match2.distance:
+                good_matches.append(match1)
+        elif len(m) == 1:
+            match1 = m[0]
+            good_matches.append(match1)
+    # for m, n in matches:
+    #     if m.distance < ratio_thresh * n.distance:
+    #         good_matches.append(m)
     distance_thresh = 65  # Adjustable
     good_matches = [m for m in good_matches if m.distance < distance_thresh]
     return good_matches
@@ -233,8 +241,11 @@ def estimate_matrix(vis: np.ndarray, nir: np.ndarray):
 
     flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2) # Match features
 
+    print(f'len matches: {len(flann_matches)}')
+    print(f'match 0 : {flann_matches[0]}')
     #Filter the matches based on the distance. Other option is filter_by_orientation
     matches = filter_by_distance(flann_matches)
+
 
     # Step 4: Extract location of good matches and estimate transformation matrix
     # arrays to store x and y coordinates
@@ -349,9 +360,144 @@ def sliding_window(image: np.ndarray, kernel: np.ndarray,
         raise ValueError("Invalid function")
     return result
 
+def is_constant(array: np.ndarray | list | float, constant: float | None = None, axis: int | None = None,
+                atol: float = _num_eps) -> bool | np.ndarray:
+    if atol < 0.:
+        raise ValueError('"atol" must be a non-negative number')
+
+    array = np.array(array, dtype=float)
+
+    if np.ndim(array) == 0:
+        array = array[np.newaxis]
+
+    if constant is None:  # return True if the array is constant along the axis
+        ddof = return_ddof(array, axis=axis)
+
+        return np.std(array, axis=axis, ddof=ddof) < atol
+
+    else:  # return True if the array is equal to "constant" along the axis
+        return np.all(np.abs(array - constant) < atol, axis=axis)
+
+def stack(arrays: tuple | list, axis: int | None = None, reduce: bool = False) -> np.ndarray:
+    """
+    concatenate arrays along the specific axis
+
+    if reduce=True, the "arrays" tuple is processed in this way
+    arrays = (A, B, C, D)
+    stack((stack((stack((A, B), axis=axis), C), axis=axis), D), axis=axis)
+    This is potentially slower but allows for concatenating e.g.
+    A.shape = (2, 4, 4)
+    B.shape = (3, 4)
+    C.shape = (4,)
+    res = stack((C, B, A), axis=0, reduce=True)
+    res.shape = (3, 4, 4)
+    res[0] == stack((C, B), axis=0)
+    res[1:] == A
+    """
+
+    # @reduce_like
+    def _stack(arrays: tuple | list, axis: int | None = None) -> np.ndarray:
+        ndim = np.array([np.ndim(array) for array in arrays])
+        _check_dims(ndim, reduce)
+
+        if np.all(ndim == 1):  # vector + vector + ...
+            if axis is None:  # -> vector
+                return np.concatenate(arrays, axis=axis)
+            else:  # -> 2-D array
+                return np.stack(arrays, axis=axis)
+
+        elif np.var(ndim) != 0:  # N-D array + (N-1)-D array + ... -> N-D array
+            max_dim = np.max(ndim)
+
+            # longest array
+            shape = np.array(np.shape(arrays[np.argmax(ndim)]))
+            shape[axis] = -1
+
+            # reshape is dangerous; you can potentially stack e.g. 10x1 with 2x5x2 along axis=0 that is confusing
+            # possible dimension difference is one; omit the -1 shape. The rest should be equal.
+            shapes = [np.array(np.shape(array)) for array in arrays if np.ndim(array) < max_dim]
+            if not np.all([sh in shape[shape > 0] for sh in shapes]):
+                raise ValueError("Arrays of these dimensions cannot be stacked.")
+
+            arrays = [np.reshape(array, shape) if np.ndim(array) < max_dim else array for array in arrays]
+
+            return np.concatenate(arrays, axis=axis)
+
+        elif is_constant(ndim):  # N-D array + N-D array + ... -> N-D array or (N+1)-D array
+            ndim = ndim[0]
+            if axis < ndim:  # along existing dimensions
+                return np.concatenate(arrays, axis=axis)
+            else:  # along a new dimension
+                return np.stack(arrays, axis=axis)
+
+    def _check_dims(ndim: np.ndarray, reduce: bool = False) -> None:
+        error_msg = ("Maximum allowed difference in dimension of concatenated arrays is one. "
+                     "If you want to stack along higher dimensions, use a combination of stack and np.reshape.")
+
+        if np.max(ndim) - np.min(ndim) > 1:
+            if reduce:
+                raise ValueError(error_msg)
+            else:
+                raise ValueError(f'{error_msg}\nUse "reduce=True" to unlock more general (but slower) stacking.')
+
+    # 0-D arrays to 1-D arrays (e.g. add a number to a vector)
+    arrays = [np.reshape(array, (1,)) if np.ndim(array) == 0 else np.array(array) for array in arrays]
+    arrays = tuple([array for array in arrays if np.size(array) > 0])
+    if len(arrays) == 0: arrays = (np.array([], dtype=int),)  # enable to stack(np.array([]))
+
+    if reduce:
+        return _stack.reduce(arrays, axis)
+    else:
+        return _stack(arrays, axis)
+
+def return_mean_std(array: np.ndarray, axis: int | None = None) -> tuple[np.ndarray, ...] | tuple[float, ...]:
+    mean_value = np.nanmean(array, axis=axis)
+    ddof = return_ddof(array, axis=axis)
+
+    std_value = np.nanstd(array, axis=axis, ddof=ddof)
+
+    return mean_value, std_value
+
+def find_outliers(y: np.ndarray, x: np.ndarray | None = None,
+                  z_thresh: float = 1.5, num_eps: float = _num_eps) -> np.ndarray:
+    if x is None: x = np.arange(len(y))
+
+    if len(np.unique(x)) != len(x):
+        raise ValueError('"x" input must be unique.')
+
+    inds = np.argsort(x)
+    x_iterate, y_iterate = x[inds], y[inds]
+
+    z_thresh = np.clip(z_thresh, a_min=num_eps, a_max=None)
+
+    while True:
+        deriv = np.diff(y_iterate) / np.diff(x_iterate)
+        mu, sigma = return_mean_std(deriv) 
+        z_score = (deriv - mu) / sigma 
+
+        positive = np.where(np.logical_or(z_score > z_thresh, ~np.isfinite(z_score)))[0]
+        negative = np.where(np.logical_or(-z_score > z_thresh, ~np.isfinite(z_score)))[0]
+
+        # noise -> the points are next to each other (overlap if compensated for "diff" shift)
+        outliers = stack((np.intersect1d(positive, negative + 1),
+                          np.intersect1d(negative, positive + 1)))
+
+        if 0 in positive or 0 in negative:  # first index is outlier
+            outliers = stack(([0], outliers))
+
+        # last index is outlier
+        if (len(z_score) - 1) in positive or (len(z_score) - 1) in negative:  # -1 to count "len" from 0
+            outliers = stack((outliers, [len(x_iterate) - 1]))
+
+        if np.size(outliers) == 0:
+            break
+
+        x_iterate, y_iterate = np.delete(x_iterate, outliers), np.delete(y_iterate, outliers)
+
+    return np.where(~np.in1d(x, x_iterate))[0]
+
 def interpolate_mask_1d(spectrum: np.ndarray, mask: np.ndarray | None = None,
-                        interp_nans: bool = True, fill_value: float = np.nan) -> np.ndarray:
-    
+                        interp_nans: bool = True, fill_value: float = np.nan, keep_edges: bool = True) -> np.ndarray: #fill_value: float = np.nan
     if spectrum.ndim == 2 and spectrum.shape[0] == 1:
         spectrum = spectrum.flatten()
         mask = mask.flatten()
@@ -359,8 +505,28 @@ def interpolate_mask_1d(spectrum: np.ndarray, mask: np.ndarray | None = None,
         mask = np.zeros_like(spectrum, dtype=bool)
     if interp_nans:
         mask = np.logical_or(mask, ~np.isfinite(spectrum))
+    if keep_edges:
+        mask[0] = False
+        mask[-1] = False
     if np.all(~mask):  # No missing values, return as is
         return spectrum
+    
+    # Get known (valid) points
+    known_x = np.where(~mask)[0]  # Indices of valid points
+    known_y = spectrum[~mask]     # Corresponding values
+
+    # Get missing points
+    missing_x = np.where(mask)[0]
+
+    # Perform 1D linear interpolation
+    interpolator = interp1d(known_x, known_y, kind='linear', bounds_error=False, fill_value=fill_value)
+    spectrum[missing_x] = interpolator(missing_x)
+
+    # Replace any remaining NaNs if needed
+    if interp_nans:
+        spectrum[~np.isfinite(spectrum)] = fill_value
+    
+    return spectrum.reshape(1, -1)
     
 def remove_outliers_2d(image: np.ndarray,
                        kernel_size: int = 7,
@@ -403,7 +569,6 @@ def normalise_in_columns(array: np.ndarray,
                          norm_vector: np.ndarray | None = None,
                          norm_constant: float = 1.) -> np.ndarray:
     return normalise_array(array, axis=0, norm_vector=norm_vector, norm_constant=norm_constant)
-
 
 
 def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
