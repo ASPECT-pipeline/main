@@ -570,7 +570,6 @@ def normalise_in_columns(array: np.ndarray,
                          norm_constant: float = 1.) -> np.ndarray:
     return normalise_array(array, axis=0, norm_vector=norm_vector, norm_constant=norm_constant)
 
-
 def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
                   remove_mean: bool = False, sum_or_int: Literal["sum", "int"] = "sum") -> np.ndarray:
     if x is None:
