@@ -576,6 +576,9 @@ def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
         x = np.arange(0., np.shape(array)[-1])  # 0. to convert it to float
 
     equidistant_measure = np.var(np.diff(x))
+    fwhm_to_sigma = 1. / np.sqrt(8. * np.log(2.))
+    fwhm = 2 * np.mean(np.diff(x))
+    sigma = fwhm * fwhm_to_sigma
 
     if equidistant_measure == 0.:  # equidistant step -> gaussian_filter1d is faster
         step = x[1] - x[0]
