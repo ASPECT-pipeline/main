@@ -48,7 +48,7 @@ def filter_asteroid_spectra(path: str):
     #Combine coords and the spectra
     combined = list(zip(coords, cleaned_spectras))
 
-    return combined
+    return combined, all_wl
 
 # numerical eps
 _num_eps = 1e-5  # num_eps of float32 is 1e-7
@@ -70,6 +70,47 @@ def remove_outliers(y: np.ndarray, x: np.ndarray | None = None,
     # return np.delete(y, inds_to_remove), np.delete(x, inds_to_remove)
     return interpolated_y.flatten(), x
 
+def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | None = 7.) -> np.ndarray:
+    if sigma_nm is None:
+        return data
+
+    if sigma_nm <= 0.:
+        raise ValueError(f'"sigma_nm" must be positive float but equals {sigma_nm}')
+
+    if np.ndim(data) == 1:
+        data = np.reshape(data, (1, len(data)))
+
+    return utilities.denoise_array(data, sigma=sigma_nm, x=wavelength)
 
 
+def filter_spectra(path: str, test: bool, test_data, ):
 
+    if test:
+        combined_spectra, wavelengths = test_data
+    else:
+        combined_spectra, wavelengths = filter_asteroid_spectra(path)
+
+    coords, spectras = zip(*combined_spectra)
+    coords = np.array(coords) 
+    spectras = np.array(spectras)
+    smooth_spectra = spectras.copy()
+
+    print(f'spectras: {len(spectras)}')
+
+    for i, spectra in enumerate(spectras):
+        nir1_wavelengths = wavelengths[10:20]
+        nir2_wavelengths = wavelengths[20:]
+        nir1_spectra = spectra[10:20]
+        nir2_spectra = spectra[20:]
+        nir2_spectra_corrected, offset = utilities.nir2_offset_correction(nir1_wavelengths, nir1_spectra, nir2_wavelengths, nir2_spectra, test=True)
+        print(f'nir2_spectra_corrected: ')
+        print(nir2_spectra_corrected)
+        connected = np.concatenate((spectra[:20], nir2_spectra_corrected))
+        outliers_removed = remove_outliers(y=connected, x=wavelengths, z_thresh=1.1)
+        denoised = denoise_spectra(data=outliers_removed[0], wavelength=wavelengths).flatten()
+        smooth_spectra[i] = denoised
+
+    #Combine coords and the spectra
+    combined = list(zip(coords, smooth_spectra))
+
+    return combined

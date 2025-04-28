@@ -622,3 +622,51 @@ def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | 
         data = np.reshape(data, (1, len(data)))
 
     return denoise_array(data, sigma=sigma_nm, x=wavelength)
+
+def nir2_offset_correction(
+		nir1_wavelengths: np.ndarray,
+		nir1_spectra: np.ndarray,
+		nir2_wavelengths: np.ndarray,
+		nir2_spectra: np.ndarray,
+		overlap_wavelength: int = 1225,
+		test: bool = False
+	):
+
+    """
+    Corrects NIR2 spectra by aligning the overlap region with NIR1 spectra using linear regression.
+
+    Parameters:
+        nir1_wavelengths (np.ndarray): Wavelengths of NIR1 wavelengths.
+        nir1_spectra (np.ndarray): NIR1 spectra.
+        nir2_wavelengths (np.ndarray): Wavelengths of NIR2 wavelengths.
+        nir2_spectra (np.ndarray): NIR2 spectra.
+        overlap_wavelength (int): Wavelength at which to align the spectra.
+        test (bool): If True, prints the calculated values.
+
+    Returns:
+        corrected_nir2 (np.ndarray): Corrected NIR2 spectra.
+        offset (float): Offset value.
+    """
+
+    # if test:
+    #     print(f'Initial:\n{nir1_wavelengths}\n{nir2_wavelengths}\n{nir1_spectra}\n{nir2_spectra}')
+
+    coeffs_nir1 = np.polyfit(nir1_wavelengths[-3:], nir1_spectra[-3:], 1)
+    coeffs_nir2 = np.polyfit(nir2_wavelengths[:3], nir2_spectra[:3], 1)
+    # print(f'nir1 coeffs: {coeffs_nir1}')
+
+    f_nir1 = np.polyval(coeffs_nir1, overlap_wavelength)
+    f_nir2 = np.polyval(coeffs_nir2, overlap_wavelength)
+    # print(f'f_nir1: {f_nir1}')
+
+    # if test:
+    #     print(f'f_nir1: {f_nir1}, f_nir2: {f_nir2}')
+
+    offset = f_nir1 - f_nir2
+    corrected_nir2 = nir2_spectra + offset
+
+    # if test:
+    #     print("Offset:", offset)
+    #     print("Corrected NIR2 spectra:\n", corrected_nir2)
+        
+    return corrected_nir2, offset

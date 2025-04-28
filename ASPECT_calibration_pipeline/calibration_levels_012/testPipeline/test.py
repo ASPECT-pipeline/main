@@ -4,6 +4,7 @@ from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
+import pandas as pd
 
 """
 Test file to run the pipeline on test data and read the created files 
@@ -30,6 +31,7 @@ import darkSubtraction
 import flatField
 import radiometric
 import alignAndResample
+import dataFiltering
 
 #Path to VIS, NIR1 and NIR2
 vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_lo_600w_2500")
@@ -157,6 +159,95 @@ def add_diagnostics(simulated_path, data_path):
 # add_diagnostics(os.path.join(main_dir, "test_data/levels_012_test/test_data/D2v5-10km-noiseless-40ms_simulated_NIR2.fits"), os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits"))
 
 
+
+"""
+
+Testing function for 3A
+
+"""
+
+def test_level_3A(path: str):
+
+    #create spectra that represents the output of filter_asteroid_spectra
+    excel_path = path
+    list_of_spectras= [
+        pd.read_excel(excel_path, sheet_name='600W, 10000|2500, HO', usecols='D', skiprows=4, nrows=33),
+        pd.read_excel(excel_path, sheet_name='600W, 7500|1875, HO', usecols='I', skiprows=4, nrows=33),
+        pd.read_excel(excel_path, sheet_name='200W, 10000|2500, HO', usecols='D', skiprows=4, nrows=33),
+        pd.read_excel(excel_path, sheet_name='400W, 10000|2500, HO', usecols='D', skiprows=4, nrows=33),
+        pd.read_excel(excel_path, sheet_name='400W, 10000|2500, LO', usecols='C', skiprows=4, nrows=33),
+    ]
+    df_wl = pd.read_excel(excel_path, sheet_name='600W, 10000|2500, HO', usecols='M', skiprows=4, nrows=33)
+    df_wl = df_wl.apply(pd.to_numeric, errors="coerce") 
+    df_wl.dropna(inplace=True)
+    wl = df_wl.iloc[:,0].to_numpy()
+
+    spectras = []
+    coords = [0,1,2,3,4]
+    
+    for i, spectra in enumerate(list_of_spectras):
+        df = spectra.apply(pd.to_numeric, errors='coerce')
+        df.dropna(inplace=True)
+        points = df.iloc[:,0].to_numpy()
+        spectras.append(points)
+    
+    print(f'spectras: {len(spectras)}')
+
+
+    combined = list(zip(coords, spectras))
+    test_data = combined, wl
+
+    result = dataFiltering.filter_spectra(path, test=True, test_data=test_data)
+
+    coords, smooth_spectras = zip(*result)
+    coords = np.array(coords) 
+    smooth_spectras = np.array(smooth_spectras)
+
+    print(coords)
+    print(smooth_spectras)
+
+    fig, axs = plt.subplots(2, 2, figsize=(12,5))
+    axs = axs.flatten()
+
+    #first spectra
+    axs[0].plot(wl, spectras[0], 'ro-', label="Original spectra")
+    axs[0].plot(wl, smooth_spectras[0], 'bo-', label="Smoothed")
+    axs[0].set_xlabel("Wavelength (nm)")
+    axs[0].set_ylabel("Intensity")
+    axs[0].set_title(f"Spectra 1")
+
+    #second spectra
+    axs[1].plot(wl, spectras[1], 'ro-', label="Original spectra")
+    axs[1].plot(wl, smooth_spectras[1], 'bo-', label="Smoothed")
+    axs[1].set_xlabel("Wavelength (nm)")
+    axs[1].set_ylabel("Intensity")
+    axs[1].set_title(f"Spectra 2")
+
+    #third spectra
+    axs[2].plot(wl, spectras[2], 'ro-', label="Original spectra")
+    axs[2].plot(wl, smooth_spectras[2], 'bo-', label="Smoothed")
+    axs[2].set_xlabel("Wavelength (nm)")
+    axs[2].set_ylabel("Intensity")
+    axs[2].set_title(f"Spectra 3")
+
+    #fourth spectra
+    axs[3].plot(wl, spectras[3], 'ro-', label="Original spectra")
+    axs[3].plot(wl, smooth_spectras[3], 'bo-', label="Smoothed")
+    axs[3].set_xlabel("Wavelength (nm)")
+    axs[3].set_ylabel("Intensity")
+    axs[3].set_title(f"Spectra 3")
+
+    plt.tight_layout()
+    plt.show()
+
+    return 
+
+test_level_3A_path = os.path.join(main_dir, "test_data/REF_MEAS_upd_wl.xlsx")
+
+print(f'test path:')
+print(test_level_3A_path)
+
+test_level_3A(test_level_3A_path)
 
 """
 
