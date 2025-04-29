@@ -1,0 +1,31 @@
+{
+    "0": {
+        "camId": 0,
+        "cover_border": 0.0,
+        "cover_border_a1": 193.77915266935736,
+        "cover_border_a2": 0.0,
+        "cover_border_bottom": 0.0,
+        "cover_border_left": 0.0,
+        "cover_border_right": 0.0,
+        "cover_border_top": 0.0,
+        "cover_ok": 1,
+        "cover_stat": 0.0,
+        "cover_stat_a1": 24.880670420765156,
+        "cover_stat_a2": 6.544396645479372,
+        "cover_stat_d1": 24.880670420765156,
+        "cover_stat_d2": 0.0,
+        "iqs": 1.036694600865215,
+        "lap_histo": 10.35201215010474,
+        "nnet_cover": 4,
+        "nnet_cover_confidence": -1.0,
+        "nnet_sharp": 4,
+        "nnet_sharp_confidence": -1.0,
+        "norm_c": 1.036694600865215,
+        "norm_s": 1.0,
+        "threshold": 9585,
+        "threshold_bwstat": 9629,
+        "threshold_otsu": 9542,
+        "waveId": 0
+    },
+    "bestAcq": 0
+}

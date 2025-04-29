@@ -15,7 +15,7 @@ Function: flatFieldCalibration
 """
 
 
-def flat_field_calibration(fits_path: str, output: str):
+def flat_field_calibration(fits_path: str, output: str) -> str:
 
      # Open the fits file
     with fits.open(fits_path) as hdul:

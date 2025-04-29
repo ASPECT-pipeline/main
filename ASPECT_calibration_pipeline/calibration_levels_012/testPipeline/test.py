@@ -34,9 +34,9 @@ import alignAndResample
 import dataFiltering
 
 #Path to VIS, NIR1 and NIR2
-vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_lo_600w_2500")
-nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/nir1_lo_600w_2500")
-nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/nir2_lo_600w_2500")
+vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_ho_600w_1875")
+nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/nir1_ho_600w_7500")
+nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/nir2_ho_600w_7500")
 swir = os.path.join(main_dir, "test_data/levels_012_test/test_data/swir_test22")
 
 simulated_vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1v6-10km-vis-noiseless-20ms_simulated_VIS.fits")
@@ -45,10 +45,11 @@ simulated_nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1v
 swir_fits = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/SWIR/SWIR_1B_Rc.fits")
 
 output = os.path.join(main_dir, "test_data/levels_012_test/test_output")
-outputPath = os.path.join(output, "test_3")
+outputPath = os.path.join(output, "simulated_test_3")
 
 
-calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, output)
+# calibrationMain.pipeline(vis, nir1, nir2, swir, outputPath)
+# calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, outputPath)
 
 
 
@@ -104,30 +105,30 @@ def read_fits_file(path):
         print()
 
 def read_output_files():
-    vis = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/VIS/VIS_1B_Rc.fits")
-    nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR1/NIR1_1B_Rc.fits")
-    nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/NIR2/NIR2_1B_Rc.fits")
-    swir = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/SWIR/SWIR_1B_Rc.fits")
+    vis = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_3/VIS/VIS_1B_Rc.fits")
+    nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_3/NIR1/NIR1_1B_Rc.fits")
+    nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_3/NIR2/NIR2_1B_Rc.fits")
+    swir = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_3/SWIR/SWIR_1B_Rc.fits")
     combined = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1/ASPECT_full_datacube.fits")
 
     simulated_vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/D2v6-10km-vis-noiseless-20ms_simulated_VIS.fits")
     simulated_nir1 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D2v5-10km-noiseless-40ms_simulated_NIR1.fits")
     simulated_nir2 = os.path.join(main_dir, "test_data/levels_012_test/test_data/D1D2v5-10km-40ms_simulated_NIR2.fits")
 
-    simulated_full = os.path.join(main_dir, "test_data/levels_012_test/test_output/D1v6v5_simulated_full_datacube.fits")
+    simulated_full = os.path.join(main_dir, "test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits")
 
     # dataFiltering.extract_asteroid(simulated_full)
-    # read_fits_file(simulated_vis)
+    # read_fits_file(vis)
     # read_fits_file(nir1)
     # read_fits_file(nir2)
     # read_fits_file(swir)
     # read_fits_file(combined)
     # read_fits_file(simulated_vis)
-    read_fits_file(simulated_nir1)
+    # read_fits_file(simulated_nir1)
     # read_fits_file(simulated_nir2)
-    # read_fits_file(simulated_full)
+    read_fits_file(simulated_full)
 
-# read_output_files()
+read_output_files()
 
 """
 Function to create manually an example fits file 
@@ -244,10 +245,10 @@ def test_level_3A(path: str):
 
 test_level_3A_path = os.path.join(main_dir, "test_data/REF_MEAS_upd_wl.xlsx")
 
-print(f'test path:')
-print(test_level_3A_path)
+# print(f'test path:')
+# print(test_level_3A_path)
 
-test_level_3A(test_level_3A_path)
+# test_level_3A(test_level_3A_path)
 
 """
 

@@ -27,7 +27,7 @@ import utilities
 
 """
 
-def extract_diagnostic_pixels(fits_path: str, output: str):
+def extract_diagnostic_pixels(fits_path: str, output: str) -> str:
 
     with fits.open(fits_path) as hdul:
 

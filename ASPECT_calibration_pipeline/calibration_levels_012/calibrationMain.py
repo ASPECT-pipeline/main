@@ -36,15 +36,13 @@ import alignAndResample
     - pipeline function, which calls the calibrationPipeline for each sensor and aligns and combines to form the complete file.
 """
 
-def calibration_pipeline(path: str, output: str):
+def calibration_pipeline(path: str, output: str) -> str:
     """
     These functions perform the level 0 and 1 of the pipeline
     Parmeters:
         path: Path to a folder containing data of an acquisition from a single sensor
         output: Path to the folder where the fits files will be stored
     """
-    #create a folder for fits file
-    os.makedirs(output, exist_ok=True)
 
     # Use convert_to_fits function to convert the data in the directory into a FITS file
     fits_file = convertToFits.convert_to_fits(path, output)
@@ -94,7 +92,8 @@ def pipeline(vis, nir1, nir2, swir, output):
         nir2: path to folder containing near-infrared 2 cahnnel acquisition data
         swir: path to folder containing swir cahnnel acquisition data
     """
-
+    #create a folder for fits file
+    os.makedirs(output, exist_ok=True)
 
 
     # vis = calibration_pipeline(vis, os.path.join(output, "VIS"))
@@ -102,5 +101,7 @@ def pipeline(vis, nir1, nir2, swir, output):
     # nir2 = calibration_pipeline(nir2, os.path.join(output, "NIR2"))
     # swir = calibration_pipeline(swir, os.path.join(output, "SWIR"))
 
+    # print(f'Successfully calibrated all channels')
+
     aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
-    # print(f"New file created: {aligned_fits}")
+    print(f"New file created: {aligned_fits}")

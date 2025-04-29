@@ -44,7 +44,7 @@ import matplotlib.pyplot as plt
 
 """
 
-def align_fits_files(vis_file: str, nir1_file: str, nir2_file: str, swir_file: str, output: str):
+def align_fits_files(vis_file: str, nir1_file: str, nir2_file: str, swir_file: str, output: str) -> str:
 
     # Open both FITS files simultaneously for image alignment
     with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul, fits.open(swir_file) as swir_hdul:
@@ -96,22 +96,6 @@ def align_fits_files(vis_file: str, nir1_file: str, nir2_file: str, swir_file: s
         for image in vis_img_HDU.data:
             imageDataList.append(cv2.warpPerspective(image, transforamtionMatrix, (nir_width, nir_height), flags=cv2.INTER_CUBIC))
 
-        # plt.figure(figsize=(15, 5))
-        # plt.subplot(1,3,1)
-        # plt.imshow(vis_image, cmap='gray' )
-        # plt.title('Original VIS image')
-        # plt.axis('off')
-
-        # plt.subplot(1,3,2)
-        # plt.imshow(imageDataList[0], cmap='gray')
-        # plt.title('Aligned VIS image')
-        # plt.axis('off')
-
-        # plt.subplot(1,3,3)
-        # plt.imshow(nir_image, cmap='gray')
-        # plt.title('Original NIR image')
-        # plt.axis('off')
-        # plt.show()
         # Add all the 2D images of the nir file
         for image in nir1_img_HDU.data:
             imageDataList.append(image)

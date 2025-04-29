@@ -17,7 +17,7 @@ Function: darkSubtraction
 
 
 
-def dark_subtraction(fits_path: str, output: str):
+def dark_subtraction(fits_path: str, output: str) -> str:
 
     # darkFramePath =  os.path.join(os.getcwd(), "outputFiles/dark_VIS_l_1250/dark_VIS_l_1250.fits")
 

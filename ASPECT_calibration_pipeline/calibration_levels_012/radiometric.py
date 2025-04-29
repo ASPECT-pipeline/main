@@ -21,7 +21,7 @@ Function: radiometricCalibration
 #
 ##################################################
 
-def radiometric_calibration(fits_path: str, output: str):
+def radiometric_calibration(fits_path: str, output: str) -> str:
 
     # Open the fits file
     with fits.open(fits_path) as hdul:

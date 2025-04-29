@@ -39,7 +39,7 @@ Scroll down to see how to run.
 ###### Reading binary and convering to FITS #######
 ###################################################
 
-def convert_to_fits(dirPath: str, output:str):
+def convert_to_fits(dirPath: str, output:str) -> str:
     acquisitionPath = os.path.join(dirPath, "acq_000/") # path to acquisitions
     configPath = os.path.join(dirPath, "meta/config.json") # path to config file
     calibPath = os.path.join(dirPath, "meta/calib.json") # path to calib file

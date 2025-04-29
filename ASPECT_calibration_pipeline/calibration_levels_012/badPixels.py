@@ -26,7 +26,7 @@ Function removeBadPixels:
 #  contains the data cube.
 ################################################## 
  
-def remove_bad_pixels(fits_path: str, output: str):
+def remove_bad_pixels(fits_path: str, output: str) -> str:
 
     #Open the FITS file
     with fits.open(fits_path) as hdul:
