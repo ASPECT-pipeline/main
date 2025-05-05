@@ -25,26 +25,20 @@ import matplotlib.pyplot as plt
         Applying the transformation matrix to map the visible image to have the same dimensions os nir image
         so that the asteroid appears same sized at the same (x,y) location on the image
     
-
-    Function: estimate_matrix (utilities.py)
-        Parameters: 
-            - vis: visible channel image
-            - nir: near-infrared channel image
-        Description:
-            Performs the alignment method described above returning the estimated transformation matrix
     
     Function: align_fits_files
-        Parameters:
-            - fitsPath: path to the FITS file
-            - outputFolder: path to the folder where the new file is stored
         Description:
-            Given paths to two fitsfiles, one VIS and one NIR, performs the estimateMatrix method
-            and uses the trasnformation matrix to align every 2D visible image. Creates one ImageHDU 
-            containing the aligned datacube that has all vis and nir files
+            Given paths to 4 fitsfiles, performs the estimateMatrix method from utilities.py and uses the trasnformation matrix to align every 2D visible image from VIS with NIR1. 
+            Creates one ImageHDU containing the aligned datacube that has all vis and nir files
 
 """
 
 def align_fits_files(vis_file: str, nir1_file: str, nir2_file: str, swir_file: str, output: str) -> str:
+    """
+    Parmeters:
+        vis_path, nir1_path, nir2_path, swir_file: Path to a FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
     # Open both FITS files simultaneously for image alignment
     with fits.open(vis_file) as vis_hdul, fits.open(nir1_file) as nir1_hdul, fits.open(nir2_file) as nir2_hdul, fits.open(swir_file) as swir_hdul:
@@ -103,9 +97,6 @@ def align_fits_files(vis_file: str, nir1_file: str, nir2_file: str, swir_file: s
         for image in nir2_img_HDU.data:
             imageDataList.append(image)
         
-        # for i, img in enumerate(imageDataList):
-            
-            # print(f'frame {i}: {img.shape}')
         data_cube = np.stack(imageDataList, axis=0)
 
         # Add data to the data cube

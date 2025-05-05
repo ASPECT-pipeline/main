@@ -8,9 +8,14 @@ This function is to convert the piezo1 setpoints into corresponding wavelength v
 
 """
 
-def convert_wl(fitsPath: str, output: str) -> str:
+def convert_wl(fits_path: str, output: str) -> str:
+    """
+    Parmeters:
+        fits_path: Path to the FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
-    with fits.open(fitsPath) as hdul:
+    with fits.open(fits_path) as hdul:
 
          # Data from fits file
         img_HDU = hdul[1] # Contains the image cube (or swir readings)

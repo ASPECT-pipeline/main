@@ -3,31 +3,25 @@ import numpy as np
 from astropy.io import fits
 
 """
-Function for converting the pixel values into scientific units
+Function for converting the pixel values into scientific units.
 
-Function: radiometricCalibration
-    Parameters:
-        - fitsPath: path to the FITS file
-        - outputFolder: path to the folder where the new file is stored
     Description:
         - Iterated over all 2D images inside the data cube multiplying it with a coefficient.
         - Creates a new FITS file with the calibrated data
 """
 
-##################################################
-#
-#  Function for applying the radiometric
-#  calibartion to each pixel
-#
-##################################################
 
 def radiometric_calibration(fits_path: str, output: str) -> str:
+    """
+    Parmeters:
+        fits_path: Path to the FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
     # Open the fits file
     with fits.open(fits_path) as hdul:
 
         # Data from fits file
-        primary_HDU = hdul[0]
         img_HDU = hdul[1] # Contains the image cube (or swir readings)
         img_header = img_HDU.header # Image HDU header
         channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)

@@ -5,10 +5,6 @@ from astropy.io import fits
 """
 Function for applying the flat field calibration to each 2D image
 
-Function: flatFieldCalibration
-    Parameters:
-        - fitsPath: path to the FITS file
-        - outputFolder: path to the folder where the new file is stored
     Description:
         - Iterated over all 2D images inside the data cube dividing by flatfield.
         - Creates a new FITS file with the flat field calibrated cube
@@ -16,12 +12,16 @@ Function: flatFieldCalibration
 
 
 def flat_field_calibration(fits_path: str, output: str) -> str:
+    """
+    Parmeters:
+        fits_path: Path to the FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
-     # Open the fits file
+    # Open the fits file
     with fits.open(fits_path) as hdul:
 
         # Data from fits file
-        primary_HDU = hdul[0]
         img_HDU = hdul[1] # Contains the image cube (or swir readings)
         img_header = img_HDU.header # Image HDU header
         channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
@@ -37,15 +37,16 @@ def flat_field_calibration(fits_path: str, output: str) -> str:
         HDUs = []
         HDUs.insert(0, hdul[0])
 
-        #Place holder flatfield array
+        # Place holder flatfield array
+        # This should be replaced wiht the correct flatfield used for the imager.
         flatField = np.ones((height, width), dtype=hdul[1].data.dtype)
 
-        #To store the calibrated datacube
+        # To store the calibrated datacube
         newDataCube = img_HDU.data.copy()
 
-        #loop over the 2D images inside the extension
+        # loop over the 2D images inside the extension
         for i, image in enumerate(newDataCube):
-            #Devide the image with the flatfield 
+            # Divide the image with the flatfield 
             newDataCube[i] = image / flatField
         
        

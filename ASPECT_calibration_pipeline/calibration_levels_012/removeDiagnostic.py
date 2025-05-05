@@ -4,9 +4,9 @@ from astropy.io import fits
 import utilities
 
 """
-    This file contains 2 functions used to extract diagnostic pixels from NIR channel images.
+    This file extracts diagnostic pixels surrounding the NIR images.
         
-    extractDiagnosticPixels(fitsFile, outputPath)
+    extract_diagnostic_pixels(fits_path, output)
         - takes a FITS file and path to output folder as parameter
         - returns a new FITS file where diagnostic pixels are extracted from the data cube and stored to a Varible Lenght Array Table extention
         - Variable Array Table (VLA) can be accessed with hdul[2]
@@ -24,15 +24,20 @@ import utilities
                         print(f"  Row {i+1}: {row}") #row is a list of diagnostic pixels on the corresponding row of the image
             - each row will have either 648 diasnostic pixels (rows 1-5, and 518) or 8 diasnostic pixels,
                 where first 4 is form the start of the row and last 4 from the end of the row (rows 6 - 517)
+        - this functions uses extract_diagnostics function from utilities.py to extract the pixels.
 
 """
 
 def extract_diagnostic_pixels(fits_path: str, output: str) -> str:
+    """
+    Parmeters:
+        fits_path: Path to the FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
     with fits.open(fits_path) as hdul:
 
         # Data from fits file
-        primary_HDU = hdul[0]
         img_HDU = hdul[1] # Contains the image cube (or swir readings)
         img_data = img_HDU.data # Image data
         img_header = img_HDU.header # Image HDU header
@@ -71,10 +76,10 @@ def extract_diagnostic_pixels(fits_path: str, output: str) -> str:
             # Append the cleanedImage to the new image HDU
             cleanedData[i, :, :] = cleanedImage
         
-        #Create Image HDU with keywords
+        # Create Image HDU with keywords
         cleaned_cube = fits.ImageHDU(data=cleanedData, header=img_header)
 
-        #Create a binary table HDU for the diagnostic pixels
+        # Create a binary table HDU for the diagnostic pixels
         vla_hdu = fits.BinTableHDU.from_columns(vla_columns)
 
         HDUs.append(cleaned_cube)

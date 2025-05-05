@@ -6,9 +6,6 @@ from astropy.io import fits
 Function for subtracting a dark frame from each 2D image.
 
 Function: darkSubtraction
-    Parameters:
-        - fitsPath: path to the FITS file
-        - outputFolder: path to the folder where the new file is stored
     Description:
         - Iterated over all 2D images inside the data cube subtracting a dark frame from them.
         - Creates a new FITS file with the dark subtracted cube
@@ -18,6 +15,11 @@ Function: darkSubtraction
 
 
 def dark_subtraction(fits_path: str, output: str) -> str:
+    """
+    Parmeters:
+        fits_path: Path to the FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
     # darkFramePath =  os.path.join(os.getcwd(), "outputFiles/dark_VIS_l_1250/dark_VIS_l_1250.fits")
 
@@ -42,13 +44,13 @@ def dark_subtraction(fits_path: str, output: str) -> str:
         # Place holder for the darkframe
         darkFrame = np.zeros((height, width), dtype=hdul[1].data.dtype)
 
-        #To store the calibrated datacube
+        # To store the calibrated datacube
         new_data_cube = img_HDU.data.copy()
 
-        #loop over the 2D images inside the extension
+        # Loop over the 2D images inside the extension
         for i, image in enumerate(new_data_cube):
             
-            #Subtract the dark frame from image
+            # Subtract the dark frame from image
             new_data_cube[i] = image - darkFrame
 
         # Add the modified image_HDU to the new HDU list
@@ -58,10 +60,10 @@ def dark_subtraction(fits_path: str, output: str) -> str:
         for i in range(1, len(hdul)):
             if not isinstance(hdul[i], fits.ImageHDU):  # Skip the original Image HDU
                 HDUs.append(hdul[i])
-        #File name for new fits
+        # File name for new fits
         file_name = f'{channel}_1A_Ds.fits'
 
-        # create the new fits file with dark-subtracted images
+        # Create the new fits file with dark-subtracted images
         hdu_list = fits.HDUList(HDUs)
         fits_file = os.path.join(output, file_name)
         hdu_list = fits.HDUList(HDUs)

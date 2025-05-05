@@ -6,10 +6,6 @@ from astropy.io import fits
 """
 Function for removing bad pixels from each 2D image inside a cube given a mask.
 
-Function removeBadPixels:
-    Parameters:
-        - fitsPath: path to the FITS file
-        - outputFolder: path to the folder where the new file is stored
     Description:
         - Open the FITS file and extract important headers
         - Iterate over each 2D slice of the cube
@@ -27,8 +23,13 @@ Function removeBadPixels:
 ################################################## 
  
 def remove_bad_pixels(fits_path: str, output: str) -> str:
+    """
+    Parmeters:
+        fits_path: Path to the FITS file.
+        output: Path to the folder where the new fits file will be stored.
+    """
 
-    #Open the FITS file
+    # Open the FITS file
     with fits.open(fits_path) as hdul:
 
         # Data from fits file
@@ -47,25 +48,25 @@ def remove_bad_pixels(fits_path: str, output: str) -> str:
         HDUs = []
         HDUs.insert(0, hdul[0])
 
-        #Place holder mask array
+        # Place holder mask array
         mask = np.zeros((height, width), dtype=hdul[1].data.dtype)
 
-        #Update the mask to remove the already corrected values
+        # Update the mask to remove the already corrected values
         updatingMask = mask.copy()
 
-        #To store the bad pixels that did not have 'good' neighbours
+        # To store the bad pixels that did not have 'good' neighbours
         onHold = []
 
-        #To store the calibrated datacube
+        # To store the calibrated datacube
         newDataCube = hdul[1].data.copy()
 
-        #Accessing the data cube
+        # Accessing the data cube
         dataCube = hdul[1].data
 
-        #Iterate over all 2D images inside the cube
+        # Iterate over all 2D images inside the cube
         for im, image in enumerate(dataCube):
             data = image.copy()
-            #Loop over all pixels indetifying bad ones
+            # Loop over all pixels indetifying bad ones
             for i in range(data.shape[0]):
                 for j in range(data.shape[1]):
                         if mask[i, j] == 1:
@@ -106,7 +107,7 @@ def remove_bad_pixels(fits_path: str, output: str) -> str:
                     data[i,j] = np.mean(validNeighbours)
                     updatingMask[i][j] = 0
                 else:
-                    #This should not happen under any circumstanses
+                    #This should not happen
                     print(f"WARNING: STILL No valid neighbors for data[{i}][{j}]")
             newDataCube[im] = data
 

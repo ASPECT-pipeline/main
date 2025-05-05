@@ -18,7 +18,6 @@ _num_eps = 1e-5
 
 # Preprocess the data files
 
-
 # Based on SP1 and channel determine the order.
 # The sp value should be taken from the index 3
 # to prevent miss identification.
@@ -215,7 +214,11 @@ def filter_by_distance(matches: List[List[cv2.DMatch]]) -> List[cv2.DMatch]:
     good_matches = [m for m in good_matches if m.distance < distance_thresh]
     return good_matches
 
-def estimate_matrix(vis: np.ndarray, nir: np.ndarray) -> np.ndarray:
+def estimate_matrix(vis: np.ndarray, nir: np.ndarray, filter: bool = True) -> np.ndarray:
+    """
+    if filter = true, the feature matches are filtered byt the distance between the 1st and 2nd match suggestion. (This method is recommended)
+    if filter = false, the matches are filtered based on the angle of the keypoint calculated by ORB
+    """
 
     # Step 1: Edge detection
     edges1 = laplacian(vis)
@@ -242,7 +245,10 @@ def estimate_matrix(vis: np.ndarray, nir: np.ndarray) -> np.ndarray:
     flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2) # Match features
 
     #Filter the matches based on the distance. Other option is filter_by_orientation
-    matches = filter_by_distance(flann_matches)
+    if filter: 
+        matches = filter_by_distance(flann_matches)
+    else:
+        matches = filter_by_orientation(flann_matches)
 
 
     # Step 4: Extract location of good matches and estimate transformation matrix

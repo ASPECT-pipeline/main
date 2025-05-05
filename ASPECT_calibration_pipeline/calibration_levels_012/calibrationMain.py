@@ -9,30 +9,33 @@ import radiometric
 import alignAndResample
 
 """
-    The main program to execute the data processing pipeline levels 0, 1 and 2.
+    The main program to execute the data processing pipeline.
 
     The pipeline consist of following steps:
     1. Convert data into FITS file (Level 0)
         - A directory containing folder for metadata and another folder for acquisition are converted into a single FITS file.
     2. Wavelength calibration (Level 1A)
-        - Converts the piezo setpoint values from config files ino corresponding wavelengths
+        - Converts the piezo setpoint values from config files ino corresponding wavelengths.
     3. Extract diagnostic pixels from NIR (Level 1A)
-        - Diagnostic pixels are extracted and added as FITS extension from NIR images
+        - Diagnostic pixels are extracted and added as an extension to NIR FITS files.
     4. Removing bad pixels (Level 1A)
-        - Remove bad pixels of all 2D images
+        - Remove bad pixels of all 2D images.
     5. Dark background subtraction (Level 1A)
-        - Subtract a dark background of all 2D images
+        - Subtract a dark background of all 2D images.
     6. Flat field calibration (Level 1A)
-        - Apply flatfield correction to all 2D images
+        - Apply flatfield correction to all 2D images.
     7. Radiometric correction (Level 1B)
-        - Correct the pixel values into scientific units
+        - Correct the pixel values into scientific units.
     8. Align & resample to uniform grid (Level 2B)
-        - perform the alignment algorithm
+        - Perform the alignment algorithm to combine all channels into one FITS file with one uniform grid.
+    9. Data filtering (Level 3A)
+        - Extract the asteroid spectra across all wavelengths for each pixel and perform data filtering for the spectra.
     
-    More info about the steps on their corresponding files.
+    Read more about the pipeline from README.
+    Also, more info about the specific steps on their corresponding files.
 
-    The file consist of 2 functions:
-    - calibration_pipeline, which performs the calibration procedures for individual sensors
+    This file consist of 2 functions:
+    - calibration_pipeline, which performs the calibration procedures for individual sensors.
     - pipeline function, which calls the calibrationPipeline for each sensor and aligns and combines to form the complete file.
 """
 
@@ -40,8 +43,8 @@ def calibration_pipeline(path: str, output: str) -> str:
     """
     These functions perform the level 0 and 1 of the pipeline
     Parmeters:
-        path: Path to a folder containing data of an acquisition from a single sensor
-        output: Path to the folder where the fits files will be stored
+        path: Path to a folder containing data of an acquisition from a single sensor.
+        output: Path to the folder where the fits files will be stored.
     """
 
     # Use convert_to_fits function to convert the data in the directory into a FITS file

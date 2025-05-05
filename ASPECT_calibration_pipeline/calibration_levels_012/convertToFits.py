@@ -6,16 +6,12 @@ import utilities
 
 """
 
-This file is for converting a folder with binary
-files and metadata into one FITS file that has 
+This file is for converting a folder with binary files and metadata into one FITS file that has 
 all acquisitions of a single channel in a 3D-cube.
 
 The function:
-convertToFits(dirPath, outputFolder)
-takes as parameters the path to the directory
-containing the data. 
-The folder at dirPath is expected to have the 
-following structure:
+convertToFits(dirPath, outputFolder) takes as parameters the path to the directory containing the data. 
+The folder at dirPath is expected to have the following structure:
 
 dirPath/             
 ├── acq_000/                
@@ -30,16 +26,16 @@ dirPath/
     ├── iqsOutput.json      
     └── telemetry.json     
 
-The second parameter determines the folder 
-where the fits file is created. 
-Scroll down to see how to run.
 
 """
-###################################################
-###### Reading binary and convering to FITS #######
-###################################################
 
 def convert_to_fits(dirPath: str, output:str) -> str:
+    """
+    Parmeters:
+        dirPath: Path to a folder containing data of an acquisition from a single sensor.
+        output: Path to the folder where the fits files will be stored.
+    """
+
     acquisitionPath = os.path.join(dirPath, "acq_000/") # path to acquisitions
     configPath = os.path.join(dirPath, "meta/config.json") # path to config file
     calibPath = os.path.join(dirPath, "meta/calib.json") # path to calib file
