@@ -24,7 +24,7 @@ Memo:
 """
 
 # Add metakernel path
-metakernel_path = "" # for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+metakernel_path = "/home/sysa/HERA/SPICE/hera_v180/hera/kernels/mk/hera_plan.tm" # for example /home/sysa/HERA/SPICE/hera/kernels/mk/hera_plan.tm
 
 test_time = '2027-01-02T05:40:46.6666'
 
@@ -335,7 +335,7 @@ def query_spacecraft_quaternions(
     
     return quat
 
-# print(query_spacecraft_quaternions(metakernel_path))
+# print(query_spacecraft_quaternions(metakernel_path, utc_time='2027-02-03T05:40:46.6666', spacecraft_frame='DIMORPHOS_FIXED'))
 
 def query_solar_elongation(
 		metakernel_path: str,
@@ -587,3 +587,127 @@ def query_target_distance(
 	return km_to_au(distance)
 
 # print(query_target_distance(metakernel_path))
+
+def vector_to_unit_vector(vector):
+	"""
+	Converts a 3D vector to a unit vector.
+	
+	Parameters:
+	vector (list): The input vector.
+	
+	Returns:
+	list: The unit vector.
+	"""
+	magnitude = compute_distance(vector)
+	return [component / magnitude for component in vector]
+
+def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test_time, target: str = "Dimorphos"):
+	"""
+	Provides information for the asteroid image simulator.
+	
+	Parameters:
+	metakernel_path (str): Path to the SPICE metakernel file.
+	utc_time (str): The UTC time for which the information is required.
+	target (str): The target body for which the information is required.
+	
+	Returns:
+	dict: A dictionary containing the sibling asteroid's location,
+	sun direction, camera direction, camera boresight, Didymos attitude, Dimorphos attitude.
+	"""
+	if target == "Dimorphos":
+		sibling_asteroid_location = query_spacecraft_position_vectors(
+			metakernel_path,
+			target='Didymos',
+			utc_time=utc_time,
+			frame='DIMORPHOS_FIXED',
+			observer='Dimorphos'
+		)
+		sun_location = query_sun_position_vectors(
+			metakernel_path,
+			utc_time=utc_time,
+			frame='DIMORPHOS_FIXED',
+			observer='Dimorphos'
+		)
+		sun_unit_vector = vector_to_unit_vector(sun_location)
+		camera_location = query_spacecraft_position_vectors(
+			metakernel_path,
+			target='Milani',
+			utc_time=utc_time,
+			frame='DIMORPHOS_FIXED',
+			observer='Dimorphos'
+		)
+		didymos_attitude = query_spacecraft_quaternions(
+			metakernel_path,
+			utc_time=utc_time,
+			inertial_frame='DIMORPHOS_FIXED',
+			spacecraft_frame='DIDYMOS_FIXED'
+		)
+		dimorphos_attitude = query_spacecraft_quaternions(
+			metakernel_path,
+			utc_time=utc_time,
+			inertial_frame='DIMORPHOS_FIXED',
+			spacecraft_frame='DIMORPHOS_FIXED'
+		)
+		result = {
+			'utc time': utc_time,
+			'target': target,
+			'didymos location': tuple(sibling_asteroid_location),
+			'sun location': tuple(sun_location),
+			'sun unit vector': tuple(sun_unit_vector),
+			'camera location': tuple(camera_location),
+			'camera boresight': target,
+			'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
+			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude)
+		}
+	elif target == "Didymos":
+		sibling_asteroid_location = query_spacecraft_position_vectors(
+			metakernel_path,
+			target='Dimorphos',
+			utc_time=utc_time,
+			frame='DIDYMOS_FIXED',
+			observer='Didymos'
+		)
+		sun_location = query_sun_position_vectors(
+			metakernel_path,
+			utc_time=utc_time,
+			frame='DIDYMOS_FIXED',
+			observer='Didymos'
+		)
+		sun_unit_vector = vector_to_unit_vector(sun_location)
+		camera_location = query_spacecraft_position_vectors(
+			metakernel_path,
+			target='Milani',
+			utc_time=utc_time,
+			frame='DIDYMOS_FIXED',
+			observer='Didymos'
+		)
+		didymos_attitude = query_spacecraft_quaternions(
+			metakernel_path,
+			utc_time=utc_time,
+			inertial_frame='DIDYMOS_FIXED',
+			spacecraft_frame='DIDYMOS_FIXED'
+		)
+		dimorphos_attitude = query_spacecraft_quaternions(
+			metakernel_path,
+			utc_time=utc_time,
+			inertial_frame='DIDYMOS_FIXED',
+			spacecraft_frame='DIMORPHOS_FIXED'
+		)
+		result = {
+			'utc time': utc_time,
+			'target': target,
+			'dimorphos location': tuple(sibling_asteroid_location),
+			'sun location': tuple(sun_location),
+			'sun unit vector': tuple(sun_unit_vector),
+			'camera location': tuple(camera_location),
+			'camera boresight': target,
+			'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
+			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude)
+		}
+	return result
+
+# timestamp = '2027-02-27T00:00:00.0000'
+
+# info = info_for_asteroid_image_simulator(metakernel_path, utc_time=timestamp, target='Didymos')
+# for key, value in info.items():
+# 	print(f"{key}: {value}")
