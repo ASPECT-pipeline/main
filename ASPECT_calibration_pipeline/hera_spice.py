@@ -337,7 +337,7 @@ def query_spacecraft_quaternions(
 
 # print(query_spacecraft_quaternions(metakernel_path, utc_time='2027-02-03T05:40:46.6666', spacecraft_frame='DIMORPHOS_FIXED'))
 
-def query_solar_elongation(
+def query_solar_elongation( # Or phase angle*
 		metakernel_path: str,
 		utc_time: str = test_time,
 		target: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
@@ -347,7 +347,7 @@ def query_solar_elongation(
 	Calculates the solar elongation angle for a given target as observed from the spacecraft.
 
 	Solar elongation is the angle between the vector from the observer to the target 
-	and the vector from the observer to the Sun.
+	and the vector from the observer to the Sun. (Sun–observer–target angle)
 
 	Args:
 		metakernel_path (str): Path to the SPICE meta-kernel file containing necessary kernels.
@@ -390,6 +390,46 @@ def query_solar_elongation(
 		print(f"An error occurred while computing solar elongation: {e}")
 
 # print(query_solar_elongation(metakernel_path))
+
+def query_solar_phase_angle(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		target: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
+		observer: str = 'Milani'
+	):
+	"""
+	Calculates the solar phase angle for a given target as observed from the spacecraft.
+	Solar phase angle is the Sun-object-observer angle.
+	
+	Args:
+		metakernel_path (str): Path to the SPICE meta-kernel file containing necessary kernels.
+		utc_time (str): UTC time of the observation, in the format 'YYYY-MM-DDTHH:MM:SS'. 
+						Default is '2025-12-27T00:00:00'.
+		target (str): Name of the target body for which the solar phase angle is to be computed.
+		observer (str): Name of the observing spacecraft or body.
+	Returns:
+		float: Solar phase angle in degrees.
+	"""
+	try:
+		spice.furnsh(metakernel_path)
+
+		et = spice.str2et(utc_time)
+
+		state_milani, lt_target = spice.spkezr(observer, et, "J2000", "NONE", target)
+		state_sun, lt_sun = spice.spkezr("SUN", et, "J2000", "NONE", target)
+
+		vec_milani = state_milani[:3]
+		vec_sun    = state_sun[:3]
+
+		angle_rad = spice.vsep(vec_milani, vec_sun)
+		angle_deg = np.degrees(angle_rad)
+
+		spice.kclear()
+
+		return angle_deg
+
+	except Exception as e:
+		print(f"An error occurred while computing solar phase angle: {e}")
 
 def query_spacecraft_clock_start(
 		metakernel_path: str,
@@ -562,7 +602,7 @@ def query_target_distance(
 		observer: str = 'Milani'
 	):
 	"""
-	Query the distance between the observer and the target body.
+	Query the distance between the observer and the target body in au.
 
 	Parameters:
 	metakernel_path (str): Path to the SPICE metakernel file.
@@ -587,6 +627,38 @@ def query_target_distance(
 	return km_to_au(distance)
 
 # print(query_target_distance(metakernel_path))
+
+def query_target_distance_in_km(
+		metakernel_path: str,
+		target: str = "Dimorphos", # Didymos or Dimorphos, or Didymos_barycenter
+		utc_time: str = test_time,
+		frame: str = 'DIMORPHOS_FIXED',
+		observer: str = 'Milani'
+	):
+	"""
+	Query the distance between the observer and the target body in km.
+
+	Parameters:
+	metakernel_path (str): Path to the SPICE metakernel file.
+	target (str): The target body for which the distance is required.
+	utc_time (str): The UTC time for which the distance is required.
+	frame (str): The reference frame.
+	observer (str): The observing body.
+
+	Returns:
+	float: The distance between the observer and the target body in kilometers.
+	"""
+	spice.furnsh(metakernel_path)
+	
+	et = spice.str2et(utc_time)
+	
+	state, _ = spice.spkezr(target, et, frame, "NONE", observer)
+	position = state[:3] # X, Y, Z
+	distance = compute_distance(position)
+	
+	spice.kclear()
+	
+	return distance
 
 def vector_to_unit_vector(vector):
 	"""
@@ -648,16 +720,38 @@ def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test
 			inertial_frame='DIMORPHOS_FIXED',
 			spacecraft_frame='DIMORPHOS_FIXED'
 		)
+		aspect_attitude = query_spacecraft_quaternions(
+			metakernel_path,
+			utc_time=utc_time,
+			inertial_frame='DIMORPHOS_FIXED',
+			spacecraft_frame='MILANI_ASPECT_NIR1'
+		)
+		solar_phase_angle = query_solar_phase_angle(
+			metakernel_path,
+			utc_time=utc_time,
+			target='Dimorphos',
+			observer='Milani'
+		)
+		target_distance = query_target_distance_in_km(
+			metakernel_path,
+			target='Dimorphos',
+			utc_time=utc_time,
+			frame='DIMORPHOS_FIXED',
+			observer='Milani'
+		)
 		result = {
 			'utc time': utc_time,
 			'target': target,
 			'didymos location': tuple(sibling_asteroid_location),
 			'sun location': tuple(sun_location),
 			'sun unit vector': tuple(sun_unit_vector),
-			'camera location': tuple(camera_location),
-			'camera boresight': target,
+			'aspect location': tuple(camera_location),
+			'aspect boresight': target,
 			'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
-			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude)
+			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude),
+			'aspect attitude (quaternion: W, X, Y, Z)': tuple(aspect_attitude),
+			'solar phase angle (degrees)': solar_phase_angle,
+			'target distance (km)': target_distance
 		}
 	elif target == "Didymos":
 		sibling_asteroid_location = query_spacecraft_position_vectors(
@@ -693,20 +787,42 @@ def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test
 			inertial_frame='DIDYMOS_FIXED',
 			spacecraft_frame='DIMORPHOS_FIXED'
 		)
+		aspect_attitude = query_spacecraft_quaternions(
+			metakernel_path,
+			utc_time=utc_time,
+			inertial_frame='DIDYMOS_FIXED',
+			spacecraft_frame='MILANI_ASPECT_NIR1'
+		)
+		solar_phase_angle = query_solar_phase_angle(
+			metakernel_path,
+			utc_time=utc_time,
+			target='Didymos',
+			observer='Milani'
+		)
+		target_distance = query_target_distance_in_km(
+			metakernel_path,
+			target='Didymos',
+			utc_time=utc_time,
+			frame='DIDYMOS_FIXED',
+			observer='Milani'
+		)
 		result = {
 			'utc time': utc_time,
 			'target': target,
 			'dimorphos location': tuple(sibling_asteroid_location),
 			'sun location': tuple(sun_location),
 			'sun unit vector': tuple(sun_unit_vector),
-			'camera location': tuple(camera_location),
-			'camera boresight': target,
+			'aspect location': tuple(camera_location),
+			'aspect boresight': target,
 			'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
-			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude)
+			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude),
+			'aspect attitude (quaternion: W, X, Y, Z)': tuple(aspect_attitude),
+			'solar phase angle (degrees)': solar_phase_angle,
+			'target distance (km)': target_distance
 		}
 	return result
 
-# timestamp = '2027-02-27T00:00:00.0000'
+# timestamp = '2027-03-24T00:00:00.0000'
 
 # info = info_for_asteroid_image_simulator(metakernel_path, utc_time=timestamp, target='Didymos')
 # for key, value in info.items():
