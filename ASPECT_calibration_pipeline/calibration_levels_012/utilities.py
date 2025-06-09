@@ -207,9 +207,6 @@ def filter_by_distance(matches: List[List[cv2.DMatch]]) -> List[cv2.DMatch]:
         elif len(m) == 1:
             match1 = m[0]
             good_matches.append(match1)
-    # for m, n in matches:
-    #     if m.distance < ratio_thresh * n.distance:
-    #         good_matches.append(m)
     distance_thresh = 65  # Adjustable
     good_matches = [m for m in good_matches if m.distance < distance_thresh]
     return good_matches
