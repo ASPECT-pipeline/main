@@ -22,11 +22,18 @@ Parameters:
         C = composition
         T = taxonomy
         CT = composition and taxonomy
+    
+    nir_overlap:int
+        1231 nm is the default wavelength used to align nir1 and nir2 segments
+    
+    z_thresh:int
+        Threshold for determining outliers from the spectra. Low values gives more outliers. Default 1
 
 """
 
-def level3(fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1):
+def level3( fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1):
 
+    print('inside level3')
     """
     Execute the steps 3A, 3B, 3C
     """
@@ -51,41 +58,36 @@ def level3(fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int 
         swir_wl = np.array([int(x.strip()) for x in img_header.get('S_WL').split(",") if x.strip()], dtype=int)
         all_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl, swir_wl])
 
-        match instrument:
-            case 1: 
-                instrument_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl])
-                start_idx = 0
-                end_idx = vis_num + nir1_num + nir2_num
-                first_nir = vis_num
-                norm_wl = 1539
-                stem = 'ASPECT-vis-nir1-nir2-1539'
-            case 2:
-                instrument_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl, swir_wl])
-                start_idx = 0
-                end_idx = None
-                first_nir = vis_num
-                norm_wl = 2348
-                stem = 'ASPECT-vis-nir1-nir2-swir-2348'
-            case 3: 
-                instrument_wl = np.concatenate([nir1_wl, nir2_wl])
-                start_idx = vis_num
-                end_idx = vis_num + nir1_num + nir2_num
-                first_nir = 0
-                norm_wl = 1539
-                stem = 'ASPECT-nir1-nir2-1539'
-            case 4:
-                instrument_wl = np.concatenate([nir1_wl, nir2_wl, swir_wl])
-                start_idx = vis_num
-                end_idx = None
-                first_nir = 0
-                norm_wl = 2348
-                stem = 'ASPECT-vis-nir1-nir2-swir-2348'
+    match instrument:
+        case 1: 
+            instrument_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl])
+            start_idx = 0
+            end_idx = vis_num + nir1_num + nir2_num
+            first_nir = vis_num
+            norm_wl = 1539
+            stem = 'ASPECT-vis-nir1-nir2-1539'
+        case 2:
+            instrument_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl, swir_wl])
+            start_idx = 0
+            end_idx = None
+            first_nir = vis_num
+            norm_wl = 2348
+            stem = 'ASPECT-vis-nir1-nir2-swir-2348'
+        case 3: 
+            instrument_wl = np.concatenate([nir1_wl, nir2_wl])
+            start_idx = vis_num
+            end_idx = vis_num + nir1_num + nir2_num
+            first_nir = 0
+            norm_wl = 1539
+            stem = 'ASPECT-nir1-nir2-1539'
+        case 4:
+            instrument_wl = np.concatenate([nir1_wl, nir2_wl, swir_wl])
+            start_idx = vis_num
+            end_idx = None
+            first_nir = 0
+            norm_wl = 2348
+            stem = 'ASPECT-vis-nir1-nir2-swir-2348'
 
-        print(f'vis: {vis_wl}')
-        print(f'nir1: {nir1_wl}')
-        print(f'nir2: {nir2_wl}')
-        print(f'swir: {swir_wl}')
-        print(f'instrument {instrument}: {instrument_wl}')
 
     combined = extract_asteroid(img_cube, mask_index=0, start_idx=start_idx, end_idx=end_idx)
     
@@ -125,6 +127,7 @@ def level3(fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int 
         denoised = denoise_spectra(cleaned, instrument_wl).flatten()
 
         filtered_spectras[i] = denoised
+
     
     spectra_normalized = normalise_spectra(
         data=filtered_spectras,
@@ -137,16 +140,16 @@ def level3(fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int 
         model_name = ""
         model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
 
-        composition = evaluate(model_name, spectra_normalized)
+        composition = evaluate(model_names, spectra_normalized)
 
     if models in ('T', 'CT'):
         model_subdir = os.path.join('taxonomy', stem)
         model_name = ""
         model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
 
-        taxonomy = evaluate(model_name, spectra_normalized)
+        taxonomy = evaluate(model_names, spectra_normalized)
 
 
-level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'))
+# level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'))
 
 # python3 ASPECT_calibration_pipeline/level_3/main_level_3.py

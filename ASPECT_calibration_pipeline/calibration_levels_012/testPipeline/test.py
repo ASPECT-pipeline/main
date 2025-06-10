@@ -20,7 +20,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 main_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.append(parent_dir)
 
-import calibrationMain
+import ASPECT_calibration_pipeline.calibration_levels_012.main_calibration as main_calibration
 import utilities
 import dataFiltering
 import convertToFits
@@ -262,7 +262,7 @@ def test_level_01(path: str, output: str):
     
     print(f'Testing level 0 - 1')
 
-    calibrationMain.pipeline(vis, nir1, nir2, swir, output)
+    main_calibration.pipeline(vis, nir1, nir2, swir, output)
 
 
     return
