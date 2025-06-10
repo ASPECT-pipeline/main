@@ -1,17 +1,17 @@
 import numpy as np
 from scipy.stats import trim_mean
 
-from utilities_spectra import (normalise_in_rows, is_taxonomical, gimme_indices, gimme_model_specification, 
+from modules.utilities_spectra import (normalise_in_rows, is_taxonomical, gimme_indices, gimme_model_specification, 
                                to_list, load_npz, load_txt, gimme_bin_code_from_name, 
                                gimme_custom_objects, load_keras_model)
 
-from NN_config_parse import bin_to_used
+from modules.NN_config_parse import bin_to_used
 
-from _constants import _wp, _spectra_name, _quiet
+from modules._constants import _wp, _spectra_name, _quiet
 
 # defaults only
-from NN_config_composition import comp_model_setup
-from NN_config_taxonomy import tax_model_setup
+from modules.NN_config_composition import comp_model_setup
+from modules.NN_config_taxonomy import tax_model_setup
 
 
 def average_and_normalise(predictions: np.ndarray, bin_code: str, proportiontocut: float) -> np.ndarray:

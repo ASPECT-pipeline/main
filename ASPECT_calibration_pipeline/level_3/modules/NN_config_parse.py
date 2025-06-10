@@ -1,6 +1,7 @@
 import numpy as np
 from warnings import warn
-from utilities_spectra import flatten_list
+from pandas.core.common import flatten
+from typing import Iterable
 
 def gimme_separator(bin_code: str) -> str:
     non_digit = np.array([not e.isdigit() for e in list(bin_code)])
@@ -10,6 +11,17 @@ def gimme_separator(bin_code: str) -> str:
         raise ValueError(f"Non-unique separator in {bin_code}.")
 
     return separator[0]
+
+def gimme_used_quantities(minerals: np.ndarray,
+                          endmembers: list[list[bool]]) -> tuple[np.ndarray, list[list[bool]]]:
+    # If there is only one end-member for a given mineral, the information is redundant and worsens the optimisation
+    endmembers_used = [endmember if (mineral and np.sum(endmember) > 1) else len(endmember) * [False]
+                       for mineral, endmember in zip(minerals, endmembers)]
+
+    # If there is only one mineral, the modal information is redundant and worsens the optimisation
+    minerals_used = minerals if np.sum(minerals) > 1 else np.array([False] * len(minerals))
+
+    return minerals_used, endmembers_used
 
 def gimme_endmember_counts(used_endmembers: list[list[bool]]) -> np.ndarray:
     return np.array([np.sum(endmember) for endmember in used_endmembers])
@@ -56,6 +68,12 @@ def check_used_quantities(used_minerals: np.ndarray, used_endmembers: list[list[
 
     return True
 
+def flatten_list(nested_list: Iterable, general: bool = False) -> np.ndarray:
+    # This function flattens a list of lists
+    if not general:  # works for a list of lists
+        return np.array([item for sub_list in nested_list for item in sub_list])
+    else:  # deeply nested irregular lists, dictionaries, numpy arrays, tuples, strings, ...
+        return np.array(list(flatten(nested_list)))
 
 def bin_to_used(bin_code: str, separator: str | None = None,
                 return_all: bool = False) -> tuple[np.ndarray, list] | tuple[np.ndarray, list, np.ndarray]:

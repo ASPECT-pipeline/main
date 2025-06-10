@@ -3,7 +3,7 @@ import cv2
 import os
 import pandas as pd
 from typing import List, Tuple, Literal, Callable, Iterable
-from modules._constants import (_path_model, _model_suffix, _num_eps)
+from modules._constants import (_path_model, _model_suffix, _num_eps, _sep_out, _sep_in, _path_data)
 from scipy.interpolate import interp1d
 from numpy.lib.stride_tricks import sliding_window_view
 import inspect
@@ -15,10 +15,9 @@ from glob import glob
 from copy import deepcopy
 from pandas.core.common import flatten
 from tensorflow.keras.models import load_model, Model
-from _constants import _sep_out, _sep_in, _path_data
-from NN_config_parse import (gimme_endmember_counts, gimme_minerals_all, gimme_num_minerals, bin_to_used)
-from NN_losses_metrics_activations import create_custom_objects
-
+from modules.NN_config_parse import (gimme_endmember_counts, gimme_minerals_all, gimme_num_minerals, bin_to_used)
+from modules.NN_losses_metrics_activations import create_custom_objects
+from modules.NN_config_composition import minerals_used, endmembers_used
 
 def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
     # Compute min and max values in the image
@@ -132,9 +131,6 @@ def nir2_offset_correction(
 """
 Find outliers
 """
-
-# numerical eps
-_num_eps = 1e-5  # num_eps of float32 is 1e-7
 
 def is_constant(array: np.ndarray | list | float, constant: float | None = None, axis: int | None = None,
                 atol: float = _num_eps) -> bool | np.ndarray:
@@ -542,10 +538,9 @@ def gimme_bin_code_from_name(model_name: str) -> str:
 def gimme_indices(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
                   reduced: bool = True, return_mineral_indices: bool = False) -> np.ndarray:
     # This function returns the first and last indices of modal/mineral groups
-    # if used_minerals is None: used_minerals = minerals_used
-    # if used_endmembers is None: used_endmembers = endmembers_used
-    if used_minerals is None: print(f'used_minerals is None. Check gimme_indices inside utilities_spectra')
-    if used_endmembers is None: print(f'used_endmembers is None. Check gimme_indices inside utilities_spectra')
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
 
     count_endmembers = gimme_endmember_counts(used_endmembers)
     all_minerals = gimme_minerals_all(used_minerals, used_endmembers)

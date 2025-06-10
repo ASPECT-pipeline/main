@@ -18,7 +18,7 @@ Parameters:
         3 = ASPECT nir1 nir2
         4 = ASPECT nir1 nir2 swir
     
-        models:str
+    models:str
         C = composition
         T = taxonomy
         CT = composition and taxonomy

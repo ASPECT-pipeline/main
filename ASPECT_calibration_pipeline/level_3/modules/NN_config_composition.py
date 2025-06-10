@@ -1,4 +1,18 @@
 import numpy as np
+from modules.NN_config_parse import gimme_used_quantities
+
+comp_output_setup = {
+    "minerals": np.array([True,  # olivine
+                          True,  # orthopyroxene
+                          True,  # clinopyroxene
+                          False]),  # plagioclase
+
+    "endmembers": [[True, True],  # Fa, Fo; OL
+                   [True, True, False],  # Fs, En, Wo; OPX
+                   [True, True, True],  # Fs, En, Wo; CPX
+                   [False, False, False]]  # An, Ab, Or; PLG
+}
+
 
 comp_model_setup = {
     "metrics": ["mse"],  # must be in custom_objects in NN_losses_metrics_activations.py
@@ -14,3 +28,5 @@ comp_model_setup = {
 }
 
 
+# used minerals and end-members
+minerals_used, endmembers_used = gimme_used_quantities(**comp_output_setup)

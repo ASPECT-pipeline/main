@@ -8,6 +8,13 @@ Lets keep the repository clean and organized.
 
 ## Requirements
 
+Check requirements.in for requirements.
+The neural network requires python 3.10 to run 
+
+run
+pip install -r requirements.txt
+to install the correct dependencies
+
 pipeline tested with the following:
 
 (Not a complete list)
@@ -18,6 +25,15 @@ pipeline tested with the following:
 Python libraries:
 - astropy 6.1.7
 - spiceypy 6.0.0
+
+## Data pipeline
+
+### General workflow
+
+Calibration levels 0, 1, 2 can be found from ASPECT_calibration_pipeline/calibration_levels_012
+
+neural network to composition and taxonomy analysis is found from ASPECT_calibration_pipeline/level_3
+
 
 ### HERA SPICE Kernel Dataset
 
