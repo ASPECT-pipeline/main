@@ -297,22 +297,20 @@ def query_spacecraft_solar_distance(
 def query_spacecraft_quaternions(
 		metakernel_path: str,
 		utc_time: str = test_time,
-		inertial_frame: str = "DIMORPHOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
-		spacecraft_frame: str = 'MILANI_SPACECRAFT'
+		inertial_frame: str = "DIDYMOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		spacecraft_frame: str = 'MILANI_ASPECT_VIS'
 	):
     """
-    Query the quaternion representing the orientation of the spacecraft.
-    
     This function computes the rotation matrix
-    from the given inertial frame to the spacecraft's body-fixed frame at the 
+    from the given inertial frame to the spacecraft's frame at the 
     specified UTC time, converts it to a quaternion, and returns the quaternion 
     in the order (W, X, Y, Z).
 
     Parameters:
       metakernel_path (str): Path to the SPICE metakernel file.
       utc_time (str): The UTC time for which the quaternion is queried.
-      inertial_frame (str): The inertial reference frame (default is 'J2000').
-      spacecraft_frame (str): The spacecraft's body-fixed frame (default is 'HERA_FIXED').
+      inertial_frame (str): The inertial reference frame.
+      spacecraft_frame (str): The spacecraft's frame.
 
     Returns:
       tuple: A tuple (W, X, Y, Z) representing the spacecraft quaternion.
@@ -330,7 +328,6 @@ def query_spacecraft_quaternions(
     # Convert the rotation matrix to a quaternion (W, X, Y, Z).
     quat = spice.m2q(rot_matrix)
     
-    # Clear kernels to free resources.
     spice.kclear()
     
     return quat
