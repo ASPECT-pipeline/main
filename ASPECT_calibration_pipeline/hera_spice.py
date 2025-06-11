@@ -822,8 +822,36 @@ def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test
 		}
 	return result
 
+
+# Troubleshooting tests for quaternion queries
+
 # timestamp = '2027-03-24T00:00:00.0000'
 
 # info = info_for_asteroid_image_simulator(metakernel_path, utc_time=timestamp, target='Didymos')
 # for key, value in info.items():
 # 	print(f"{key}: {value}")
+
+
+# Alfredo's proof that ASPECT always points at Didymos
+# spice.furnsh(metakernel_path)
+# et = spice.utc2et('2027-03-23T06:00:00.0000')
+# r = spice.spkpos('DIDYMOS', et, 'MILANI_ASPECT_NIR1', 'NONE', 'MILANI_ASPECT_NIR1')[0]
+# print(r)
+
+
+# Testing opposite attitudes
+# aspect_attitude1 = query_spacecraft_quaternions(
+# 	metakernel_path,
+# 	utc_time=timestamp,
+# 	inertial_frame='DIDYMOS_FIXED',
+# 	spacecraft_frame='MILANI_ASPECT_VIS'
+# )
+# print(aspect_attitude1)
+
+# aspect_attitude2 = query_spacecraft_quaternions(
+# 	metakernel_path,
+# 	utc_time=timestamp,
+# 	inertial_frame='MILANI_ASPECT_VIS',
+# 	spacecraft_frame='DIDYMOS_FIXED'
+# )
+# print(aspect_attitude2)
