@@ -82,7 +82,6 @@ def evaluate(model_names: list[str], filename_or_data: str | np.ndarray,
 
     check_models(model_names=model_names)
     bin_code = gimme_bin_code_from_name(model_name=model_names[0])
-
     # loading needed values
     if is_taxonomical(bin_code=bin_code):
         if proportiontocut is None: proportiontocut = tax_model_setup["trim_mean_cut"]
