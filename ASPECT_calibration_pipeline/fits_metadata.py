@@ -18,14 +18,14 @@ functions to retrieve metadata and creates an updated fits.
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json" # Not used at the moment
-spice_metakernel_path = "" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+spice_metakernel_path = "/home/sysa/HERA/SPICE/hera_v180/hera/kernels/mk/hera_plan.tm" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 fits_path = "/home/sysa/HERA/github/main/test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits"
 output_path = "test_data/test_outputs/simulated_full_datacube.fits"
 
-image_target = "Dimorphos" # Didymos or Dimorphos
+image_target = "Didymos" # Didymos or Dimorphos
 
-test_main = True
-test_dynamic_metadata_retrieval = False
+test_main = False
+test_dynamic_metadata_retrieval = True
 
 # Manually add metadata
 """
@@ -737,14 +737,18 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
 
     if image_target == "Didymos":
         spacecraft_position_frame = "DIDYMOS_FIXED"
+        quaternions_frame = "DIDYMOS_FIXED"
         target_position_frame = "DIDYMOS_FIXED"
     elif image_target == "Dimorphos":
         spacecraft_position_frame = "DIMORPHOS_FIXED"
+        quaternions_frame = "DIMORPHOS_FIXED"
         target_position_frame = "DIMORPHOS_FIXED"
     else:
         raise ValueError("Invalid image target. Choose 'Didymos' or 'Dimorphos'.")
 
     date_obs = get_acq_date(telemetry_path)
+    if test:
+        date_obs = {'DATE-OBS': ('2027-03-24T00:00:00.0000', 'Observation time UTC')}
     original_file_name = get_origfile(fits_path)
     spacecraft_position = get_target_position_vectors(
         spice_metakernel_path,
@@ -759,7 +763,7 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     )
     quaternions = get_spacecraft_quaternions(
         spice_metakernel_path,
-        inertial_frame='J2000',
+        inertial_frame=quaternions_frame,
         utc_time=date_obs["DATE-OBS"][0]
     )
     solar_elongation = get_solar_elongation(
