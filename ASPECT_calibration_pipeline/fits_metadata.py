@@ -377,7 +377,7 @@ def get_spacecraft_quaternions(
             raise ValueError("SPICE metakernel path is required.")
         
         # Query spacecraft position vectors using HERA SPICE toolkit
-        quaternions = spice.query_spacecraft_quaternions(
+        x, y, z, quaternion = spice.query_attitude(
             spice_metakernel_path,
             utc_time,
             inertial_frame,
@@ -385,10 +385,10 @@ def get_spacecraft_quaternions(
         )
         
         return {
-            "SC_QUAT0": (quaternions[0], f"Spacecraft quaternions (frame: {inertial_frame})"),
-            "SC_QUAT1": (quaternions[1], f"Spacecraft quaternions (frame: {inertial_frame})"),
-            "SC_QUAT2": (quaternions[2], f"Spacecraft quaternions (frame: {inertial_frame})"),
-            "SC_QUAT3": (quaternions[3], f"Spacecraft quaternions (frame: {inertial_frame})"),
+            "SC_QUATx": (quaternion[0], f"Spacecraft quaternion (X) (frame: {inertial_frame})"),
+            "SC_QUATy": (quaternion[1], f"Spacecraft quaternion (Y) (frame: {inertial_frame})"),
+            "SC_QUATz": (quaternion[2], f"Spacecraft quaternion (Z) (frame: {inertial_frame})"),
+            "SC_QUATw": (quaternion[3], f"Spacecraft quaternion (W) (frame: {inertial_frame})"),
         }
     
     except ValueError as ve:
@@ -737,11 +737,9 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
 
     if image_target == "Didymos":
         spacecraft_position_frame = "DIDYMOS_FIXED"
-        quaternions_inertial_frame = "DIDYMOS_FIXED"
         target_position_frame = "DIDYMOS_FIXED"
     elif image_target == "Dimorphos":
         spacecraft_position_frame = "DIMORPHOS_FIXED"
-        quaternions_inertial_frame = "DIMORPHOS_FIXED"
         target_position_frame = "DIMORPHOS_FIXED"
     else:
         raise ValueError("Invalid image target. Choose 'Didymos' or 'Dimorphos'.")
@@ -761,7 +759,7 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
     )
     quaternions = get_spacecraft_quaternions(
         spice_metakernel_path,
-        inertial_frame=quaternions_inertial_frame,
+        inertial_frame='J2000',
         utc_time=date_obs["DATE-OBS"][0]
     )
     solar_elongation = get_solar_elongation(
