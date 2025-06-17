@@ -1,7 +1,7 @@
 from astropy.io import fits
 import numpy as np
-from modules.utilities_spectra import (extract_asteroid, nir2_offset_correction, remove_outliers,
-                                        denoise_spectra, normalise_spectra, collect_all_models)
+from modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
+from level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers,)
 from modules.NN_evaluate import evaluate
 from test_utilities import get_reflectances
 

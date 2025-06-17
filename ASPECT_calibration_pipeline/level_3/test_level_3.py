@@ -3,10 +3,16 @@ import numpy as np
 import pandas as pd
 from modules._constants import _project_data, _project_dir, _path_model
 from modules.NN_evaluate import evaluate
-from modules.utilities_spectra import normalise_spectra, collect_all_models
+from modules.utilities_spectra import normalise_spectra, collect_all_models, denoise_spectra, normalise_spectra
 from main_level_3 import level3
+from mgm import fit, plot
 import ast
 import h5py
+from test_utilities import plot_spectra, show_mgm_figures, test_and_plot_nir_connection, test_and_plot_remove_outliers, test_and_plot_denoise_spectra
+from level_3_utilities import nir2_offset_correction, remove_outliers
+import matplotlib
+matplotlib.use('MacOSX')
+import matplotlib.pyplot as plt
 
 
 
@@ -31,7 +37,7 @@ def test_NN():
     )
 
     model_subdir = "composition/ASPECT-vis-nir1-nir2-1539"   # Composition 
-    # model_subdir = "taxonomy/ASPECT-vis-nir1-nir2-1539"   # Taxonomy
+    model_subdir = "taxonomy/ASPECT-vis-nir1-nir2-1539"   # Taxonomy
 
     model_name = ""
     model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
@@ -39,7 +45,7 @@ def test_NN():
 
     print(predictions)
 
-# test_NN()
+test_NN()
 
 def test_preprocessing_and_NN():
     print('inside test_preprocessing')
@@ -64,4 +70,29 @@ def read_model():
         print(f'model wl: {md_wavelengths}')
         print(f'num wl: {len(md_wavelengths)}')
 
-read_model()
+# read_model()
+
+def test_mgm():
+    combined = np.column_stack((wavelengths, spectra[0]))
+    cleaned = remove_outliers(spectra[0], wavelengths, z_thresh=1)[0]
+
+    # denoise spectra 
+    denoised = denoise_spectra(cleaned, wavelengths).flatten()
+    combined = np.column_stack((wavelengths, denoised))
+    # plot_spectra(spectra[0], wavelengths)
+    initGuess = [[0.1, 950, 150], [0.01, 1250, 50]]
+    result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
+    print(f'result:\n{result}')
+
+    print('plotting...')
+    figs = plot(combined, result)
+    show_mgm_figures(figs)
+
+
+# test_mgm()
+
+
+
+# test_and_plot_nir_connection(spectra[0], wavelengths)
+# test_and_plot_remove_outliers(spectra[0], wavelengths)
+# test_and_plot_denoise_spectra(spectra[0], wavelengths)

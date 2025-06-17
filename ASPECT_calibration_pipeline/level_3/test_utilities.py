@@ -3,6 +3,8 @@ import numpy as np
 from astropy.io import fits
 import math
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from level_3_utilities import nir2_offset_correction, remove_outliers, denoise_spectra
 
 coefficient_folder = os.path.join(os.getcwd(), 'test_data/matlab_coefficients')
 vis_coef_path = os.path.join(coefficient_folder, 'vis-conversion.dat')
@@ -103,3 +105,84 @@ def readFits(fitsPath, visualise:bool = False):
                     plt.show()
 
 # readFits(simulated_cube)
+
+def plot_spectra(spectra, wavelengths):
+    plt.figure(figsize=(8, 5))
+    plt.plot(wavelengths, spectra, 'b-o', label="Spectrum")
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Reflectance")
+    plt.title("Spectrum vs. Wavelength")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def show_mgm_figures(figs):
+    for fig in figs:
+        canvas = FigureCanvas(fig)
+        canvas.draw()  # Renders the figure into the canvas
+
+        # Get actual pixel dimensions
+        width, height = canvas.get_width_height()
+
+        # Extract RGBA buffer and reshape it
+        buf = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape((height, width, 4))
+
+        # Show the image using pyplot
+        plt.figure(figsize=fig.get_size_inches())
+        plt.imshow(buf)
+        plt.axis('off')
+        plt.tight_layout()
+        plt.show()
+
+def test_and_plot_nir_connection(spectra, wavelengths):
+    """
+    Testing and visualising nir2 offset correction function. 
+    """
+
+
+    result =  nir2_offset_correction(
+		nir1_wavelengths= wavelengths[7:19],
+		nir1_spectra= spectra[7:19],
+		nir2_wavelengths= wavelengths[19:],
+		nir2_spectra= spectra[19:],
+		overlap_wavelength = 1225
+	)
+
+    nir2_modified, offset = result
+    print(f'Nir2 offset: {offset}')
+    modified = np.concatenate([spectra[:19], nir2_modified])
+    plt.figure(figsize=(10, 5))
+    plt.plot(wavelengths, spectra, 'ro-', label="Original Spectra")
+    plt.plot(wavelengths, modified, 'bo-', label="nir connected")
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Reflectance")
+    plt.title("Spectra before and after nir1-mi2 connection")
+    plt.legend()
+    plt.show()
+    return modified
+
+
+def test_and_plot_remove_outliers(spectra, wavelengths):
+    corrected_spectra, wavelengths = remove_outliers(spectra, wavelengths)
+    plt.figure(figsize=(10, 5))
+    plt.plot(wavelengths, spectra, 'ro-', label="Original Spectra")
+    plt.plot(wavelengths, corrected_spectra, 'bo-', label="Outliers removed")
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Reflectance")
+    plt.title("Spectra before and after outlier removal")
+    plt.legend()
+    plt.show()
+    return corrected_spectra
+
+def test_and_plot_denoise_spectra(spectra, wavelengths):
+    result = denoise_spectra(spectra, wavelengths).flatten()
+    plt.figure(figsize=(10, 5))
+    plt.plot(wavelengths, spectra, 'ro-', label="Original Spectra")
+    plt.plot(wavelengths, result, 'bo-', label="Denoised Spectra")
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Reflectance")
+    plt.title("Spectra before and after denoising")
+    plt.legend()
+    plt.show()

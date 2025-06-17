@@ -1,484 +1,247 @@
-import numpy as np
-import cv2
-import os
-import pandas as pd
-from typing import List, Tuple, Literal, Callable, Iterable
-from modules._constants import (_path_model, _model_suffix, _num_eps, _sep_out, _sep_in, _path_data)
-from scipy.interpolate import interp1d
-from numpy.lib.stride_tricks import sliding_window_view
-import inspect
-from scipy.ndimage import gaussian_filter1d
-from scipy.integrate import trapezoid
-import warnings
-from scipy.stats import norm
-from glob import glob
+from os import path, environ
+environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 from copy import deepcopy
-from pandas.core.common import flatten
+from typing import Callable, Literal
+import numpy as np
+import pandas as pd
 from tensorflow.keras.models import load_model, Model
-from modules.NN_config_parse import (gimme_endmember_counts, gimme_minerals_all, gimme_num_minerals, bin_to_used)
-from modules.NN_losses_metrics_activations import create_custom_objects
-from modules.NN_config_composition import minerals_used, endmembers_used
+from pathlib import Path
+from scipy.interpolate import interp1d
+from scipy.integrate import trapezoid
+from scipy.spatial import ConvexHull
+from glob import glob
+import h5py
 
-def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
-    # Compute min and max values in the image
-    min_val = np.min(img)
-    max_val = np.max(img)
+from modules.utilities import (check_dir, flatten_list, normalise_in_rows, denoise_array, safe_arange, is_empty, stack,
+                               split_path, argnearest, my_argmax, return_mean_std, my_polyfit, check_file, gimme_kind)
 
-    # Avoid division by zero in case all values are the same
-    if max_val - min_val == 0:
-        return np.zeros_like(img, dtype=np.uint8)
+from modules.NN_classes import gimme_list_of_classes
 
-    # Normalize image to range 0-255
-    normalized = (img - min_val) / (max_val - min_val) * 255.0
+from modules.NN_config_parse import (gimme_minerals_all, gimme_num_minerals, gimme_endmember_counts, bin_to_used,
+                                     bin_to_cls)
 
-    # Convert to 8-bit integer
-    return normalized.astype(np.uint8)
+from modules._constants import (_path_data, _path_model, _model_suffix, _spectra_name, _wavelengths_name, _wp,
+                                _metadata_name, _metadata_key_name, _label_name, _label_key_name, _path_catalogues,
+                                _sep_out, _sep_in)
 
-def laplacian(img: np.ndarray) -> np.ndarray:
+from modules.NN_config_composition import mineral_names, mineral_names_short, endmember_names
 
-    # Check if the image was loaded successfully
-    if img is None:
-        print("Error: Image not found or unable to open")
-    
-    # Normalize the image to 8 bit integers
-    img = normalize_to_8bit(img)
-
-    # Apply gaussian blur
-    img = cv2.GaussianBlur(img, (3, 3), sigmaX=0, sigmaY=0)
-
-    # Apply Laplacian operator
-    laplacian = cv2.Laplacian(img, cv2.CV_8U, ksize=3)
-
-    return laplacian
-
-def asteroid_mask(image: np.ndarray) -> np.ndarray:
-    edges = laplacian(image) # Detect asteroid edges
-
-    _, binary_mask = cv2.threshold(edges, 10, 255, cv2.THRESH_BINARY) # convert to binary mask
-
-    kernel = np.ones((5,5), np.uint8)
-    closed_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel) # Apply morphological closing
-
-    contours, _ = cv2.findContours(closed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # Find the outermost contours
-
-    asteroid_mask = np.zeros_like(image, dtype=np.uint16)
-
-    cv2.drawContours(asteroid_mask, contours, -1, 65535, thickness=cv2.FILLED) # Draw the asteroid mask
-
-    return asteroid_mask
-
-def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, start_idx: int = 0, end_idx: int = None) -> List[Tuple[np.ndarray, np.ndarray]]:
-
-    image = image_cube[mask_index]
-
-    mask = asteroid_mask(image)
-
-    #Store the coordinates of the image where mask has value of non 0
-    coords = np.argwhere(mask != 0)
-
-    #Extract the corresponding spectra for coords
-    spectra = np.array([image_cube[start_idx:end_idx, y, x] for y, x in coords])
-
-    #Combine coords and the spectra
-    combined = list(zip(coords, spectra))
-
-    return combined
+# defaults only
+from modules.CD_parameters import denoise, normalise
+from modules.NN_config_composition import (minerals_used, endmembers_used, comp_grid, comp_filtering_setup,
+                                           comp_model_setup, comp_output_setup)
+from modules.NN_config_taxonomy import classes, tax_output_setup
 
 
-"""
+def save_data(final_name: str, spectra: np.ndarray, wavelengths: np.ndarray, metadata: np.ndarray,
+              labels: np.ndarray | None = None, labels_key: np.ndarray | None = None,
+              metadata_key: np.ndarray | None = None, other_info: dict | None = None, subfolder: str = "",
+              denoised: bool | None = None, normalised: bool | None = None) -> str:
+    if len(spectra) != len(metadata):
+        raise ValueError("Each spectrum must have its metadata. Length of spectra != length of metadata.")
 
-Connecting segments
+    if denoised is None: denoised = denoise
+    if normalised is None: normalised = normalise
 
-"""
+    final_name = filename_adjustment(final_name, denoising=denoised, normalising=normalised)
+    final_name = path.join(_path_data, subfolder, final_name)
 
-def nir2_offset_correction(
-		nir1_wavelengths: np.ndarray,
-		nir1_spectra: np.ndarray,
-		nir2_wavelengths: np.ndarray,
-		nir2_spectra: np.ndarray,
-		overlap_wavelength: int = 1225,
-	):
+    # collect data and metadata
+    data_and_metadata = {_spectra_name: np.array(spectra, dtype=_wp),  # save spectra
+                         _wavelengths_name: np.array(wavelengths, dtype=_wp),  # save wavelengths
+                         _metadata_name: np.array(metadata, dtype=object)}  # save metadata
 
-    """
-    Corrects NIR2 spectra by aligning the overlap region with NIR1 spectra using linear regression.
+    if metadata_key is not None:
+        data_and_metadata[_metadata_key_name] = np.array(metadata_key, dtype=str)
 
-    Parameters:
-        nir1_wavelengths (np.ndarray): Wavelengths of NIR1 wavelengths.
-        nir1_spectra (np.ndarray): NIR1 spectra.
-        nir2_wavelengths (np.ndarray): Wavelengths of NIR2 wavelengths.
-        nir2_spectra (np.ndarray): NIR2 spectra.
-        overlap_wavelength (int): Wavelength at which to align the spectra.
-        test (bool): If True, prints the calculated values.
+    if labels is not None:
+        if len(spectra) != len(labels):
+            raise ValueError("Each spectrum must have its label. Length of spectra != length of labels.")
 
-    Returns:
-        corrected_nir2 (np.ndarray): Corrected NIR2 spectra.
-        offset (float): Offset value.
-    """
+        if np.shape(labels)[1] == 1:  # taxonomy class
+            data_and_metadata[_label_name] = np.array(labels, dtype=str)  # save labels
+        else:  # composition
+            data_and_metadata[_label_name] = np.array(labels, dtype=_wp)  # save labels
 
-    coeffs_nir1 = np.polyfit(nir1_wavelengths[-3:], nir1_spectra[-3:], 1)
-    coeffs_nir2 = np.polyfit(nir2_wavelengths[:3], nir2_spectra[:3], 1)
+        if labels_key is not None:
+            data_and_metadata[_label_key_name] = np.array(labels_key, dtype=str)
 
-    f_nir1 = np.polyval(coeffs_nir1, overlap_wavelength)
-    f_nir2 = np.polyval(coeffs_nir2, overlap_wavelength)
+    if other_info is not None:  # existing keys are not updated
+        data_and_metadata = other_info | data_and_metadata
 
+    check_dir(final_name)
+    with open(final_name, "wb") as f:
+        np.savez_compressed(f, **data_and_metadata)
 
-    offset = f_nir1 - f_nir2
-    corrected_nir2 = nir2_spectra + offset
-        
-    return corrected_nir2, offset
+    return final_name
 
 
-"""
-Find outliers
-"""
+def load_npz(filename: str, subfolder: str = "", list_keys: list[str] | None = None,
+             allow_pickle: bool = True, **kwargs):
+    filename = check_file(filename, _path_data, subfolder)
 
-def is_constant(array: np.ndarray | list | float, constant: float | None = None, axis: int | None = None,
-                atol: float = _num_eps) -> bool | np.ndarray:
-    if atol < 0.:
-        raise ValueError('"atol" must be a non-negative number')
+    data = np.load(filename, allow_pickle=allow_pickle, **kwargs)
 
-    array = np.array(array, dtype=float)
+    if list_keys is None:
+        return data
 
-    if np.ndim(array) == 0:
-        array = array[np.newaxis]
+    return {key: data[key][()] for key in list_keys if key in data.files}
 
-    if constant is None:  # return True if the array is constant along the axis
-        ddof = return_ddof(array, axis=axis)
 
-        return np.std(array, axis=axis, ddof=ddof) < atol
+def load_h5(filename: str, subfolder: str = "", list_keys: list[str] | None = None) -> h5py.File | dict:
+    filename = check_file(filename, _path_data, subfolder)
 
-    else:  # return True if the array is equal to "constant" along the axis
-        return np.all(np.abs(array - constant) < atol, axis=axis)
+    if list_keys is None:
+        print("Do not forget to close the file.")
+        return h5py.File(filename, "r")
 
-def stack(arrays: tuple | list, axis: int | None = None, reduce: bool = False) -> np.ndarray:
-    """
-    concatenate arrays along the specific axis
+    with h5py.File(filename, "r") as f:
+        return {key: np.array(f[key]) for key in list_keys if key in f.keys()}
 
-    if reduce=True, the "arrays" tuple is processed in this way
-    arrays = (A, B, C, D)
-    stack((stack((stack((A, B), axis=axis), C), axis=axis), D), axis=axis)
-    This is potentially slower but allows for concatenating e.g.
-    A.shape = (2, 4, 4)
-    B.shape = (3, 4)
-    C.shape = (4,)
-    res = stack((C, B, A), axis=0, reduce=True)
-    res.shape = (3, 4, 4)
-    res[0] == stack((C, B), axis=0)
-    res[1:] == A
-    """
 
-    # @reduce_like
-    def _stack(arrays: tuple | list, axis: int | None = None) -> np.ndarray:
-        ndim = np.array([np.ndim(array) for array in arrays])
-        _check_dims(ndim, reduce)
+def load_keras_model(filename: str, subfolder: str = "", custom_objects: dict | None = None,
+                     compile: bool = True, custom_objects_dict: dict | None = None, **kwargs) -> Model:
+    if custom_objects is None:
+        if custom_objects_dict is None: custom_objects_dict = {}
+        custom_objects = gimme_custom_objects(model_name=filename, **custom_objects_dict)
 
-        if np.all(ndim == 1):  # vector + vector + ...
-            if axis is None:  # -> vector
-                return np.concatenate(arrays, axis=axis)
-            else:  # -> 2-D array
-                return np.stack(arrays, axis=axis)
+    filename = check_file(filename, _path_model, subfolder)
 
-        elif np.var(ndim) != 0:  # N-D array + (N-1)-D array + ... -> N-D array
-            max_dim = np.max(ndim)
+    # compile=True is needed to get metrics names for composition vs. taxonomy check
+    model = load_model(filename, custom_objects=custom_objects, compile=compile, **kwargs)
 
-            # longest array
-            shape = np.array(np.shape(arrays[np.argmax(ndim)]))
-            shape[axis] = -1
+    return model
 
-            # reshape is dangerous; you can potentially stack e.g. 10x1 with 2x5x2 along axis=0 that is confusing
-            # possible dimension difference is one; omit the -1 shape. The rest should be equal.
-            shapes = [np.array(np.shape(array)) for array in arrays if np.ndim(array) < max_dim]
-            if not np.all([sh in shape[shape > 0] for sh in shapes]):
-                raise ValueError("Arrays of these dimensions cannot be stacked.")
 
-            arrays = [np.reshape(array, shape) if np.ndim(array) < max_dim else array for array in arrays]
+def load_xlsx(filename: str, subfolder: str = "", **kwargs) -> pd.DataFrame:
+    filename = check_file(filename, _path_catalogues, subfolder)
+    excel = pd.read_excel(filename, **kwargs)
 
-            return np.concatenate(arrays, axis=axis)
+    return excel
 
-        elif is_constant(ndim):  # N-D array + N-D array + ... -> N-D array or (N+1)-D array
-            ndim = ndim[0]
-            if axis < ndim:  # along existing dimensions
-                return np.concatenate(arrays, axis=axis)
-            else:  # along a new dimension
-                return np.stack(arrays, axis=axis)
 
-    def _check_dims(ndim: np.ndarray, reduce: bool = False) -> None:
-        error_msg = ("Maximum allowed difference in dimension of concatenated arrays is one. "
-                     "If you want to stack along higher dimensions, use a combination of stack and np.reshape.")
+def load_txt(filename: str, subfolder: str = "", **kwargs) -> pd.DataFrame:
+    filename = check_file(filename, _path_data, subfolder)
+    data = pd.read_csv(filename, **kwargs)
 
-        if np.max(ndim) - np.min(ndim) > 1:
-            if reduce:
-                raise ValueError(error_msg)
-            else:
-                raise ValueError(f'{error_msg}\nUse "reduce=True" to unlock more general (but slower) stacking.')
+    return data
 
-    # 0-D arrays to 1-D arrays (e.g. add a number to a vector)
-    arrays = [np.reshape(array, (1,)) if np.ndim(array) == 0 else np.array(array) for array in arrays]
-    arrays = tuple([array for array in arrays if np.size(array) > 0])
-    if len(arrays) == 0: arrays = (np.array([], dtype=int),)  # enable to stack(np.array([]))
 
-    if reduce:
-        return _stack.reduce(arrays, axis)
+def npz_to_dat(filename: str, data_in_columns: bool = True) -> None:
+    data = load_npz(filename, subfolder="")
+
+    # save wavelengths spectra
+    spectra = stack((data[_wavelengths_name], data[_spectra_name]), axis=0)
+    spectra_dat = filename.replace(".npz", ".dat")
+    fmt = "%.5f"
+
+    if data_in_columns:
+        np.savetxt(spectra_dat, np.transpose(spectra), fmt=fmt, delimiter="\t")
     else:
-        return _stack(arrays, axis)
+        np.savetxt(spectra_dat, data, fmt=fmt, delimiter="\t")
 
-def accepts_n_params(func, nparams: int):
-    if not callable(func):
-        return False
-    sig = inspect.signature(func)
-    return len(sig.parameters) == nparams
-
-def sliding_window(image: np.ndarray, kernel: np.ndarray,
-                   func: Literal["conv2", "min", "max", "median", "mean", "std", "sum"] | callable,
-                   mode: Literal["full", "same", "valid"] = "same") -> np.ndarray:
-    """
-    Optimized sliding window function using NumPy's stride tricks.
-    !!!!! func must be computed along axis=(2, 3) !!!!!
-    e.g. func=lambda im, k: np.var(im, axis=(2, 3))
-    """
-    if not (accepts_n_params(func, nparams=2) or func in ["conv2", "min", "max", "median",  "mean", "std", "sum"]):
-        raise ValueError('"func" must be func(image, kernel) or be in ["conv2", "min", "max", "median",  "mean", "std", "sum"]')
-    if mode not in ["full", "same", "valid"]:
-        raise ValueError('"mode" must be in ["full", "same", "valid"]')
-    kernel = np.array(kernel, dtype=float)
-    image = np.array(image, dtype=float)
-    kern_h, kern_w = kernel.shape
-    if mode == "full":
-        pad_h = (kern_h - 1, kern_h - 1)
-        pad_w = (kern_w - 1, kern_w - 1)
-    elif mode == "same":
-        pad_h = (kern_h // 2, (kern_h - 1) // 2)  # Adjust for even-sized kernels
-        pad_w = (kern_w // 2, (kern_w - 1) // 2)  # Adjust for even-sized kernels
-    else:  # valid
-        pad_h = (0, 0)
-        pad_w = (0, 0)
-    # Pad the image
-    image_padded = np.pad(image, (pad_h, pad_w), mode="constant", constant_values=np.nan)
-    # Create strided view of the image
-    windows = sliding_window_view(image_padded, window_shape=(kern_h, kern_w))
-    if callable(func):
-        result = func(windows, kernel)
-    elif func == "conv2":
-        result = np.nansum(windows * np.rot90(kernel, 2), axis=(2, 3))
-    elif func == "sum":
-        result = np.nansum(windows, axis=(2, 3))
-    elif func == "median":
-        result = np.nanmedian(windows, axis=(2, 3))
-    elif func == "mean":
-        result = np.nanmean(windows, axis=(2, 3))
-    elif func == "std":
-        result = np.nanstd(windows, ddof=return_ddof(kernel), axis=(2, 3))
-    elif func == "max":
-        result = np.nanmax(windows, axis=(2, 3))
-    elif func == "min":
-        result = np.nanmin(windows, axis=(2, 3))
-    else:
-        raise ValueError("Invalid function")
-    return result
-
-def return_ddof(array: np.ndarray, axis: int | None = None) -> int:
-    return 1 if np.size(array, axis) > 1 else 0
-
-def return_mean_std(array: np.ndarray, axis: int | None = None) -> tuple[np.ndarray, ...] | tuple[float, ...]:
-    mean_value = np.nanmean(array, axis=axis)
-    ddof = return_ddof(array, axis=axis)
-
-    std_value = np.nanstd(array, axis=axis, ddof=ddof)
-
-    return mean_value, std_value
-
-def find_outliers(y: np.ndarray, x: np.ndarray | None = None,
-                  z_thresh: float = 1.0, num_eps: float = _num_eps, check_edges: bool = False) -> np.ndarray:
-    if x is None: x = np.arange(len(y))
-
-    if len(np.unique(x)) != len(x):
-        raise ValueError('"x" input must be unique.')
-    
-
-    inds = np.argsort(x)
-    x_iterate, y_iterate = x[inds], y[inds]
-
-    z_thresh = np.clip(z_thresh, a_min=num_eps, a_max=None)
-
-    while True:
-        deriv = np.diff(y_iterate) / np.diff(x_iterate)
-        mu, sigma = return_mean_std(deriv) 
-        z_score = (deriv - mu) / sigma 
-        positive = np.where(np.logical_or(z_score > z_thresh, ~np.isfinite(z_score)))[0]
-        negative = np.where(np.logical_or(-z_score > z_thresh, ~np.isfinite(z_score)))[0]
-
-        # noise -> the points are next to each other (overlap if compensated for "diff" shift)
-        outliers = stack((np.intersect1d(positive, negative + 1),
-                          np.intersect1d(negative, positive + 1)))
-
-        if check_edges:
-            if 0 in positive or 0 in negative:  # first index is outlier
-                outliers = stack(([0], outliers))
-            # last index is outlier
-            if (len(z_score) - 1) in positive or (len(z_score) - 1) in negative:  # -1 to count "len" from 0
-                outliers = stack((outliers, [len(x_iterate) - 1]))
-
-        # print(f'outliers after 3rd check: {outliers}')
-        if np.size(outliers) == 0:
-            break
-
-        x_iterate, y_iterate = np.delete(x_iterate, outliers), np.delete(y_iterate, outliers)
-
-    return np.where(~np.in1d(x, x_iterate))[0]
-
-def interpolate_mask_1d(spectrum: np.ndarray, mask: np.ndarray | None = None,
-                        interp_nans: bool = True, fill_value: float = np.nan, keep_edges: bool = True) -> np.ndarray: #fill_value: float = np.nan
-    if spectrum.ndim == 2 and spectrum.shape[0] == 1:
-        spectrum = spectrum.flatten()
-        mask = mask.flatten()
-    if mask is None:
-        mask = np.zeros_like(spectrum, dtype=bool)
-    if interp_nans:
-        mask = np.logical_or(mask, ~np.isfinite(spectrum))
-    if keep_edges:
-        mask[0] = False
-        mask[-1] = False
-    if np.all(~mask):  # No missing values, return as is
-        return spectrum
-    
-    # Get known (valid) points
-    known_x = np.where(~mask)[0]  # Indices of valid points
-    known_y = spectrum[~mask]     # Corresponding values
-
-    # Get missing points
-    missing_x = np.where(mask)[0]
-
-    # Perform 1D linear interpolation
-    interpolator = interp1d(known_x, known_y, kind='linear', bounds_error=False, fill_value=fill_value)
-    spectrum[missing_x] = interpolator(missing_x)
-
-    # Replace any remaining NaNs if needed
-    if interp_nans:
-        spectrum[~np.isfinite(spectrum)] = fill_value
-    
-    """
-    
-    This part extrapolates the endpoints if keep_edges is False
-
-    """
-
-    # Handle extrapolation only if keep_edges is False
-    if not keep_edges:
-        # Manually extrapolate the first point if masked
-        if mask[0]:
-            # Estimate using first two valid points
-            idx1, idx2 = known_x[:2]
-            val1, val2 = known_y[:2]
-            slope = (val2 - val1) / (idx2 - idx1)
-            spectrum[0] = val1 - slope * (idx1 - 0)
-
-        # Manually extrapolate the last point if masked
-        if mask[-1]:
-            # Estimate using last two valid points
-            idx1, idx2 = known_x[-2:]
-            val1, val2 = known_y[-2:]
-            slope = (val2 - val1) / (idx2 - idx1)
-            spectrum[-1] = val2 + slope * (len(spectrum) - 1 - idx2)
-
-    return spectrum.reshape(1, -1)
-
-def remove_outliers(y: np.ndarray, x: np.ndarray | None = None,
-                    z_thresh: float = 1, num_eps: float = _num_eps, keep_edges: bool = True) -> np.ndarray | tuple[np.ndarray, ...]:
-    inds_to_remove = find_outliers(y=y, x=x, z_thresh=z_thresh, num_eps=num_eps)
-
-    if x is None:
-        return np.delete(y, inds_to_remove)
-    
-    # Create a mask of where outliers are
-    mask = np.zeros_like(y, dtype=bool)
-    mask[inds_to_remove] = True
-
-    # Interpolate the outliers
-    interpolated_y = interpolate_mask_1d(y.copy(), mask=mask, keep_edges=keep_edges)
-
-    # return np.delete(y, inds_to_remove), np.delete(x, inds_to_remove)
-    return interpolated_y.flatten(), x
-
-
-"""
-Denoise array
-"""
-
-def normalise_array(array: np.ndarray,
-                    axis: int | None = None,
-                    norm_vector: np.ndarray | None = None,
-                    norm_constant: float = 1.,
-                    num_eps: float = _num_eps) -> np.ndarray:
-    if norm_vector is None:
-        norm_vector = np.nansum(array, axis=axis, keepdims=True)
-
-    # to force correct dimensions (e.g. when passing the output of interp1d)
-    if np.ndim(norm_vector) != np.ndim(array) and np.ndim(norm_vector) > 0:
-        norm_vector = np.expand_dims(norm_vector, axis=axis)
-
-    if np.any(np.abs(norm_vector) < num_eps):
-        warnings.warn("You normalise with (almost) zero values. Check the normalisation vector.")
-
-    return array / norm_vector * norm_constant
-
-def normalise_in_columns(array: np.ndarray,
-                         norm_vector: np.ndarray | None = None,
-                         norm_constant: float = 1.) -> np.ndarray:
-    return normalise_array(array, axis=0, norm_vector=norm_vector, norm_constant=norm_constant)
-
-def normalise_in_rows(array: np.ndarray,
-                      norm_vector: np.ndarray | None = None,
-                      norm_constant: float = 1.) -> np.ndarray:
-    return normalise_array(array, axis=1, norm_vector=norm_vector, norm_constant=norm_constant)
-
-
-def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
-                  remove_mean: bool = False, sum_or_int: Literal["sum", "int"] = "sum") -> np.ndarray:
-    if x is None:
-        x = np.arange(0., np.shape(array)[-1])  # 0. to convert it to float
-
-    equidistant_measure = np.var(np.diff(x))
-    # print(f'avg step in nm: {np.mean(np.diff(x))}')
-    if equidistant_measure == 0.:  # equidistant step -> gaussian_filter1d is faster
-        step = x[1] - x[0]
-        fwhm_to_sigma = 1. / np.sqrt(8. * np.log(2.))
-        fwhm = 2 * step
-        sigma = fwhm * fwhm_to_sigma 
-        correction = gaussian_filter1d(np.ones(len(x)), sigma=sigma / step, mode="constant")
-        array_denoised = gaussian_filter1d(array, sigma=sigma / step, mode="constant")
-
-        array_denoised = normalise_in_columns(array_denoised, norm_vector=correction)
-
-    else:  # transmission application
-        # Gaussian filters in columns
-        fwhm_to_sigma = 1. / np.sqrt(8. * np.log(2.))
-        fwhm = 2 * np.mean(np.diff(x))
-        sigma = fwhm * fwhm_to_sigma 
-        gaussian = norm.pdf(np.reshape(x, (len(x), 1)), loc=x, scale=sigma)
-
-        # need num_filters x num_wavelengths
-        if np.ndim(gaussian) == 1:
-            gaussian = np.reshape(gaussian, (1, -1))
-        if np.ndim(gaussian) > 2:
-            raise ValueError("Filter must be 1-D or 2-D array.")
-
-        if sum_or_int == "sum":
-            gaussian = normalise_in_columns(gaussian)
-            array_denoised = array @ gaussian
+    # save metadata
+    if _metadata_name in data.files:
+        if _metadata_key_name in data.files:
+            meta = stack((data[_metadata_key_name], data[_metadata_name]), axis=0)
         else:
-            gaussian = normalise_in_columns(gaussian, trapezoid(y=gaussian, x=x))
-            array_denoised = trapezoid(y=np.einsum("...j, kj -> ...kj", array, gaussian), x=x)
+            meta = data[_metadata_name]
 
-    if remove_mean:  # here I assume that the noise has a zero mean
-        mn = np.mean(array_denoised - array, axis=-1, keepdims=True)
+        meta_dat = filename.replace(".npz", f"{_sep_out}metadata.dat")
+        fmt = "%s"
+        np.savetxt(meta_dat, meta, fmt=fmt, delimiter="\t")
+
+    # save labels
+    if _label_name in data.files:
+        if _label_key_name in data.files:
+            labels = stack((data[_label_key_name], data[_label_name]), axis=0)
+        else:
+            labels = data[_label_name]
+
+        labels_dat = filename.replace(".npz", f"{_sep_out}labels.dat")
+        fmt = "%.5f" if np.issubdtype(np.result_type(labels), np.number) else "%s"
+        np.savetxt(labels_dat, labels, fmt=fmt, delimiter="\t")
+
+
+def combine_files(filenames: tuple[str, ...], final_name: str, subfolder: str = "") -> str:
+
+    denoised = np.all(["denoised" in filename for filename in filenames])
+    normalised = np.all(["norm" in filename for filename in filenames])
+
+    final_name = filename_adjustment(final_name, denoising=denoised, normalising=normalised)
+    final_name = path.join(_path_data, subfolder, final_name)
+
+    combined_file = dict(load_npz(filenames[0]))
+    for filename in filenames[1:]:
+        file_to_merge = dict(load_npz(filename))
+
+        if np.all(combined_file[_wavelengths_name] == file_to_merge[_wavelengths_name]):
+            combined_file[_spectra_name] = stack((combined_file[_spectra_name], file_to_merge[_spectra_name]), axis=0)
+            combined_file[_label_name] = stack((combined_file[_label_name], file_to_merge[_label_name]), axis=0)
+            combined_file[_metadata_name] = stack((combined_file[_metadata_name], file_to_merge[_metadata_name]), axis=0)
+
+    check_dir(final_name)
+    with open(final_name, "wb") as f:
+        np.savez_compressed(f, **combined_file)
+
+    return final_name
+
+
+def filename_adjustment(filename: str, denoising: bool, normalising: bool, always_add_suffix: bool = False) -> str:
+    tmp = Path(filename)
+    final_name = tmp.name.replace(tmp.suffix, "")  # remove suffix
+
+    if denoising:
+        if always_add_suffix or "_denoised" not in final_name:
+            final_name += f"{_sep_out}denoised"
+    if normalising:
+        if always_add_suffix or "_norm" not in final_name:
+            final_name += f"{_sep_out}norm"
+
+    return f"{final_name}.npz"
+
+
+def gimme_predicted_class(y_pred: np.ndarray, used_classes: dict | list | np.ndarray | None = None,
+                          return_index: bool = False) -> np.ndarray:
+    if used_classes is None: used_classes = classes
+
+    if isinstance(used_classes, dict):
+        list_of_classes = np.array(list(used_classes.keys()))
     else:
-        mn = 0.
+        list_of_classes = np.array(used_classes)
 
-    return array_denoised - mn
+    most_probable = np.argmax(y_pred, axis=1)
+
+    if return_index:
+        return most_probable
+
+    return list_of_classes[most_probable]
+
+
+def if_no_test_data(x_train: np.ndarray | None, y_train: np.ndarray,
+                    x_val: np.ndarray | None, y_val: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    if not is_empty(y_val):  # If the test portion is zero then use validation data
+        x_test, y_test = deepcopy(x_val), deepcopy(y_val)
+    else:  # If even the val portion is zero, use train data (just for visualisation purposes)
+        x_test, y_test = deepcopy(x_train), deepcopy(y_train)
+
+    return x_test, y_test
+
+
+def join_data(data: np.lib.npyio.NpzFile | np.ndarray, header: str | np.ndarray) -> pd.DataFrame:
+    if isinstance(header, str):
+        if "meta" in header:
+            return pd.DataFrame(data=data[_metadata_name], columns=data[_metadata_key_name])
+        else:
+            return pd.DataFrame(data=data[_label_name], columns=data[_label_key_name])
+    else:
+        return pd.DataFrame(data=data, columns=header)
+
 
 def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | None = 7.) -> np.ndarray:
     if sigma_nm is None:
-        return data
+        return deepcopy(data)
 
     if sigma_nm <= 0.:
         raise ValueError(f'"sigma_nm" must be positive float but equals {sigma_nm}')
@@ -488,35 +251,253 @@ def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | 
 
     return denoise_array(data, sigma=sigma_nm, x=wavelength)
 
-"""
-Part for NN 
-"""
 
-def collect_all_models(subfolder_model: str, prefix: str | None = None, suffix: str | None = None,
-                       regex: str | None = None, file_suffix: str = _model_suffix, full_path: bool = True) -> list[str]:
+def normalise_spectra(data: np.ndarray, wavelength: np.ndarray, wvl_norm_nm: float | None = 550.,
+                      on_pixel: bool = True, fun: Callable[[float], float] | None = None) -> np.ndarray:
+    if wvl_norm_nm is None:
+        return deepcopy(data)
 
-    final_suffix = "" if file_suffix == "SavedModel" else f".{file_suffix}"
-
-    if prefix is not None:
-        model_str = os.path.join(_path_model, subfolder_model, f"{prefix}*{final_suffix}")
-    elif suffix is not None:
-        model_str = os.path.join(_path_model, subfolder_model, f"*{suffix}{final_suffix}")
-    elif regex is not None:
-        model_str = os.path.join(_path_model, subfolder_model, f"{regex}{final_suffix}")
-    else:
-        model_str = os.path.join(_path_model, subfolder_model, f"*{final_suffix}")
-
-    if full_path:
-        return glob(model_str)
-    else:
-        return [os.path.basename(x) for x in glob(model_str)]
+    if np.ndim(data) == 1:
+        data = np.reshape(data, (1, len(data)))
     
-def gimme_kind(x: np.ndarray) -> str:
-    if len(x) > 3:
-        return "cubic"
-    if len(x) > 1:
-        return "linear"
-    return "nearest"
+
+    if wvl_norm_nm in wavelength:
+        v_norm = data[:, wavelength == wvl_norm_nm]
+
+
+    elif on_pixel:
+        v_norm = data[:, argnearest(wavelength, wvl_norm_nm)]
+
+    elif fun is not None:
+        v_norm = fun(wvl_norm_nm)
+
+    else:
+        v_norm = interp1d(wavelength, data, kind=gimme_kind(wavelength))(wvl_norm_nm)
+
+    return normalise_in_rows(data, norm_vector=v_norm, norm_constant=1.)
+
+
+def denoise_and_norm(data: np.ndarray, wavelength: np.ndarray,
+                     denoising: bool = True, normalising: bool = True,
+                     sigma_nm: float = 7.,
+                     wvl_norm_nm: float = 550.,
+                     on_pixel: bool = True) -> np.ndarray:
+    if np.ndim(data) == 1:
+        data = np.reshape(data, (1, len(data)))
+
+    if denoising:
+        data = denoise_spectra(data, wavelength, sigma_nm=sigma_nm)
+
+    # Normalised reflectance
+    if normalising:
+        return normalise_spectra(data, wavelength, wvl_norm_nm=wvl_norm_nm, on_pixel=on_pixel)
+
+    return deepcopy(data)
+
+
+def denoise_and_norm_file(file: str, denoising: bool, normalising: bool, sigma_nm: float = 7.,
+                     normalised_at_wvl: float = 550., subfolder: str = "") -> None:
+    if not denoising and not normalising:
+        return
+
+    # load the data
+    data = load_npz(file)
+
+    xq, spectra = data[_wavelengths_name], data[_spectra_name]
+
+    spectra = denoise_and_norm(spectra, xq, denoising=denoising, normalising=normalising, sigma_nm=sigma_nm,
+                               wvl_norm_nm=normalised_at_wvl)
+
+    final_name = filename_adjustment(file, denoising=denoising, normalising=normalising, always_add_suffix=False)
+
+    save_data(final_name, spectra=spectra, wavelengths=xq, labels=data[_label_name],
+              metadata=data[_metadata_name], labels_key=data[_label_key_name], metadata_key=data[_metadata_key_name],
+              denoised=denoising, normalised=normalise, subfolder=subfolder)
+
+
+def clean_and_resave(filename: str, reinterpolate: bool = False, used_minerals: np.ndarray | None = None,
+                     used_endmembers: list[list[bool]] | None = None, grid_setup: dict | None = None,
+                     filtering_setup: dict | None = None,) -> None:
+    from modules.NN_data import load_composition_data as load_data
+
+    if grid_setup is None: grid_setup = comp_grid
+    if filtering_setup is None: filtering_setup = comp_filtering_setup
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    denoised = "denoise" in filename
+    normalised = "norm" in filename
+
+    tmp = Path(filename)
+    final_name = f"{tmp.stem}{_sep_out}clean"  # ".npz" is added in save_data
+
+    # Load data for keys and wavelengths
+    data = load_npz(filename, subfolder="")
+
+    # load cleaned data
+    spectra, labels, meta = load_data(filename, return_meta=True, keep_all_labels=True, clean_dataset=True,
+                                      reinterpolation=reinterpolate, used_minerals=used_minerals,
+                                      used_endmembers=used_endmembers, grid_setup=grid_setup,
+                                      filtering_setup=filtering_setup)
+
+    # re-save it
+    save_data(final_name, spectra=spectra, wavelengths=data[_wavelengths_name], labels=labels, metadata=meta,
+              labels_key=data[_label_key_name], metadata_key=data[_metadata_key_name],
+              denoised=denoised, normalised=normalised)
+
+
+def apply_transmission(spectra: np.ndarray,
+                       transmission: np.ndarray,
+                       wavelengths: np.ndarray,
+                       wvl_cen_method: Literal["argmax", "dot"] = "argmax",
+                       sum_or_int: Literal["sum", "int"] = "sum") -> tuple[np.ndarray, ...]:
+    # need num_transmissions x num_wavelengths
+    if np.ndim(transmission) == 1:
+        transmission = np.reshape(transmission, (1, -1))
+    if np.ndim(transmission) > 2:
+        raise ValueError("Transmission must be 1-D or 2-D array.")
+
+    # sort wavelengths first
+    idx = np.argsort(wavelengths)
+    wavelengths, transmission = wavelengths[idx], transmission[:, idx]
+
+    if sum_or_int == "sum":
+        transmission = normalise_in_rows(transmission)
+    else:
+        transmission = normalise_in_rows(transmission, trapezoid(y=transmission, x=wavelengths))
+
+    if wvl_cen_method == "argmax":
+        wvl_central = np.array([my_argmax(wavelengths, transm, n_points=2, fit_method="ransac") for transm in transmission])
+
+    elif wvl_cen_method == "dot":
+        if sum_or_int == "sum":
+            wvl_central = transmission @ wavelengths
+        else:
+            wvl_central = trapezoid(y=transmission * wavelengths, x=wavelengths)
+
+    else:
+        raise ValueError('Unknown method how to estimate central wavelengths. Available methods are "argmax" and "dot".')
+
+    index_sort = np.argsort(wvl_central)
+    wvl_central, transmission = wvl_central[index_sort], transmission[index_sort]
+
+    if sum_or_int == "sum":
+        final_spectra = spectra @ np.transpose(transmission)
+    else:
+        final_spectra = trapezoid(y=np.einsum("...j, kj -> ...kj", spectra, transmission), x=wavelengths)
+
+    wvl_central, final_spectra = np.array(wvl_central, dtype=_wp), np.array(final_spectra, dtype=_wp)
+
+    return wvl_central, final_spectra
+
+
+def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray,
+                    used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                    cleaning: bool = True, all_to_one: bool = False,
+                    return_r2: bool = False, return_sam: bool = False, return_mae: bool = False,
+                    remove_px_outliers: bool = False,
+                    return_dict: bool = False) -> tuple[np.ndarray, ...] | dict[str, np.ndarray]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_mae, my_rmse, my_r2, my_sam
+
+    if np.any(y_true > 1.) or np.any(y_pred > 1.):
+        y_true, y_pred = y_true / 100., y_pred / 100.
+
+    if remove_px_outliers:
+        ind_outliers = find_outliers(y_true, y_pred, used_minerals=used_minerals, used_endmembers=used_endmembers,
+                                     px_only=True)
+        y_true, y_pred = np.delete(y_true, ind_outliers, axis=0), np.delete(y_pred, ind_outliers, axis=0)
+
+    metric = my_rmse(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                     cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred).numpy()
+    results = {"RMSE (pp)": metric}
+
+    if return_r2:
+        metric = my_r2(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                       cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred).numpy()
+        results["R2"] = metric
+
+    if return_sam:
+        metric = np.rad2deg(my_sam(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                                   cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred).numpy())
+        results["SAM (deg)"] = metric
+
+    if return_mae:
+        metric = my_mae(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                        cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred).numpy()
+        results["MAE (pp)"] = metric
+
+    if return_dict:
+        return results
+
+    return tuple([*results.values()])
+
+
+def compute_within(y_true: np.ndarray, y_pred: np.ndarray, error_limit: tuple[float, ...],
+                   used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                   cleaning: bool = True, all_to_one: bool = False,
+                   step_percentile: float | None = 0.1,
+                   remove_px_outliers: bool = False,
+                   return_dict: bool = False) -> tuple[np.ndarray, ...] | dict[str, np.ndarray]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_quantile, my_ae
+
+    if np.any(y_true > 1.) or np.any(y_pred > 1.):
+        y_true, y_pred = y_true / 100., y_pred / 100.
+
+    if remove_px_outliers:
+        ind_outliers = find_outliers(y_true, y_pred, used_minerals=used_minerals, used_endmembers=used_endmembers,
+                                     px_only=True)
+        y_true, y_pred = np.delete(y_true, ind_outliers, axis=0), np.delete(y_pred, ind_outliers, axis=0)
+
+    if step_percentile is None:
+        ae = my_ae(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                   cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred)
+        within = np.array([100. * np.sum(ae <= x, axis=0) / np.sum(np.isfinite(ae), axis=0) for x in error_limit])
+
+    else:
+        percentile = safe_arange(0., 100., step_percentile, endpoint=True)
+        quantile = my_quantile(percentile=percentile, used_minerals=used_minerals, used_endmembers=used_endmembers,
+                               cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred).numpy()
+
+        # quantiles are always sorted
+        within = np.transpose([np.interp(error_limit, quantile[:, i], percentile, left=0., right=100.)
+                               for i in range(np.shape(quantile)[1])])
+
+    within = np.array(within, dtype=_wp)
+
+    if return_dict:
+        return {f"within {limit} pp": within_limit for limit, within_limit in zip(error_limit, within)}
+
+    return tuple(within)
+
+
+def compute_one_sigma(y_true: np.ndarray, y_pred: np.ndarray,
+                      used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                      cleaning: bool = True, all_to_one: bool = False,
+                      remove_px_outliers: bool = False) -> tuple[np.ndarray, ...]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_quantile
+
+    if np.any(y_true > 1.) or np.any(y_pred > 1.):
+        y_true, y_pred = y_true / 100., y_pred / 100.
+
+    if remove_px_outliers:
+        ind_outliers = find_outliers(y_true, y_pred, used_minerals=used_minerals, used_endmembers=used_endmembers,
+                                     px_only=True)
+        y_true, y_pred = np.delete(y_true, ind_outliers, axis=0), np.delete(y_pred, ind_outliers, axis=0)
+
+    one_sigma = my_quantile(percentile=68.27, used_minerals=used_minerals, used_endmembers=used_endmembers,
+                            cleaning=cleaning, all_to_one=all_to_one)(y_true, y_pred).numpy()
+
+    return one_sigma
+
 
 def gimme_model_specification(model_name: str) -> str:
     bare_name = split_path(model_name)[1]
@@ -535,12 +516,289 @@ def gimme_bin_code_from_name(model_name: str) -> str:
     specification = gimme_model_specification(model_name=model_name)
     return specification.split(_sep_out)[-1]
 
+
+def gimme_keys_from_name(model_name: str, short_names: bool = False) -> np.ndarray:
+    if is_taxonomical(model_name):
+        return np.array(gimme_list_of_classes(model_name))
+    else:
+        used_minerals, used_endmembers = gimme_used_from_name(model_name)
+        mask = stack((used_minerals, flatten_list(used_endmembers)))
+        if short_names:
+            names = stack((mineral_names_short, flatten_list(endmember_names)))
+        else:
+            names = stack((mineral_names, flatten_list(endmember_names)))
+
+        return names[mask]
+
+
+def gimme_model_grid_from_name(model_name: str) -> str:
+    specification = gimme_model_specification(model_name=model_name)
+    return _sep_out.join(specification.split(_sep_out)[:-1])
+
+
+def gimme_grid_setup_from_name(model_name: str) -> dict:
+    model_grid = gimme_model_grid_from_name(model_name)
+    if "ASPECT" in model_grid or "HS-H" in model_grid:
+        instrument = model_grid
+    else:
+        instrument = None
+
+    if instrument is not None:
+        new_wvl_grid = None
+        new_wvl_grid_normalisation = "adaptive"
+    else:
+        new_wvl_grid = safe_arange(*model_grid.split(_sep_in)[:-1], endpoint=True, dtype=_wp)
+        new_wvl_grid_normalisation = model_grid.split(_sep_in)[-1]
+
+        if new_wvl_grid_normalisation == "None":
+            new_wvl_grid_normalisation = None
+        elif new_wvl_grid_normalisation == "adaptive":
+            pass
+        else:
+            new_wvl_grid_normalisation = float(new_wvl_grid_normalisation)
+
+    return {"model_grid": model_grid,
+            "instrument": instrument,
+            "wvl_grid": new_wvl_grid,
+            "wvl_norm": new_wvl_grid_normalisation}
+
+
+def gimme_used_from_name(model_name: str) -> tuple[np.ndarray, list[list[bool]]]:
+    return bin_to_used(bin_code=gimme_bin_code_from_name(model_name=model_name))
+
+
+def is_taxonomical(model: str | Model | None = None, bin_code: str | None = None) -> bool:
+    if isinstance(model, str):
+        bare_name = split_path(model)[1]
+        bin_code = gimme_bin_code_from_name(bare_name)
+
+    if bin_code is not None:
+        return len(bin_code.split(_sep_in)) == 2
+
+    if isinstance(model, Model):  # model was compiled when loaded
+        if model.metrics_names:
+            possible_taxonomy_metrics = ["categorical_accuracy", "f1_score"]
+            return np.any([metric in model.metrics_names for metric in possible_taxonomy_metrics])
+
+        # The last layer is output activation or dense (if activation is set as a parameter of Dense)
+        if model.get_config()["layers"][-1]["class_name"] in ["Activation", "Dense"]:
+            possible_composition_activatins = ["sigmoid_norm", "softmax_norm", "relu_norm", "plu_norm",
+                                               "my_sigmoid", "my_softmax", "my_relu", "my_plu"]
+            return model.get_config()["layers"][-1]["config"]["activation"] not in possible_composition_activatins
+
+    raise ValueError("Unable to distinguish between composition and taxonomy models.")
+
+
+def gimme_custom_objects(model_name: str, **kwargs) -> dict:
+    from modules.NN_losses_metrics_activations import create_custom_objects
+    if is_taxonomical(model_name):
+        used_minerals, used_endmembers = None, None
+    else:
+        used_minerals, used_endmembers = gimme_used_from_name(model_name)
+
+    return create_custom_objects(used_minerals=used_minerals, used_endmembers=used_endmembers, **kwargs)
+
+
+def remove_continuum(filename: str, subfolder: str = "", saving: bool = False) -> tuple[np.ndarray, ...]:
+    control_plot = False
+
+    input_file = path.join(_path_data, subfolder, filename)
+    data = load_npz(input_file)
+
+    denoised = "denoise" in filename
+    normalised = "norm" in filename
+
+    output_file = input_file.replace(".npz", f"{_sep_out}CH.npz")
+
+    xq, spectra = data[_wavelengths_name], data[_spectra_name]
+
+    n_data, len_data = np.shape(spectra)
+    rectified_spectra = np.zeros((n_data, len_data))
+
+    # 2D data for convex hull
+    ch_data = np.zeros((len_data, 2))
+    ch_data[:, 0] = xq
+
+    for i in range(n_data):
+        spectrum = spectra[i]
+        ch_data[:, 1] = spectrum
+
+        hull = ConvexHull(ch_data).vertices
+
+        # remove the lower branch from vertices (delete all vertices between 0 and len_data - 1
+        hull = np.roll(hull, -np.where(hull == 0)[0][0] - 1)  # move 0 to the end of the list
+        hull = np.sort(hull[np.where(hull == len_data - 1)[0][0]:])
+
+        """
+        # keep the UV bands
+        x0 = my_argmax(xq, spectrum, x0=650.)
+        hull = hull[np.argmin(np.abs(xq[hull] - x0)):]
+        """
+
+        continuum = np.zeros(np.shape(xq))  # necessary since the UVs start at different positions
+
+        # linear fit to the convex hull
+        for j in range(len(hull) - 1):
+            x_fit, y_fit = xq[[hull[j], hull[j + 1]]], spectrum[[hull[j], hull[j + 1]]]
+            if j == 0 and hull[j] != 0:
+                x_new = xq[:hull[j + 1] + 1]
+                continuum[:hull[j + 1] + 1] = np.polyval(my_polyfit(x_fit, y_fit, 1), x_new)
+            else:
+                x_new = xq[hull[j]:hull[j + 1] + 1]
+                continuum[hull[j]:hull[j + 1] + 1] = np.polyval(my_polyfit(x_fit, y_fit, 1), x_new)
+
+        rectified_spectra[i] = spectrum / continuum
+        rectified_spectra = np.round(rectified_spectra, 5)
+
+        if control_plot:
+            import matplotlib as mpl
+            import matplotlib.pyplot as plt
+            mpl.use("TkAgg")
+
+            fig, ax = plt.subplots()
+            ax.plot(xq, spectrum / continuum)
+            ax.plot(xq, spectrum)
+            ax.plot(xq, continuum)
+
+    if saving:
+        save_data(output_file, spectra=rectified_spectra, wavelengths=xq, labels=data[_label_name],
+                  metadata=data[_metadata_name], labels_key=data[_label_key_name], metadata_key=data[_metadata_key_name],
+                  denoised=denoised, normalised=normalised)
+
+    return xq, rectified_spectra
+
+
+def combine_same_range_models(indices: np.ndarray, ranges_all_or_spacing_all: np.ndarray, what_rmse_all: np.ndarray,
+                              applied_function: Callable):
+    #  combine different models
+
+    ranges = len(np.unique(indices)) * ["str"]
+    what_rmse = np.zeros(len(np.unique(indices)))
+
+    for ind, unique_index in enumerate(np.unique(indices)):
+        ranges[ind] = ranges_all_or_spacing_all[np.where(unique_index == indices)[0]][0]
+        what_rmse[ind] = applied_function(what_rmse_all[np.where(unique_index == indices)[0]])
+
+    return np.array(ranges).ravel(), what_rmse
+
+
+def cut_error_bars(y_true: np.ndarray, y_true_error: np.ndarray | float, y_pred: np.ndarray, y_pred_error: np.ndarray,
+                   lim_min: float = 0., lim_max: float = 100.) -> tuple[np.ndarray, np.ndarray]:
+    # equivalently
+    # lower_error, upper_error = y_true - y_true_error, y_true_error + y_true
+    # lower_error[lower_error < lim_min], upper_error[upper_error > lim_max] = lim_min, lim_max
+    # lower_error, upper_error = y_true - lower_error, upper_error - y_true
+
+    lower_error = y_true - np.clip(y_true - y_true_error, lim_min, lim_max)
+    upper_error = np.clip(y_true_error + y_true, lim_min, lim_max) - y_true
+    axis = np.ndim(lower_error)  # to create a new axes using stack
+    actual_errorbar_reduced = np.moveaxis(stack((lower_error, upper_error), axis=axis),
+                                          source=0, destination=-1)  # to shift the last axes to the beginning
+
+    lower_error = y_pred - np.clip(y_pred - y_pred_error, lim_min, lim_max)
+    upper_error = np.clip(y_pred_error + y_pred, lim_min, lim_max) - y_pred
+    predicted_errorbar_reduced = np.moveaxis(stack((lower_error, upper_error), axis=axis),
+                                             source=0, destination=-1)  # to shift the last axes to the beginning
+
+    predicted_errorbar_reduced[predicted_errorbar_reduced < 0.] = 0.
+    actual_errorbar_reduced[actual_errorbar_reduced < 0.] = 0.
+
+    return predicted_errorbar_reduced, actual_errorbar_reduced
+
+
+def error_estimation_overall(y_true: np.ndarray, y_pred: np.ndarray, actual_error: np.ndarray | float = 3.,
+                             used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None
+                             ) -> tuple[np.ndarray, np.ndarray]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_rmse
+
+    if np.all(y_true <= 1.):  # to percents
+        y_true = y_true[:] * 100.
+        y_pred = y_pred[:] * 100.
+
+    RMSE = my_rmse(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                   cleaning=True, all_to_one=False)(y_true, y_pred).numpy() / 100.  # is multiplied by 100 in the code
+
+    return cut_error_bars(y_true, actual_error, y_pred, RMSE)
+
+
+def error_estimation_bin_like(y_true: np.ndarray, y_pred: np.ndarray, actual_error: np.ndarray | float = 3.,
+                              used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None
+                              ) -> tuple[np.ndarray, np.ndarray]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_rmse, clean_ytrue_ypred
+
+    num_minerals = gimme_num_minerals(used_minerals)
+    num_labels = np.shape(y_true)[1]
+
+    # multiplied by 100 here
+    y_true_clean, y_pred_clean = clean_ytrue_ypred(y_true, y_pred, used_minerals=used_minerals,
+                                                   used_endmembers=used_endmembers, cleaning=True, all_to_one=False)
+    y_true_clean, y_pred_clean = y_true_clean.numpy(), y_pred_clean.numpy()
+
+    if np.any(y_true_clean > 100.):  # to percents
+        y_true_clean /= 100.
+        y_pred_clean /= 100.
+
+    # N bins (step 100 / N)
+    N = 10
+
+    predicted_error = np.zeros((N, np.shape(y_pred)[1]))  # errors for each bin; for info only
+    predicted_error_no = np.zeros((N, np.shape(y_pred)[1]))  # number of points for each bin; for info only
+
+    errors = np.zeros((len(y_pred), num_labels))  # final errors for each point
+
+    for i in range(N):
+        mask = np.logical_and(100. / N * i <= y_pred_clean, y_pred_clean <= 100. / N * (i + 1.))
+
+        # Modal and chemical must be done separately (to keep correct information about w_true)
+        # filtered modal
+        y_p = np.where(mask[:, :num_minerals], y_pred_clean[:, :num_minerals], np.nan)
+        y_t = np.where(mask[:, :num_minerals], y_true_clean[:, :num_minerals], np.nan)
+
+        rmse_modal = my_rmse(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                             cleaning=False, all_to_one=False)(y_t, y_p).numpy()
+
+        # filtered chemical
+        y_p = np.where(mask[:, num_minerals:], y_pred_clean[:, num_minerals:], np.nan)
+        y_t = np.where(mask[:, num_minerals:], y_true_clean[:, num_minerals:], np.nan)
+
+        # Add true modal to filter modeless samples
+        y_p = stack((y_pred_clean[:, :num_minerals], y_p), axis=1)
+        y_t = stack((y_true_clean[:, :num_minerals], y_t), axis=1)
+
+        rmse_chem = my_rmse(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                            cleaning=True, all_to_one=False)(y_t, y_p).numpy()[num_minerals:]
+
+        rmse = stack((rmse_modal, rmse_chem))
+
+        predicted_error_no[i], predicted_error[i] = np.sum(mask, axis=0), rmse
+
+        rmse = np.reshape(rmse, (1, -1))
+        rmse = np.repeat(rmse, repeats=len(y_pred), axis=0)
+        errors = np.where(mask, rmse, errors)
+
+    errors /= 100.
+
+    """
+    # This can be printed as info to table
+    predicted_error /= 100.
+    predicted_error = np.round(predicted_error, 1)
+    np.transpose(stack((predicted_error, predicted_error_no), axis=2))
+    """
+
+    return cut_error_bars(y_true_clean, actual_error, y_pred_clean, errors)
+
+
 def gimme_indices(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
                   reduced: bool = True, return_mineral_indices: bool = False) -> np.ndarray:
     # This function returns the first and last indices of modal/mineral groups
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
-
 
     count_endmembers = gimme_endmember_counts(used_endmembers)
     all_minerals = gimme_minerals_all(used_minerals, used_endmembers)
@@ -565,124 +823,437 @@ def gimme_indices(used_minerals: np.ndarray | None = None, used_endmembers: list
 
     return indices[:, 1:]
 
-def gimme_used_from_name(model_name: str) -> tuple[np.ndarray, list[list[bool]]]:
-    return bin_to_used(bin_code=gimme_bin_code_from_name(model_name=model_name))
 
-def gimme_custom_objects(model_name: str, **kwargs) -> dict:
-    if is_taxonomical(model_name):
-        used_minerals, used_endmembers = None, None
+def used_indices(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                 return_digits: bool = False) -> np.ndarray:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+    indices = stack((used_minerals, flatten_list(used_endmembers)))
+    if return_digits:
+        return np.where(indices)[0]
+    return indices
+
+
+def unique_indices(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                   all_minerals: bool = False, return_digits: bool = False) -> np.ndarray:
+    # modification of used indices (if there are two labels, their absolute errors are the same; one is enough)
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+    unique_used_inds = deepcopy([list(used_minerals)] + used_endmembers)
+    for i, unique_inds in enumerate(unique_used_inds):
+        if np.sum(unique_inds) == 2:
+            unique_used_inds[i][np.where(unique_inds)[0][-1]] = False
+
+    used_inds = used_indices(used_minerals, used_endmembers)
+    unique_used_inds = flatten_list(unique_used_inds) * used_inds  # is this multiplication necessary?
+
+    if all_minerals:
+        indices = unique_used_inds
     else:
-        used_minerals, used_endmembers = gimme_used_from_name(model_name)
+        # keep indices which are both used and unique (unused are removed, so this only shifts the unique)
+        indices = unique_used_inds[used_inds]
 
-    return create_custom_objects(used_minerals=used_minerals, used_endmembers=used_endmembers, **kwargs)
+    if return_digits:
+        return np.where(indices)[0]
+    return indices
 
-def load_keras_model(filename: str, subfolder: str = "", custom_objects: dict | None = None,
-                     compile: bool = True, custom_objects_dict: dict | None = None, **kwargs) -> Model:
-    if custom_objects is None:
-        if custom_objects_dict is None: custom_objects_dict = {}
-        custom_objects = gimme_custom_objects(model_name=filename, **custom_objects_dict)
-
-    filename = check_file(filename, _path_model, subfolder)
-
-    # compile=True is needed to get metrics names for composition vs. taxonomy check
-    model = load_model(filename, custom_objects=custom_objects, compile=compile, **kwargs)
-
-    return model
+        # equivalently
+        # return np.searchsorted(np.where(used_inds)[0], np.where(unique_used_inds)[0], side="left")
+        # return np.digitize(np.where(unique_used_inds)[0], np.where(used_inds)[0], right=True)
+        # return np.array([c for c, ind in enumerate(np.where(used_inds)[0]) if ind in np.where(unique_used_inds)[0]])
 
 
+def print_comp_accuracy_header(used_minerals: np.ndarray | None = None,
+                               used_endmembers: list[list[bool]] | None = None,
+                               all_types_to_one: bool = False, all_to_one: bool = False) -> None:
+    # Function to print header of the vector accuracy
 
-def argnearest(array: np.ndarray, value: float) -> tuple[int, ...]:
-    return np.unravel_index(np.nanargmin(np.abs(array - value)), np.shape(array))
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
 
-def normalise_spectra(data: np.ndarray, wavelength: np.ndarray, wvl_norm_nm: float | None = 550.,
-                      on_pixel: bool = True, fun: Callable[[float], float] | None = None) -> np.ndarray:
-    if wvl_norm_nm is None:
-        return deepcopy(data)
+    if all_to_one:
+        print(f"{'':22} Total")
 
-    if np.ndim(data) == 1:
-        data = np.reshape(data, (1, len(data)))
-
-    if wvl_norm_nm in wavelength:
-        v_norm = data[:, wavelength == wvl_norm_nm]
-
-    elif on_pixel:
-        v_norm = data[:, argnearest(wavelength, wvl_norm_nm)]
-
-    elif fun is not None:
-        v_norm = fun(wvl_norm_nm)
+    elif all_types_to_one:
+        header = np.array(["Modal", "OL", "OPX", "CPX", "PLG"])
+        all_minerals = gimme_minerals_all(used_minerals, used_endmembers)
+        indices = stack((np.any(used_minerals), all_minerals))
+        print(f"{'':23} {''.join(f'{head:7}' for head in header[indices])}")
 
     else:
-        v_norm = interp1d(wavelength, data, kind=gimme_kind(wavelength))(wvl_norm_nm)
+        header = np.array(["OL", "OPX", "CPX", "PLG",
+                           "Fa", "Fo",
+                           "Fs", "En", "Wo",
+                           "Fs", "En", "Wo",
+                           "An", "Ab", "Or"])
 
-    return normalise_in_rows(data, norm_vector=v_norm, norm_constant=1.)
+        indices = unique_indices(used_minerals, used_endmembers, all_minerals=True)
+        print(f"{'':23} {''.join(f'{head:6}' for head in header[indices])}")
 
-def flatten_list(nested_list: Iterable, general: bool = False) -> np.ndarray:
-    # This function flattens a list of lists
-    if not general:  # works for a list of lists
-        return np.array([item for sub_list in nested_list for item in sub_list])
-    else:  # deeply nested irregular lists, dictionaries, numpy arrays, tuples, strings, ...
-        return np.array(list(flatten(nested_list)))
+    return
 
-def split_path(filename: str, is_dir_check: bool = False) -> tuple[str, ...]:
-    if is_dir_check and os.path.isdir(filename):
-        return filename, "", ""
 
-    dirname, basename = os.path.split(filename)
+def print_tax_accuracy_header(used_classes: dict[str, int] | list | np.ndarray | None = None,
+                              all_to_one: bool = False) -> None:
+    # Function to print header of the F1 accuracy
+    if used_classes is None: used_classes = classes
 
-    if "." in basename:
-        basename, extension = basename.split(".", 1)
+    if all_to_one:
+        print(f"{'':27} Total")
     else:
-        extension = ""
+        print(f"{'':29} {''.join(f'{cls:7}' for cls in used_classes)}")
 
-    return dirname, basename, extension
+    return
 
-def is_taxonomical(model: str | Model | None = None, bin_code: str | None = None) -> bool:
-    if isinstance(model, str):
-        bare_name = split_path(model)[1]
-        bin_code = gimme_bin_code_from_name(bare_name)
 
-    if bin_code is not None:
-        return len(bin_code.split(_sep_in)) == 2
+def print_header(bin_code: str):
+    taxonomical = is_taxonomical(bin_code=bin_code)
 
-    if isinstance(model, Model):  # model was compiled when loaded
-        if model.metrics_names:
-            possible_taxonomy_metrics = ["categorical_accuracy", "f1_score"]
-            return np.any([metric in model.metrics_names for metric in possible_taxonomy_metrics])
+    if taxonomical:
+        print_tax_accuracy_header(used_classes=bin_to_cls(bin_code))
 
-        # The last layer is output activation or dense (if activation is set as a parameter of Dense)
-        if model.get_config()["layers"][-1]["class_name"] in ["Activation", "Dense"]:
-            possible_composition_activatins = ["sigmoid_norm", "softmax_norm", "relu_norm", "plu_norm",
-                                               "my_sigmoid", "my_softmax", "my_relu", "my_plu"]
-            return model.get_config()["layers"][-1]["config"]["activation"] not in possible_composition_activatins
-
-    raise ValueError("Unable to distinguish between composition and taxonomy models.")
-
-def to_list(param) -> list:
-    return param if isinstance(param, list) else [param]
-
-def check_file(filename: str, base_folder: str, subfolder: str) -> str:
-    if os.path.exists(filename):
-        pass
-    elif os.path.exists(os.path.join(base_folder, subfolder, filename)):
-        filename = os.path.join(base_folder, subfolder, filename)
     else:
-        raise FileNotFoundError(f"The file {filename} was not found.")
+        print_comp_accuracy_header(*bin_to_used(bin_code=bin_code))
 
-    return os.path.abspath(filename)
 
-def load_npz(filename: str, subfolder: str = "", list_keys: list[str] | None = None,
-             allow_pickle: bool = True, **kwargs):
-    filename = check_file(filename, _path_data, subfolder)
+def print_comp_accuracy(rmse_accuracy: np.ndarray, what: str,
+                        used_minerals: np.ndarray | None = None,
+                        used_endmembers: list[list[bool]] | None = None,
+                        all_types_to_one: bool = False, all_to_one: bool = False) -> None:
+    # Function to print vector accuracy
 
-    data = np.load(filename, allow_pickle=allow_pickle, **kwargs)
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
 
-    if list_keys is None:
-        return data
+    pref = f"Mean {what.lower()} RMSE:"
+    rmse_accuracy = np.array(rmse_accuracy)
 
-    return {key: data[key][()] for key in list_keys if key in data.files}
+    if all_to_one:
+        print(f"{pref:21} {np.round(np.mean(rmse_accuracy), 3):6.3f}")
 
-def load_txt(filename: str, subfolder: str = "", **kwargs) -> pd.DataFrame:
-    filename = check_file(filename, _path_data, subfolder)
-    data = pd.read_csv(filename, **kwargs)
+    elif all_types_to_one:
+        mse_accuracy = np.square(rmse_accuracy)
+        indices = gimme_indices(used_minerals, used_endmembers)
 
-    return data
+        accuracies = np.array([np.sqrt(np.mean(mse_accuracy[range(inds[0], inds[1])])) for inds in indices])
+        print(f"{pref:21} [{', '.join(f'{acc:5.1f}' for acc in np.round(accuracies, 1))}]")
+
+    else:
+        indices = unique_indices(used_minerals, used_endmembers)
+
+        print(f"{pref:21} [{', '.join(f'{acc:4.1f}' for acc in np.round(rmse_accuracy[indices], 1))}]")
+
+    return
+
+
+
+def print_tax_accuracy(f1_accuracy: np.ndarray, what: str, all_to_one: bool = False) -> None:
+    # Function to print F1 accuracy
+
+    pref = f"Mean {what.lower()} F-1 score:"
+    f1_accuracy = np.array(f1_accuracy)
+
+    if all_to_one:
+        print(f"{pref:26} {np.round(np.mean(f1_accuracy), 3):6.3f}")
+    else:
+        print(f"{pref:26} [{', '.join(f'{acc:5.3f}' for acc in np.round(f1_accuracy, 2))}]")
+
+    return
+
+
+def print_info(y_true: np.ndarray, y_pred: np.ndarray, bin_code: str, which: str = "test") -> np.ndarray:
+    from modules.NN_losses_metrics_activations import my_rmse, my_f1_score
+
+    taxonomical = is_taxonomical(bin_code=bin_code)
+
+    if taxonomical:
+        acc = my_f1_score(all_to_one=False)(y_true, y_pred).numpy()
+        print_tax_accuracy(acc, which)
+
+    else:
+        used_minerals, used_endmembers = bin_to_used(bin_code=bin_code)
+
+        acc = my_rmse(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                      cleaning=True, all_to_one=False)(y_true, y_pred).numpy()
+        print_comp_accuracy(acc, which, used_minerals=used_minerals, used_endmembers=used_endmembers)
+
+    return acc
+
+
+def collect_all_models(subfolder_model: str, prefix: str | None = None, suffix: str | None = None,
+                       regex: str | None = None, file_suffix: str = _model_suffix, full_path: bool = True) -> list[str]:
+
+    final_suffix = "" if file_suffix == "SavedModel" else f".{file_suffix}"
+
+    if prefix is not None:
+        model_str = path.join(_path_model, subfolder_model, f"{prefix}*{final_suffix}")
+    elif suffix is not None:
+        model_str = path.join(_path_model, subfolder_model, f"*{suffix}{final_suffix}")
+    elif regex is not None:
+        model_str = path.join(_path_model, subfolder_model, f"{regex}{final_suffix}")
+    else:
+        model_str = path.join(_path_model, subfolder_model, f"*{final_suffix}")
+
+    if full_path:
+        return glob(model_str)
+    else:
+        return [path.basename(x) for x in glob(model_str)]
+
+
+def remove_jumps_in_spectra(wavelengths: np.ndarray, reflectance: np.ndarray, jump_index: int,
+                            n_points: int = 3, shift: int = 0, deg: int = 1) -> float:
+    # fit n_points behind and after the jump
+    # You can shift the points with "shift" if the values around the jump are damaged
+    if n_points < 0:
+        raise ValueError(f'"n_points" must be non-negative but is {n_points}.')
+    if shift < 0:
+        raise ValueError(f'"shift" must be non-negative but is {shift}.')
+
+    # to not have poorly conditioned polyfit
+    n_points = np.max((n_points, deg + 1))
+
+    start = jump_index - n_points - shift
+    stop = jump_index - shift
+    if start < 0:  # to prevent starting from negative
+        start = 0
+
+    wvl_before, refl_before = wavelengths[start:stop], reflectance[start:stop]
+    wvl_after, refl_after = wavelengths[jump_index:jump_index + n_points], reflectance[jump_index:jump_index + n_points]
+
+    wvl_fit = stack((wvl_before, wvl_after))
+
+    fitted_no_shift = np.polyval(my_polyfit(wvl_before, refl_before, deg), wvl_fit)
+    fitted_shift = np.polyval(my_polyfit(wvl_after, refl_after, deg), wvl_fit)
+
+    return np.mean(fitted_no_shift / fitted_shift)
+
+
+def match_spectra(wavelengths: tuple[np.ndarray, ...], reflectance: tuple[np.ndarray, ...],
+                  min_points: int = 3, deg: int = 1) -> tuple[np.ndarray, ...]:
+
+    if min_points < 0:
+        raise ValueError(f'"min_points" must be non-negative but is {min_points}.')
+
+    # sort wavelength tuple first
+    index, minimum = zip(*[(i, np.min(wvl)) for i, wvl in enumerate(wavelengths)])
+    index, minimum = np.array(index), np.array(minimum)
+    inds = np.argsort(minimum)
+    index = index[inds]
+
+    wavelengths = [wavelengths[i] for i in index]
+    reflectance = [reflectance[i] for i in index]
+
+    wvl_joined, refl_joined = wavelengths[0], reflectance[0]
+
+    for i in range(1, len(wavelengths)):
+        # common wavelengths
+        start = np.max([np.min(wavelength) for wavelength in [wvl_joined, wavelengths[i]]])
+        stop = np.min([np.max(wavelength) for wavelength in [wvl_joined, wavelengths[i]]])
+
+        if stop < start:
+            print("The spectra do not overlap.")
+
+            # stack spectra and remove possible jump
+            jump_index = len(wvl_joined)
+
+            wvl_joined = stack((wvl_joined, wavelengths[i]))
+            refl_joined = stack((refl_joined, reflectance[i]))
+
+            factor = remove_jumps_in_spectra(wvl_joined, refl_joined, jump_index)
+            refl_joined[jump_index:] *= factor
+
+        else:
+            mask1 = np.logical_and(start <= wvl_joined, wvl_joined <= stop)
+            mask2 = np.logical_and(start <= wavelengths[i], wavelengths[i] <= stop)
+
+            # ensure there are enough points
+            mask1[-min_points:] = True
+            mask2[:min_points] = True
+
+            wvl1, refl1 = wvl_joined[mask1], refl_joined[mask1]
+            wvl2, refl2 = wavelengths[i][mask2], reflectance[i][mask2]
+
+            wvl_fit = stack((wvl1, wvl2))
+
+            fit1 = np.polyval(my_polyfit(wvl1, refl1, deg), wvl_fit)
+            fit2 = np.polyval(my_polyfit(wvl2, refl2, deg), wvl_fit)
+
+            factor = np.mean(fit1 / fit2)
+
+            # stack spectra and remove possible jump
+            jump_index = len(wvl_joined)
+
+            wvl_joined = stack((wvl_joined, wavelengths[i][~mask2]))
+            refl_joined = stack((refl_joined, reflectance[i][~mask2] * factor))
+
+            factor = remove_jumps_in_spectra(wvl_joined, refl_joined, jump_index)
+            refl_joined[jump_index:] *= factor
+
+    return wvl_joined, refl_joined
+
+
+def find_outliers(y_true: np.ndarray, y_pred: np.ndarray,
+                  used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                  threshold: float = 40.0, px_only: bool = False,
+                  meta: pd.DataFrame | np.ndarray | None = None) -> np.ndarray:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_ae
+
+    minimum_PX_fraction = 0.95  # minimum 95 vol% of OPX + CPX
+
+    if not np.all(used_minerals[1:3]):
+        return np.array([], dtype=int)
+
+    pos_opx_cpx = np.cumsum(used_minerals) - 1  # -1 to get indices
+    pos_opx_cpx = pos_opx_cpx[[1, 2]]
+
+    absolute_error = my_ae(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                           cleaning=True, all_to_one=False)(y_true, y_pred).numpy()
+
+    inds_samples, inds_quantities = np.where(absolute_error > threshold)
+
+    if px_only:
+        # error in OPX or CPX
+        # 95+ vol% of OPX + CPX
+        mask = np.logical_and.reduce([np.logical_or.reduce([inds_quantities == pos_px for pos_px in pos_opx_cpx]),
+                                      np.sum(y_true[inds_samples][:, pos_opx_cpx], axis=1) >= minimum_PX_fraction])
+
+        samples = np.unique(inds_samples[mask])
+    else:
+        samples = np.unique(inds_samples)
+
+    samples = np.array(samples, dtype=int)
+
+    if meta is None:
+        return samples
+    else:
+        meta = np.array(meta)
+        return np.array(list(zip(meta[samples], samples)), dtype=object)
+
+
+def outliers_frequency(y_true: np.ndarray, y_pred: np.ndarray,
+                       used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                       threshold: float = 40.0) -> np.ndarray:
+
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    from modules.NN_losses_metrics_activations import my_ae
+
+    absolute_error = my_ae(used_minerals=used_minerals, used_endmembers=used_endmembers,
+                           cleaning=True, all_to_one=False)(y_true, y_pred).numpy()
+
+    _, inds_quantities = np.where(absolute_error > threshold)
+
+    return np.array([np.sum(inds_quantities == ind) for ind in range(np.shape(y_true)[1])])
+
+
+def wt_vol_conversion(conversion_direction: Literal["wt_to_vol", "vol_to_wt"], y_data: np.ndarray,
+                      used_minerals_all: np.ndarray | None = None,
+                      used_endmembers: list[list[bool]] | None = None) -> np.ndarray:
+    # should be after the chemicals are filled with dummy data, otherwise you can divide by 0 here
+    # WAS NOT PROPERLY TESTED
+    # zatim nefunguje:
+    # pokud je nejaky mineral samotny bez chem slozeni
+
+    if used_endmembers is None: used_endmembers = endmembers_used
+    if used_minerals_all is None: used_minerals_all = gimme_minerals_all(minerals_used, used_endmembers)
+
+    if conversion_direction not in ["wt_to_vol", "vol_to_wt"]:
+        raise ValueError('conversion_direction" must be "wt_to_vol" or "vol_to_wt".')
+
+    # densities of Fa, Fo, Fs, En, Wo, Fs, En, Wo, An, Ab, Or
+    densities = np.array([4.39, 3.27, 3.95, 3.20, 2.90, 3.95, 3.20, 2.90, 2.73, 2.62, 2.56]
+                         )[flatten_list(used_endmembers)]
+
+    num_minerals = gimme_num_minerals(used_minerals_all)
+
+    # for not-pure samples only
+    inds = np.max(y_data[:, :num_minerals], axis=1) != 1
+
+    modals, chemical = deepcopy(y_data[:, :num_minerals]), deepcopy(y_data[:, num_minerals:])
+    mineral_density = chemical * densities
+
+    #[:1] to avoid mineral position indices but keep mineral indices together with end-member indices
+    for i, start, stop in gimme_indices(used_minerals_all, used_endmembers, return_mineral_indices=True)[1:]:
+        norm_density = np.sum(mineral_density[inds, start - num_minerals:stop - num_minerals], axis=1)
+        if np.all(norm_density) > 0.:
+            if conversion_direction == "vol_to_wt":
+                modals[inds, i] *= norm_density
+            else:  # must be "wt_to_vol"
+                modals[inds, i] /= norm_density
+
+    modals = normalise_in_rows(modals)
+
+    return stack((modals, chemical), axis=1)
+
+
+def vol_to_wt_percent(y_data: np.ndarray, used_minerals_all: np.ndarray | None = None,
+                      used_endmembers: list[list[bool]] | None = None) -> np.ndarray:
+    if used_endmembers is None: used_endmembers = endmembers_used
+    if used_minerals_all is None: used_minerals_all = gimme_minerals_all(minerals_used, used_endmembers)
+
+    return wt_vol_conversion("vol_to_wt", y_data, used_minerals_all, used_endmembers)
+
+
+def wt_to_vol_percent(y_data: np.ndarray, used_minerals_all: np.ndarray | None = None,
+                      used_endmembers: list[list[bool]] | None = None) -> np.ndarray:
+    if used_endmembers is None: used_endmembers = endmembers_used
+    if used_minerals_all is None: used_minerals_all = gimme_minerals_all(minerals_used, used_endmembers)
+
+    return wt_vol_conversion("wt_to_vol", y_data, used_minerals_all, used_endmembers)
+
+
+def return_mineral_position(what_type: str, metadata: pd.DataFrame, labels: np.ndarray) -> np.ndarray:
+    if what_type.lower() == "ordinary chondrite":
+        return np.where(metadata["Type1"] == "Ordinary Chondrite")[0]
+
+    elif what_type.lower() == "hed":
+        return np.where(metadata["SubType"].str.contains("HED"))[0]
+
+    elif what_type.lower() in ["ol", "olivine"]:
+        return np.where(labels[:, 0] == 1)[0]
+
+    elif what_type.lower() in ["px", "pyroxene"]:
+        return np.where(np.sum(labels[:, 1:3], axis=1) == 1)[0]
+
+    else:  # asteroid
+        return np.where(what_type == metadata["taxonomy class"])[0]
+
+
+def combine_composition_and_taxonomy_predictions(filename: str, bin_code_comp: str | None = None,
+                                                 bin_code_tax: str | None = None,
+                                                 grid_model: str | None = None,
+                                                 proportiontocut: float | None = None) -> tuple[np.ndarray, ...]:
+    from modules.NN_evaluate import evaluate
+
+    if bin_code_comp is None: bin_code_comp = comp_output_setup["bin_code"]
+    if bin_code_tax is None: bin_code_tax = tax_output_setup["bin_code"]
+    if grid_model is None: grid_model = comp_grid["model_grid"]
+    if proportiontocut is None: proportiontocut = comp_model_setup["trim_mean_cut"]
+
+    comp_subfolder_model = path.join("composition", grid_model)
+    comp_models = collect_all_models(subfolder_model=comp_subfolder_model, regex=f"*{bin_code_comp}*", full_path=False)
+
+    tax_subfolder_model = path.join("taxonomy", grid_model)
+    tax_models = collect_all_models(subfolder_model=tax_subfolder_model, regex=f"*{bin_code_tax}*", full_path=False)
+
+    pred_comp = evaluate(comp_models, filename, proportiontocut=proportiontocut, subfolder_model=comp_subfolder_model)
+    pred_tax = evaluate(tax_models, filename, proportiontocut=proportiontocut, subfolder_model=tax_subfolder_model)
+
+    return pred_comp, pred_tax
+
+
+def compute_mean_predictions(y_pred: np.ndarray) -> tuple[np.ndarray, ...]:
+    return return_mean_std(y_pred * 100., axis=0)
+
+
+def print_conversion_chart(used_classes: dict[str, int] | None = None) -> None:
+    if used_classes is None:used_classes = classes
+
+    print("Conversion chart:")
+    print("".join(f"{key}\t=\t{value}\t\t"
+                  if (value % 5 > 0 or value == 0) else f"\n{key}\t=\t{value}\t\t"
+                  for key, value in used_classes.items()))

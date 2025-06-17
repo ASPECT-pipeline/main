@@ -4,10 +4,9 @@ from os import path
 
 # Base directory of the project (do not use a relative path if you create files from the "modules" folder)
 # _project_dir = "/home/dakorda/Python/NN"
-#_project_dir = "C:\\Users\\dkord\\python\\NN"
-_project_dir = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/ASPECT_calibration_pipeline/level_3"
-_project_data = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/level_3_test/pixel_reflectances"
+_project_dir = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/ASPECT_calibration_pipeline/level_3/"
 
+_project_data = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/level_3_test/pixel_reflectances"
 
 # subdirs in _project_dir (useful for backup)
 _subdirs = {"modules": "modules",
@@ -82,3 +81,4 @@ _quiet = _verbose == 0
 # separators
 _sep_in = "-"  # separates units inside one logical structure
 _sep_out = "_"  # separates logical structures
+

@@ -105,12 +105,14 @@ numpy==1.23.5
     #   ml-dtypes
     #   opencv-python
     #   pandas
+    #   patsy
     #   pyerfa
     #   scikit-learn
     #   scipy
     #   seaborn
     #   shapely
     #   spiceypy
+    #   statsmodels
     #   tensorboard
     #   tensorflow
 oauthlib==3.2.2
@@ -126,14 +128,18 @@ packaging==25.0
     #   astropy
     #   keras-tuner
     #   matplotlib
+    #   statsmodels
     #   tensorflow
     #   tensorflow-addons
 pandas==1.5.3
     # via
     #   -r requirements.in
     #   seaborn
+    #   statsmodels
 parso==0.8.4
     # via jedi
+patsy==1.0.1
+    # via statsmodels
 pexpect==4.9.0
     # via ipython
 pillow==11.2.1
@@ -188,6 +194,7 @@ scipy==1.11.1
     #   jax
     #   jaxlib
     #   scikit-learn
+    #   statsmodels
 seaborn==0.12.2
     # via -r requirements.in
 shapely==2.0.1
@@ -202,6 +209,10 @@ spiceypy==6.0.0
     # via -r requirements.in
 stack-data==0.6.3
     # via ipython
+statsmodels==0.14.4
+    # via -r requirements.in
+tabulate==0.9.0
+    # via -r requirements.in
 tensorboard==2.12.3
     # via
     #   keras-tuner

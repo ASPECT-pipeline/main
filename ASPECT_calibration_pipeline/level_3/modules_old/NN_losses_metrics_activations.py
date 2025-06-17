@@ -1,20 +1,108 @@
-import numpy as np
+import numpy as np 
 import tensorflow as tf
-import tensorflow.keras.backend as K
 import tensorflow.experimental.numpy as tnp
-from tensorflow.keras.activations import relu, sigmoid, softmax
 from tensorflow.python.framework.ops import EagerTensor
-from sklearn.metrics import f1_score as f1_sklearn
+import tensorflow.keras.backend as K
+from tensorflow.keras.activations import relu, sigmoid, softmax
 from typing import Callable
-from collections import Counter
-
-from modules.utilities_spectra import gimme_indices
-from modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts
-
-from modules._constants import _wp
-
-# defaults only
+from modules.NN_config_parse import (gimme_num_minerals, gimme_endmember_counts, gimme_minerals_all)
 from modules.NN_config_composition import minerals_used, endmembers_used
+from modules._constants import _wp, _num_eps
+from sklearn.metrics import f1_score as f1_sklearn
+
+
+def return_ddof(array: np.ndarray, axis: int | None = None) -> int:
+    return 1 if np.size(array, axis) > 1 else 0
+
+def is_constant(array: np.ndarray | list | float, constant: float | None = None, axis: int | None = None,
+                atol: float = _num_eps) -> bool | np.ndarray:
+    if atol < 0.:
+        raise ValueError('"atol" must be a non-negative number')
+
+    array = np.array(array, dtype=float)
+
+    if np.ndim(array) == 0:
+        array = array[np.newaxis]
+
+    if constant is None:  # return True if the array is constant along the axis
+        ddof = return_ddof(array, axis=axis)
+
+        return np.std(array, axis=axis, ddof=ddof) < atol
+
+    else:  # return True if the array is equal to "constant" along the axis
+        return np.all(np.abs(array - constant) < atol, axis=axis)
+
+def stack(arrays: tuple | list, axis: int | None = None, reduce: bool = False) -> np.ndarray:
+    """
+    concatenate arrays along the specific axis
+
+    if reduce=True, the "arrays" tuple is processed in this way
+    arrays = (A, B, C, D)
+    stack((stack((stack((A, B), axis=axis), C), axis=axis), D), axis=axis)
+    This is potentially slower but allows for concatenating e.g.
+    A.shape = (2, 4, 4)
+    B.shape = (3, 4)
+    C.shape = (4,)
+    res = stack((C, B, A), axis=0, reduce=True)
+    res.shape = (3, 4, 4)
+    res[0] == stack((C, B), axis=0)
+    res[1:] == A
+    """
+
+    # @reduce_like
+    def _stack(arrays: tuple | list, axis: int | None = None) -> np.ndarray:
+        ndim = np.array([np.ndim(array) for array in arrays])
+        _check_dims(ndim, reduce)
+
+        if np.all(ndim == 1):  # vector + vector + ...
+            if axis is None:  # -> vector
+                return np.concatenate(arrays, axis=axis)
+            else:  # -> 2-D array
+                return np.stack(arrays, axis=axis)
+
+        elif np.var(ndim) != 0:  # N-D array + (N-1)-D array + ... -> N-D array
+            max_dim = np.max(ndim)
+
+            # longest array
+            shape = np.array(np.shape(arrays[np.argmax(ndim)]))
+            shape[axis] = -1
+
+            # reshape is dangerous; you can potentially stack e.g. 10x1 with 2x5x2 along axis=0 that is confusing
+            # possible dimension difference is one; omit the -1 shape. The rest should be equal.
+            shapes = [np.array(np.shape(array)) for array in arrays if np.ndim(array) < max_dim]
+            if not np.all([sh in shape[shape > 0] for sh in shapes]):
+                raise ValueError("Arrays of these dimensions cannot be stacked.")
+
+            arrays = [np.reshape(array, shape) if np.ndim(array) < max_dim else array for array in arrays]
+
+            return np.concatenate(arrays, axis=axis)
+
+        elif is_constant(ndim):  # N-D array + N-D array + ... -> N-D array or (N+1)-D array
+            ndim = ndim[0]
+            if axis < ndim:  # along existing dimensions
+                return np.concatenate(arrays, axis=axis)
+            else:  # along a new dimension
+                return np.stack(arrays, axis=axis)
+
+    def _check_dims(ndim: np.ndarray, reduce: bool = False) -> None:
+        error_msg = ("Maximum allowed difference in dimension of concatenated arrays is one. "
+                     "If you want to stack along higher dimensions, use a combination of stack and np.reshape.")
+
+        if np.max(ndim) - np.min(ndim) > 1:
+            if reduce:
+                raise ValueError(error_msg)
+            else:
+                raise ValueError(f'{error_msg}\nUse "reduce=True" to unlock more general (but slower) stacking.')
+
+    # 0-D arrays to 1-D arrays (e.g. add a number to a vector)
+    arrays = [np.reshape(array, (1,)) if np.ndim(array) == 0 else np.array(array) for array in arrays]
+    arrays = tuple([array for array in arrays if np.size(array) > 0])
+    if len(arrays) == 0: arrays = (np.array([], dtype=int),)  # enable to stack(np.array([]))
+
+    if reduce:
+        return _stack.reduce(arrays, axis)
+    else:
+        return _stack(arrays, axis)
 
 
 def gimme_penalisation_setup(penalised_mineral: str, used_minerals: np.ndarray | None = None,
@@ -104,13 +192,43 @@ def gimme_penalisation_setup(penalised_mineral: str, used_minerals: np.ndarray |
 
     return beta, mineral_position, setup, use_penalisation
 
-
-@tf.function
-def penalisation_function(y_true: EagerTensor, y_pred: EagerTensor, penalised_mineral: str,
-                          used_minerals: np.ndarray | None = None,
-                          used_endmembers: list[list[bool]] | None = None) -> EagerTensor:
+def gimme_indices(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                  reduced: bool = True, return_mineral_indices: bool = False) -> np.ndarray:
+    # This function returns the first and last indices of modal/mineral groups
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
+
+    count_endmembers = gimme_endmember_counts(used_endmembers)
+    all_minerals = gimme_minerals_all(used_minerals, used_endmembers)
+    num_minerals = gimme_num_minerals(all_minerals)
+
+    indices = np.zeros((len(count_endmembers) + 1, 3), dtype=int)
+
+    indices[0, 0], indices[1:, 0] = -1, np.cumsum(all_minerals) - 1  # cumsum - 1 to get indices
+
+    indices[0, 1:] = 0, num_minerals
+
+    for k, counts in enumerate(count_endmembers):
+        indices[k + 1, 1:] = indices[k, 2], indices[k, 2] + counts
+
+    indices = indices[stack(([True], all_minerals))]
+
+    if reduced:
+        indices = np.array([[ind_of_mineral, start, stop] for ind_of_mineral, start, stop in indices if start != stop])
+
+    if return_mineral_indices:
+        return indices
+
+    return indices[:, 1:]
+
+
+def penalisation_function(y_true: tf.Tensor, y_pred: tf.Tensor, penalised_mineral: str,
+                          used_minerals: np.ndarray | None = None,
+                          used_endmembers: list[list[bool]] | None = None) -> tf.Tensor:
+    
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
 
     beta, mineral_position, setup, use_penalisation = gimme_penalisation_setup(penalised_mineral=penalised_mineral,
                                                                                used_minerals=used_minerals,
@@ -131,11 +249,39 @@ def penalisation_function(y_true: EagerTensor, y_pred: EagerTensor, penalised_mi
 
     return beta * penalisation * use_penalisation
 
+def create_class_weight(y_true: tf.Tensor, mu: float = 0.15) -> tf.Tensor:
+    # another option is to use class_weight.compute_class_weight from sklearn.utils
+    if mu <= 0.:
+        raise ValueError(f'"mu" must be a positive number but is {mu}.')
+
+    counts = K.cast(K.sum(y_true, axis=0), dtype=_wp)
+    total = K.cast(K.sum(counts), dtype=_wp)
+
+    counts = tf.where(counts > 0., counts, 1.)
+
+    weights = K.log(mu * total / counts)
+    weights = tf.where(weights >= 1., weights, 1.)
+
+    return weights
+
+def cross_entropy_base(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    # Scale predictions so that the class probabilities of each sample sum to 1
+    y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+
+    # clip to prevent NaN's and Inf's
+    y_pred = K.clip(y_pred, K.epsilon(), 1. - K.epsilon())
+
+    # calc
+    loss = -y_true * K.log(y_pred)
+
+    return loss
 
 def my_mse_loss(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-                alpha: float | None = 1.) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
+                alpha: float | None = 1.) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
+
     if alpha is None: alpha = 1.
 
     if alpha < 0.:
@@ -145,7 +291,7 @@ def my_mse_loss(used_minerals: np.ndarray | None = None, used_endmembers: list[l
 
     if num_minerals and np.sum(gimme_endmember_counts(used_endmembers)) > 0:
         @tf.function
-        def mse_loss(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
+        def mse_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
             indices = gimme_indices(used_minerals, used_endmembers, return_mineral_indices=True)
             start, stop = indices[0, 1:]
 
@@ -171,7 +317,7 @@ def my_mse_loss(used_minerals: np.ndarray | None = None, used_endmembers: list[l
 
     elif num_minerals == 0:
         @tf.function
-        def mse_loss(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
+        def mse_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
             wz = 0.0
 
             for start, stop in gimme_indices(used_minerals, used_endmembers):
@@ -191,61 +337,38 @@ def my_mse_loss(used_minerals: np.ndarray | None = None, used_endmembers: list[l
 
     else:
         @tf.function
-        def mse_loss(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
+        def mse_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
             return K.sum(K.square(y_true - y_pred))
 
     return mse_loss
 
-
-def create_class_weight(y_true: EagerTensor, mu: float = 0.15) -> EagerTensor:
-    # another option is to use class_weight.compute_class_weight from sklearn.utils
-    if mu <= 0.:
-        raise ValueError(f'"mu" must be a positive number but is {mu}.')
-
-    counts = K.cast(K.sum(y_true, axis=0), dtype=_wp)
-    total = K.cast(K.sum(counts), dtype=_wp)
-
-    counts = tf.where(counts > 0., counts, 1.)
-
-    weights = K.log(mu * total / counts)
-    weights = tf.where(weights >= 1., weights, 1.)
-
-    return weights
-
-
-def cross_entropy_base(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-    # Scale predictions so that the class probabilities of each sample sum to 1
-    y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
-
-    # clip to prevent NaN's and Inf's
-    y_pred = K.clip(y_pred, K.epsilon(), 1. - K.epsilon())
-
-    # calc
-    loss = -y_true * K.log(y_pred)
-
-    return loss
-
-
-def my_cross_entropy(use_weights: bool = True) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
+def my_focal_loss(gamma: float = 2., use_weights: bool = True) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
     @tf.function
-    def cross_entropy(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        weights = create_class_weight(y_true=y_true) if use_weights else 1.
-        return K.sum(weights * cross_entropy_base(y_true, y_pred), axis=-1)
-
-    return cross_entropy
-
-
-def my_focal_loss(gamma: float = 2., use_weights: bool = True) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    @tf.function
-    def focal_loss(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
+    def focal_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
         weights = create_class_weight(y_true=y_true) if use_weights else 1.
         return K.sum(weights * K.pow(1. - y_pred, gamma) * cross_entropy_base(y_true, y_pred), axis=-1)
 
     return focal_loss
 
+def gimme_composition_loss(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+                 alpha: float | None = 1.):
+    # None for taxonomy models
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
 
-def delete_wtrue_zero_samples(z_true_part: EagerTensor, z_pred_part: EagerTensor,
-                              w_true_part: EagerTensor) -> tuple[EagerTensor, ...]:
+    if alpha is None: alpha = 1.
+
+    loss_composition = my_mse_loss(used_minerals=used_minerals, used_endmembers=used_endmembers, alpha=alpha)
+    return loss_composition
+
+def gimme_taxonomy_loss(use_weights: bool | None = None):
+    if use_weights is None: use_weights = True
+
+    loss_taxonomy = my_focal_loss(gamma=2., use_weights=use_weights)
+    return loss_taxonomy
+
+def delete_wtrue_zero_samples(z_true_part: tf.Tensor, z_pred_part: tf.Tensor,
+                              w_true_part: tf.Tensor) -> tuple[tf.Tensor, ...]:
     # This is only needed if num_minerals > 0
 
     mask = tf.greater(w_true_part, 0.)
@@ -263,10 +386,9 @@ def delete_wtrue_zero_samples(z_true_part: EagerTensor, z_pred_part: EagerTensor
 
     return z_true_clean, z_pred_clean
 
-
-def clean_ytrue_ypred(y_true: EagerTensor, y_pred: EagerTensor,
+def clean_ytrue_ypred(y_true: tf.Tensor, y_pred: tf.Tensor,
                       used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-                      cleaning: bool = True, all_to_one: bool = False) -> tuple[EagerTensor, ...]:
+                      cleaning: bool = True, all_to_one: bool = False) -> tuple[tf.Tensor, ...]:
     # cleaning = False is important for classification models
 
     if used_minerals is None: used_minerals = minerals_used
@@ -297,155 +419,13 @@ def clean_ytrue_ypred(y_true: EagerTensor, y_pred: EagerTensor,
 
     return y_true_clean * 100., y_pred_clean * 100.
 
-
-def my_ae(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-          cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def ae(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
-        return K.abs(yt - yp)
-
-    return ae
-
-
-def my_mae(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-           cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def mae(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        abs_error = my_ae(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred)
-        return tnp.nanmean(abs_error, axis=0)
-
-    return mae
-
-
-def my_mse(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-           cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def mse(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
-        return tnp.nanmean(K.square(yt - yp), axis=0)
-
-    return mse
-
-
-def my_sse(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-           cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def sse(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
-        return tnp.nansum(K.square(yt - yp), axis=0)
-
-    return sse
-
-
-def my_rmse(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-            cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def rmse(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        return K.sqrt(my_mse(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred))
-
-    return rmse
-
-
-def my_Lp_norm(p_coef: float, used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-               cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if p_coef < 1.:
-        raise ValueError("p_coef >= 1 in Lp_norm.")
-
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def Lp_norm(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        abs_error = my_ae(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred)
-        return K.pow(tnp.nansum(K.pow(abs_error, p_coef), axis=0), 1. / p_coef)
-
-    return Lp_norm
-
-
-def my_quantile(percentile: np.ndarray | float, used_minerals: np.ndarray | None = None,
-                used_endmembers: list[list[bool]] | None = None, cleaning: bool = True,
-                all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if not np.all(np.logical_and(percentile >= 0., percentile <= 100.)):
-        raise ValueError("Percentile must be in the range [0, 100].")
-
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def quantile(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        abs_error = my_ae(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred)
-
-        return tf.numpy_function(lambda error, perc:
-                                 K.cast(np.nanpercentile(error, perc, method="median_unbiased", axis=0), dtype=_wp),
-                                 inp=[abs_error, percentile], Tout=_wp)
-
-    return quantile
-
-
-def my_r2(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-          cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def r2(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
-
-        SS_res = tnp.nansum(K.square(yt - yp), axis=0)
-        SS_tot = tnp.nansum(K.square(yt - tnp.nanmean(yt, axis=0)), axis=0)
-
-        SS_tot = K.clip(SS_tot, K.epsilon(), None)
-
-        return 1.0 - SS_res / SS_tot
-
-    return r2
-
-
-def my_sam(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-           cleaning: bool = True, all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    def sam(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
-
-        s1_s2_norm = K.sqrt(tnp.nansum(K.square(yt), axis=0)) * K.sqrt(tnp.nansum(K.square(yp), axis=0))
-        sum_s1_s2 = tnp.nansum(yt * yp, axis=0)
-
-        s1_s2_norm = K.clip(s1_s2_norm, K.epsilon(), None)
-
-        return tf.math.acos(sum_s1_s2 / s1_s2_norm)
-
-    return sam
-
-
-def my_f1_score(all_to_one: bool = False) -> Callable[[EagerTensor, EagerTensor], EagerTensor]:
-    def f1_score(y_true: EagerTensor, y_pred: EagerTensor) -> EagerTensor:
-        average = "micro" if all_to_one else None
-
-        return tf.numpy_function(lambda true, pred:
-                                 K.cast(np.reshape(f1_sklearn(K.argmax(true), K.argmax(pred),
-                                                              average=average),(-1,)), dtype=_wp),
-                                 inp=[y_true, y_pred], Tout=_wp)
-
-    return f1_score
-
-
 def my_softmax(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None
-               ) -> Callable[[EagerTensor], EagerTensor]:
+               ) -> Callable[[tf.Tensor], tf.Tensor]:
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
     @tf.function
-    def softmax_norm(x: EagerTensor) -> EagerTensor:
+    def softmax_norm(x: tf.Tensor) -> tf.Tensor:
         x_new = K.zeros_like(x[:, 0:0])
 
         for start, stop in gimme_indices(used_minerals, used_endmembers):
@@ -456,34 +436,13 @@ def my_softmax(used_minerals: np.ndarray | None = None, used_endmembers: list[li
 
     return softmax_norm
 
-
-def my_relu(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None
-            ) -> Callable[[EagerTensor], EagerTensor]:
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-
-    @tf.function
-    def relu_norm(x: EagerTensor) -> EagerTensor:
-        x_new = K.zeros_like(x[:, 0:0])
-
-        for start, stop in gimme_indices(used_minerals, used_endmembers):
-            tmp = K.clip(relu(x[..., start:stop]), K.epsilon(), None)  # avoid zero sum
-            tmp /= K.clip(K.sum(tmp, axis=-1, keepdims=True), K.epsilon(), None)  # normalisation to unit sum
-
-            x_new = K.concatenate([x_new, tmp], axis=-1)
-
-        return x_new
-
-    return relu_norm
-
-
 def my_sigmoid(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None
-               ) -> Callable[[EagerTensor], EagerTensor]:
+               ) -> Callable[[tf.Tensor], tf.Tensor]:
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
     @tf.function
-    def sigmoid_norm(x: EagerTensor) -> EagerTensor:
+    def sigmoid_norm(x: tf.Tensor) -> tf.Tensor:
         x_new = K.zeros_like(x[:, 0:0])
 
         for start, stop in gimme_indices(used_minerals, used_endmembers):
@@ -497,14 +456,32 @@ def my_sigmoid(used_minerals: np.ndarray | None = None, used_endmembers: list[li
 
     return sigmoid_norm
 
-
-def my_plu(alpha: float = 0.1, c: float = 1.0, used_minerals: np.ndarray | None = None,
-           used_endmembers: list[list[bool]] | None = None) -> Callable[[EagerTensor], EagerTensor]:
+def my_relu(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None
+            ) -> Callable[[tf.Tensor], tf.Tensor]:
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
     @tf.function
-    def plu_norm(x: EagerTensor) -> EagerTensor:
+    def relu_norm(x: tf.Tensor) -> tf.Tensor:
+        x_new = K.zeros_like(x[:, 0:0])
+
+        for start, stop in gimme_indices(used_minerals, used_endmembers):
+            tmp = K.clip(relu(x[..., start:stop]), K.epsilon(), None)  # avoid zero sum
+            tmp /= K.clip(K.sum(tmp, axis=-1, keepdims=True), K.epsilon(), None)  # normalisation to unit sum
+
+            x_new = K.concatenate([x_new, tmp], axis=-1)
+
+        return x_new
+
+    return relu_norm
+
+def my_plu(alpha: float = 0.1, c: float = 1.0, used_minerals: np.ndarray | None = None,
+           used_endmembers: list[list[bool]] | None = None) -> Callable[[tf.Tensor], tf.Tensor]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    @tf.function
+    def plu_norm(x: tf.Tensor) -> tf.Tensor:
         # https://arxiv.org/pdf/1809.09534.pdf
         # This function does not return non-negative numbers. You should not use it for composition models.
 
@@ -523,41 +500,144 @@ def my_plu(alpha: float = 0.1, c: float = 1.0, used_minerals: np.ndarray | None 
 
     return plu_norm
 
-
-def gimme_composition_loss(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
-                 alpha: float | None = 1.):
-    # None for taxonomy models
-    if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
-    if alpha is None: alpha = 1.
-
-    loss_composition = my_mse_loss(used_minerals=used_minerals, used_endmembers=used_endmembers, alpha=alpha)
-    return loss_composition
-
-
-def gimme_taxonomy_loss(use_weights: bool | None = None):
-    if use_weights is None: use_weights = True
-
-    loss_taxonomy = my_focal_loss(gamma=2., use_weights=use_weights)
-    return loss_taxonomy
-
-
-def gimme_metrics(metrics: list | tuple, used_minerals: np.ndarray | None = None,
-                  used_endmembers: list[list[bool]] | None = None,
-                  cleaning: bool = True, all_to_one: bool = True) -> list[str]:
+def my_ae(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+          cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    custom_objects = create_custom_objects(used_minerals=used_minerals, used_endmembers=used_endmembers,
-                                           cleaning=cleaning, all_to_one=all_to_one)
+    def ae(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
+        return K.abs(yt - yp)
 
-    # Metrics used in model training
-    metrics = [custom_objects[met] for met in metrics if met in custom_objects]
+    return ae
 
-    # to make the list of metrics unique (just in case...)
-    metrics = list(Counter(metrics).keys())
 
-    return metrics
+def my_mae(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+           cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def mae(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        abs_error = my_ae(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred)
+        return tnp.nanmean(abs_error, axis=0)
+
+    return mae
+
+def my_mse(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+           cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def mse(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
+        return tnp.nanmean(K.square(yt - yp), axis=0)
+
+    return mse
+
+def my_sse(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+           cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def sse(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
+        return tnp.nansum(K.square(yt - yp), axis=0)
+
+    return sse
+
+def my_rmse(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+            cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def rmse(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        return K.sqrt(my_mse(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred))
+
+    return rmse
+
+def my_Lp_norm(p_coef: float, used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+               cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    if p_coef < 1.:
+        raise ValueError("p_coef >= 1 in Lp_norm.")
+
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def Lp_norm(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        abs_error = my_ae(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred)
+        return K.pow(tnp.nansum(K.pow(abs_error, p_coef), axis=0), 1. / p_coef)
+
+    return Lp_norm
+
+
+def my_quantile(percentile: np.ndarray | float, used_minerals: np.ndarray | None = None,
+                used_endmembers: list[list[bool]] | None = None, cleaning: bool = True,
+                all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    if not np.all(np.logical_and(percentile >= 0., percentile <= 100.)):
+        raise ValueError("Percentile must be in the range [0, 100].")
+
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def quantile(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        abs_error = my_ae(used_minerals, used_endmembers, cleaning, all_to_one)(y_true, y_pred)
+
+        return tf.numpy_function(lambda error, perc:
+                                 K.cast(np.nanpercentile(error, perc, method="median_unbiased", axis=0), dtype=_wp),
+                                 inp=[abs_error, percentile], Tout=_wp)
+
+    return quantile
+
+
+def my_r2(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+          cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    if used_minerals is None: used_minerals = minerals_used
+    if used_endmembers is None: used_endmembers = endmembers_used
+
+    def r2(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
+
+        SS_res = tnp.nansum(K.square(yt - yp), axis=0)
+        SS_tot = tnp.nansum(K.square(yt - tnp.nanmean(yt, axis=0)), axis=0)
+
+        SS_tot = K.clip(SS_tot, K.epsilon(), None)
+
+        return 1.0 - SS_res / SS_tot
+
+    return r2
+
+
+def my_sam(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
+           cleaning: bool = True, all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    if used_minerals is None: used_minerals = minerals_used 
+    if used_endmembers is None: used_endmembers = endmembers_used 
+
+    def sam(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        yt, yp = clean_ytrue_ypred(y_true, y_pred, used_minerals, used_endmembers, cleaning, all_to_one)
+
+        s1_s2_norm = K.sqrt(tnp.nansum(K.square(yt), axis=0)) * K.sqrt(tnp.nansum(K.square(yp), axis=0))
+        sum_s1_s2 = tnp.nansum(yt * yp, axis=0)
+
+        s1_s2_norm = K.clip(s1_s2_norm, K.epsilon(), None)
+
+        return tf.math.acos(sum_s1_s2 / s1_s2_norm)
+
+    return sam
+
+
+def my_f1_score(all_to_one: bool = False) -> Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
+    def f1_score(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        average = "micro" if all_to_one else None
+
+        return tf.numpy_function(lambda true, pred:
+                                 K.cast(np.reshape(f1_sklearn(K.argmax(true), K.argmax(pred),
+                                                              average=average),(-1,)), dtype=_wp),
+                                 inp=[y_true, y_pred], Tout=_wp)
+
+    return f1_score
 
 
 def create_custom_objects(used_minerals: np.ndarray | None = None, used_endmembers: list[list[bool]] | None = None,
@@ -565,7 +645,7 @@ def create_custom_objects(used_minerals: np.ndarray | None = None, used_endmembe
                           p_coef: float = 1.5, percentile: float = 50.,
                           cleaning: bool = True, all_to_one: bool = True) -> dict:
     if used_minerals is None: used_minerals = minerals_used
-    if used_endmembers is None: used_endmembers = endmembers_used
+    if used_endmembers is None: used_endmembers = endmembers_used 
     if alpha is None: alpha = 1.
     if use_weights is None: use_weights = True
 

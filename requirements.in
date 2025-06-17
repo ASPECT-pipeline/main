@@ -17,3 +17,5 @@ spiceypy==6.0.0
 tensorflow==2.12.0
 tensorflow-addons==0.20.0
 tqdm==4.66.4
+statsmodels
+tabulate
