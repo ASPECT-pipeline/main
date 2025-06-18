@@ -45,7 +45,7 @@ def test_NN():
 
     print(predictions)
 
-test_NN()
+# test_NN()
 
 def test_preprocessing_and_NN():
     print('inside test_preprocessing')
@@ -92,7 +92,11 @@ def test_mgm():
 # test_mgm()
 
 
+def test_and_plot_3A():
+    s = spectra[4]
+    wl = wavelengths
+    r = test_and_plot_nir_connection(s, wl)
+    r = test_and_plot_remove_outliers(r, wl)
+    r = test_and_plot_denoise_spectra(r, wl)
 
-# test_and_plot_nir_connection(spectra[0], wavelengths)
-# test_and_plot_remove_outliers(spectra[0], wavelengths)
-# test_and_plot_denoise_spectra(spectra[0], wavelengths)
+test_and_plot_3A()

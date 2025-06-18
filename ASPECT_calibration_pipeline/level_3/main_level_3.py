@@ -3,7 +3,9 @@ import numpy as np
 from modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
 from level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers,)
 from modules.NN_evaluate import evaluate
-from test_utilities import get_reflectances
+from test_utilities import get_reflectances, plot_4_spectra
+import matplotlib
+matplotlib.use('MacOSX')
 
 import os
 
@@ -33,7 +35,7 @@ Parameters:
 
 """
 
-def level3( fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, test_with_simulated:bool = False):
+def level3( fits_file:str, instrument:int = 1, data_filtering:bool = True, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, test_with_simulated:bool = False):
 
     """
     Execute the steps 3A, 3B, 3C
@@ -97,50 +99,46 @@ def level3( fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int
     spectras = np.array(spectras)
 
     if test_with_simulated:
-        spectra = spectras[50000]
-        spectras = get_reflectances(spectra, all_wl[:-swir_num])
+        spectras = spectras[50000:50005]
+        coords = coords[50000:50005]
+        for i, s in enumerate(spectras):
+            spectras[i] = get_reflectances(s, all_wl[:-swir_num])
         spectras = np.atleast_2d(spectras)
     # new array for filttered spectras 
-    filtered_spectras = np.zeros_like(spectras)
+    # filtered_spectras = np.zeros_like(spectras)
 
-    # Filter each spectra extracted and append it to the filtered_spectras array
+    # If data_filtering = True, perform 3 pre filteting steps for each spectra: connecting nir1 and nir2 segments, remove outliers, and denoise the spectra.
+    if data_filtering:
+        for i, spectra in enumerate(spectras):
+            #3A
+            nir1_spectra = spectra[first_nir : first_nir + nir1_num]
+            nir2_spectra = spectra[first_nir + nir1_num : first_nir + nir1_num + nir2_num]
+            nir2_offset_correction_result = nir2_offset_correction(
+                nir1_wavelengths=nir1_wl,
+                nir1_spectra=nir1_spectra,
+                nir2_wavelengths=nir2_wl,
+                nir2_spectra=nir2_spectra,
+                overlap_wavelength=nir_overlap
+            )
 
-    for i, spectra in enumerate(spectras):
-        # #3A
-        nir1_spectra = spectra[first_nir : first_nir + nir1_num]
-        nir2_spectra = spectra[first_nir + nir1_num : first_nir + nir1_num + nir2_num]
-        if i == 0:
-            print(f'nir1: {len(nir1_spectra)}')
-            print(f'nir2: {len(nir2_spectra)}')
-        nir2_offset_correction_result = nir2_offset_correction(
-            nir1_wavelengths=nir1_wl,
-            nir1_spectra=nir1_spectra,
-            nir2_wavelengths=nir2_wl,
-            nir2_spectra=nir2_spectra,
-            overlap_wavelength=nir_overlap
-        )
+            connected = np.concatenate(
+                [spectra[:first_nir + nir1_num], nir2_offset_correction_result[0]] +
+                ([spectra[first_nir + nir1_num + nir2_num:]] if spectra[first_nir + nir1_num + nir2_num:].size > 0 else [])
+            )
 
-        connected = np.concatenate(
-            [spectra[:first_nir + nir1_num], nir2_offset_correction_result[0]] +
-            ([spectra[first_nir + nir1_num + nir2_num:]] if spectra[first_nir + nir1_num + nir2_num:].size > 0 else [])
-        )
-        if i == 0:
-            print(f'connected: {len(connected)}')
-        # remove outliers
-        print(f'instrument wl: {instrument_wl}')
-        cleaned = remove_outliers(connected, instrument_wl, z_thresh=z_thresh)[0]
+            # remove outliers
+            cleaned = remove_outliers(connected, instrument_wl, z_thresh=z_thresh)[0]
 
-        # denoise spectra 
-        denoised = denoise_spectra(cleaned, instrument_wl).flatten()
+            # denoise spectra 
+            denoised = denoise_spectra(cleaned, instrument_wl).flatten()
 
-        filtered_spectras[i] = denoised
-        if i == 0:
-            print(f' orginal: {spectra}')
-            print(f'denoised: {denoised}')
+            # filtered_spectras[i] = denoised
+            plot_4_spectra(spectra, connected, cleaned, denoised, instrument_wl, ['original', 'connected', 'outliers', 'denoised', 'level 3A'])
+            spectras[i] = denoised
 
     
     spectra_normalized = normalise_spectra(
-        data=filtered_spectras,
+        data=spectras,
         wavelength=instrument_wl,
         wvl_norm_nm=norm_wl
     )
@@ -160,6 +158,6 @@ def level3( fits_file:str, instrument:int = 1, models:str = 'C', nir_overlap:int
         taxonomy = evaluate(model_names, spectra_normalized)
 
 
-# level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'))
+level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'), test_with_simulated=True)
 
 # python3 ASPECT_calibration_pipeline/level_3/main_level_3.py

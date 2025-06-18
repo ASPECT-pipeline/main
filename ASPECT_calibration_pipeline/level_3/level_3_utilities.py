@@ -89,7 +89,6 @@ def nir2_offset_correction(
 		nir2_spectra: np.ndarray,
 		overlap_wavelength: int = 1225,
 	):
-
     """
     Corrects NIR2 spectra by aligning the overlap region with NIR1 spectra using linear regression.
 

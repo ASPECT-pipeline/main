@@ -40,7 +40,6 @@ def get_reflectances(spectra, wavelengths):
 
     reflectances = np.zeros(len(spectra), dtype=float)
     for i, s in enumerate(spectra):
-
         v = s / all_coef[wavelengths[i]]
         if i < 10:
             v = v / 0.02
@@ -158,7 +157,7 @@ def test_and_plot_nir_connection(spectra, wavelengths):
     plt.plot(wavelengths, modified, 'bo-', label="nir connected")
     plt.xlabel("Wavelength (nm)")
     plt.ylabel("Reflectance")
-    plt.title("Spectra before and after nir1-mi2 connection")
+    plt.title("Spectra before and after nir1-nir2 connection")
     plt.legend()
     plt.show()
     return modified
@@ -184,5 +183,22 @@ def test_and_plot_denoise_spectra(spectra, wavelengths):
     plt.xlabel("Wavelength (nm)")
     plt.ylabel("Reflectance")
     plt.title("Spectra before and after denoising")
+    plt.legend()
+    plt.show()
+    return result
+
+def plot_4_spectra(one, two, three, four, wl, names):
+    """
+    plot four spectras in one plot, one, two, three, four are the different spectras, wl is y-axis and names is a list of labels
+    first 4 are the spectra labels corresbondingly and the fifth is the title for the whole plot
+    """
+    plt.figure(figsize=(10, 5))
+    plt.plot(wl, one, 'ko-', label=names[0])
+    plt.plot(wl, two, 'ro-', label=names[1])
+    plt.plot(wl, three, 'mo-', label=names[2])
+    plt.plot(wl, four, 'bo-', label=names[3])
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Reflectance")
+    plt.title(names[4])
     plt.legend()
     plt.show()
