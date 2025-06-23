@@ -1,5 +1,6 @@
 import spiceypy as spice
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 # Work in progress
 
@@ -294,46 +295,44 @@ def query_spacecraft_solar_distance(
 
 # print(query_spacecraft_solar_distance(metakernel_path))
 
-def query_spacecraft_quaternions(
+def query_spacecraft_quaternions(# Does not work, use query_attitude() instead
 		metakernel_path: str,
 		utc_time: str = test_time,
-		inertial_frame: str = "DIMORPHOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
-		spacecraft_frame: str = 'MILANI_SPACECRAFT'
+		inertial_frame: str = "DIDYMOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		spacecraft_frame: str = 'MILANI_ASPECT_VIS'
 	):
-    """
-    Query the quaternion representing the orientation of the spacecraft.
-    
-    This function computes the rotation matrix
-    from the given inertial frame to the spacecraft's body-fixed frame at the 
-    specified UTC time, converts it to a quaternion, and returns the quaternion 
-    in the order (W, X, Y, Z).
+	"""
+	This function computes the rotation matrix
+	from the given inertial frame to the spacecraft's frame at the 
+	specified UTC time, converts it to a quaternion, and returns the quaternion 
+	in the order (W, X, Y, Z).
 
-    Parameters:
-      metakernel_path (str): Path to the SPICE metakernel file.
-      utc_time (str): The UTC time for which the quaternion is queried.
-      inertial_frame (str): The inertial reference frame (default is 'J2000').
-      spacecraft_frame (str): The spacecraft's body-fixed frame (default is 'HERA_FIXED').
+	Parameters:
+		metakernel_path (str): Path to the SPICE metakernel file.
+		utc_time (str): The UTC time for which the quaternion is queried.
+		inertial_frame (str): The inertial reference frame.
+		spacecraft_frame (str): The spacecraft's frame.
 
-    Returns:
-      tuple: A tuple (W, X, Y, Z) representing the spacecraft quaternion.
-    """
-    # Load the SPICE kernels
-    spice.furnsh(metakernel_path)
-    
-    # Convert UTC time to ephemeris time (ET)
-    et = spice.str2et(utc_time)
-    
-    # Get the rotation matrix from the inertial frame to the spacecraft frame.
-    # This matrix represents the spacecraft's orientation at time et.
-    rot_matrix = spice.pxform(inertial_frame, spacecraft_frame, et)
-    
-    # Convert the rotation matrix to a quaternion (W, X, Y, Z).
-    quat = spice.m2q(rot_matrix)
-    
-    # Clear kernels to free resources.
-    spice.kclear()
-    
-    return quat
+	Returns:
+		tuple: A tuple (W, X, Y, Z) representing the spacecraft quaternion.
+	"""
+	raise NotImplementedError()
+	# Load the SPICE kernels
+	spice.furnsh(metakernel_path)
+
+	# Convert UTC time to ephemeris time (ET)
+	et = spice.str2et(utc_time)
+
+	# Get the rotation matrix from the inertial frame to the spacecraft frame.
+	# This matrix represents the spacecraft's orientation at time et.
+	rot_matrix = spice.pxform(inertial_frame, spacecraft_frame, et)
+
+	# Convert the rotation matrix to a quaternion (W, X, Y, Z).
+	quat = spice.m2q(rot_matrix)
+
+	spice.kclear()
+
+	return quat
 
 # print(query_spacecraft_quaternions(metakernel_path, utc_time='2027-02-03T05:40:46.6666', spacecraft_frame='DIMORPHOS_FIXED'))
 
@@ -673,6 +672,91 @@ def vector_to_unit_vector(vector):
 	magnitude = compute_distance(vector)
 	return [component / magnitude for component in vector]
 
+def query_rotation_matrix(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame1: str = "DIDYMOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		frame2: str = 'MILANI_ASPECT_VIS'
+	):
+    # Load the SPICE kernels
+    spice.furnsh(metakernel_path)
+    
+    # Convert UTC time to ephemeris time (ET)
+    et = spice.str2et(utc_time)
+    
+    # Get the rotation matrix from the inertial frame to the spacecraft frame.
+    # This matrix represents the spacecraft's orientation at time et.
+    rot_matrix = spice.pxform(frame1, frame2, et)
+    
+    spice.kclear()
+    
+    return rot_matrix
+
+def query_aspect_fov_attitude(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame1: str = "DIDYMOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		frame2: str = 'MILANI_ASPECT_VIS'
+	):
+	rot_matrix = query_rotation_matrix(
+		metakernel_path,
+		utc_time,
+		frame1,
+		frame2
+	)
+
+	# X = (1, 0, 0)
+	up = (0, -1, 0)
+	fov_direction = (0, 0, 1)
+	
+	# rotated_X = np.dot(X, rot_matrix)
+	rotated_up = np.dot(up, rot_matrix)
+	rotated_fov_dir = np.dot(fov_direction, rot_matrix)
+
+	# aspect_location = (4.056678189008996, -2.7291301476483527, 0.03763410926142663)
+	# aspect_pointing_unit_vector = rotated_cam_dir + aspect_location
+	# aspect_up_vector = rotated_cam_up + aspect_location
+	# print(aspect_pointing_unit_vector)
+	# print(aspect_up_vector)
+
+	return rotated_fov_dir, rotated_up
+
+def query_attitude(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame1: str = "DIDYMOS_FIXED",  # DIDYMOS_FIXED or DIMORPHOS_FIXED, or J2000 for inertial
+		frame2: str = 'MILANI_ASPECT_VIS'
+	):
+	rot_matrix = query_rotation_matrix(
+		metakernel_path,
+		utc_time,
+		frame1,
+		frame2
+	)
+
+	X = (1, 0, 0)
+	Y = (0, 1, 0)
+	Z = (0, 0, 1)
+	
+	rotated_X = np.dot(X, rot_matrix)
+	rotated_Y = np.dot(Y, rot_matrix)
+	rotated_Z = np.dot(Z, rot_matrix)
+
+	# aspect_location = (4.056678189008996, -2.7291301476483527, 0.03763410926142663)
+	# aspect_pointing_unit_vector = rotated_cam_dir + aspect_location
+	# aspect_up_vector = rotated_cam_up + aspect_location
+	# print(aspect_pointing_unit_vector)
+	# print(aspect_up_vector)
+
+	rotation_matrix = np.column_stack((rotated_X, rotated_Y, rotated_Z))
+	# print(rotation_matrix)
+	r = R.from_matrix(rotation_matrix)
+	# print(r)
+	quaternion = r.as_quat()#scalar_first=True)
+	# print('manual quaternion (W last)', quaternion)
+
+	return rotated_X, rotated_Y, rotated_Z, quaternion
+
 def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test_time, target: str = "Dimorphos"):
 	"""
 	Provides information for the asteroid image simulator.
@@ -687,72 +771,73 @@ def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test
 	sun direction, camera direction, camera boresight, Didymos attitude, Dimorphos attitude.
 	"""
 	if target == "Dimorphos":
-		sibling_asteroid_location = query_spacecraft_position_vectors(
-			metakernel_path,
-			target='Didymos',
-			utc_time=utc_time,
-			frame='DIMORPHOS_FIXED',
-			observer='Dimorphos'
-		)
-		sun_location = query_sun_position_vectors(
-			metakernel_path,
-			utc_time=utc_time,
-			frame='DIMORPHOS_FIXED',
-			observer='Dimorphos'
-		)
-		sun_unit_vector = vector_to_unit_vector(sun_location)
-		camera_location = query_spacecraft_position_vectors(
-			metakernel_path,
-			target='Milani',
-			utc_time=utc_time,
-			frame='DIMORPHOS_FIXED',
-			observer='Dimorphos'
-		)
-		didymos_attitude = query_spacecraft_quaternions(
-			metakernel_path,
-			utc_time=utc_time,
-			inertial_frame='DIMORPHOS_FIXED',
-			spacecraft_frame='DIDYMOS_FIXED'
-		)
-		dimorphos_attitude = query_spacecraft_quaternions(
-			metakernel_path,
-			utc_time=utc_time,
-			inertial_frame='DIMORPHOS_FIXED',
-			spacecraft_frame='DIMORPHOS_FIXED'
-		)
-		aspect_attitude = query_spacecraft_quaternions(
-			metakernel_path,
-			utc_time=utc_time,
-			inertial_frame='DIMORPHOS_FIXED',
-			spacecraft_frame='MILANI_ASPECT_NIR1'
-		)
-		solar_phase_angle = query_solar_phase_angle(
-			metakernel_path,
-			utc_time=utc_time,
-			target='Dimorphos',
-			observer='Milani'
-		)
-		target_distance = query_target_distance_in_km(
-			metakernel_path,
-			target='Dimorphos',
-			utc_time=utc_time,
-			frame='DIMORPHOS_FIXED',
-			observer='Milani'
-		)
-		result = {
-			'utc time': utc_time,
-			'target': target,
-			'didymos location': tuple(sibling_asteroid_location),
-			'sun location': tuple(sun_location),
-			'sun unit vector': tuple(sun_unit_vector),
-			'aspect location': tuple(camera_location),
-			'aspect boresight': target,
-			'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
-			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude),
-			'aspect attitude (quaternion: W, X, Y, Z)': tuple(aspect_attitude),
-			'solar phase angle (degrees)': solar_phase_angle,
-			'target distance (km)': target_distance
-		}
+		raise NotImplementedError()
+		# sibling_asteroid_location = query_spacecraft_position_vectors(
+		# 	metakernel_path,
+		# 	target='Didymos',
+		# 	utc_time=utc_time,
+		# 	frame='DIMORPHOS_FIXED',
+		# 	observer='Dimorphos'
+		# )
+		# sun_location = query_sun_position_vectors(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	frame='DIMORPHOS_FIXED',
+		# 	observer='Dimorphos'
+		# )
+		# sun_unit_vector = vector_to_unit_vector(sun_location)
+		# camera_location = query_spacecraft_position_vectors(
+		# 	metakernel_path,
+		# 	target='Milani',
+		# 	utc_time=utc_time,
+		# 	frame='DIMORPHOS_FIXED',
+		# 	observer='Dimorphos'
+		# )
+		# didymos_attitude = query_spacecraft_quaternions(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	inertial_frame='DIMORPHOS_FIXED',
+		# 	spacecraft_frame='DIDYMOS_FIXED'
+		# )
+		# dimorphos_attitude = query_spacecraft_quaternions(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	inertial_frame='DIMORPHOS_FIXED',
+		# 	spacecraft_frame='DIMORPHOS_FIXED'
+		# )
+		# aspect_attitude = query_spacecraft_quaternions(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	inertial_frame='DIMORPHOS_FIXED',
+		# 	spacecraft_frame='MILANI_ASPECT_NIR1'
+		# )
+		# solar_phase_angle = query_solar_phase_angle(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	target='Dimorphos',
+		# 	observer='Milani'
+		# )
+		# target_distance = query_target_distance_in_km(
+		# 	metakernel_path,
+		# 	target='Dimorphos',
+		# 	utc_time=utc_time,
+		# 	frame='DIMORPHOS_FIXED',
+		# 	observer='Milani'
+		# )
+		# result = {
+		# 	'utc time': utc_time,
+		# 	'target': target,
+		# 	'didymos location': tuple(sibling_asteroid_location),
+		# 	'sun location': tuple(sun_location),
+		# 	'sun unit vector': tuple(sun_unit_vector),
+		# 	'aspect location': tuple(camera_location),
+		# 	'aspect boresight': target,
+		# 	'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
+		# 	'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude),
+		# 	'aspect attitude (quaternion: W, X, Y, Z)': tuple(aspect_attitude),
+		# 	'solar phase angle (degrees)': solar_phase_angle,
+		# 	'target distance (km)': target_distance
+		# }
 	elif target == "Didymos":
 		sibling_asteroid_location = query_spacecraft_position_vectors(
 			metakernel_path,
@@ -775,23 +860,35 @@ def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test
 			frame='DIDYMOS_FIXED',
 			observer='Didymos'
 		)
-		didymos_attitude = query_spacecraft_quaternions(
+		# dimorphos_attitude = query_spacecraft_quaternions(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	inertial_frame='DIDYMOS_FIXED',
+		# 	spacecraft_frame='DIMORPHOS_FIXED'
+		# )
+		dimorphos_X, dimorphos_Y, dimorphos_Z, dimorphos_quaternion = query_attitude(
 			metakernel_path,
 			utc_time=utc_time,
-			inertial_frame='DIDYMOS_FIXED',
-			spacecraft_frame='DIDYMOS_FIXED'
+			frame1='DIDYMOS_FIXED',
+			frame2='DIMORPHOS_FIXED'
 		)
-		dimorphos_attitude = query_spacecraft_quaternions(
+		# aspect_attitude = query_spacecraft_quaternions(
+		# 	metakernel_path,
+		# 	utc_time=utc_time,
+		# 	inertial_frame='DIDYMOS_FIXED',
+		# 	spacecraft_frame='MILANI_ASPECT_NIR1'
+		# )
+		aspect_fov_direction, aspect_fov_up = query_aspect_fov_attitude(
 			metakernel_path,
 			utc_time=utc_time,
-			inertial_frame='DIDYMOS_FIXED',
-			spacecraft_frame='DIMORPHOS_FIXED'
+			frame1='DIDYMOS_FIXED',
+			frame2='MILANI_ASPECT_VIS'
 		)
-		aspect_attitude = query_spacecraft_quaternions(
+		aspect_frame_X, aspect_frame_Y, aspect_frame_Z, aspect_quaternion = query_attitude(
 			metakernel_path,
 			utc_time=utc_time,
-			inertial_frame='DIDYMOS_FIXED',
-			spacecraft_frame='MILANI_ASPECT_NIR1'
+			frame1='DIDYMOS_FIXED',
+			frame2='MILANI_ASPECT_VIS'
 		)
 		solar_phase_angle = query_solar_phase_angle(
 			metakernel_path,
@@ -808,22 +905,37 @@ def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test
 		)
 		result = {
 			'utc time': utc_time,
-			'target': target,
-			'dimorphos location': tuple(sibling_asteroid_location),
-			'sun location': tuple(sun_location),
-			'sun unit vector': tuple(sun_unit_vector),
+			'origo': target,
+			'didymos attitude': 'neutral/initial object configuration',
 			'aspect location': tuple(camera_location),
-			'aspect boresight': target,
-			'didymos attitude (quaternion: W, X, Y, Z)': tuple(didymos_attitude),
-			'dimorphos attitude (quaternion: W, X, Y, Z)': tuple(dimorphos_attitude),
-			'aspect attitude (quaternion: W, X, Y, Z)': tuple(aspect_attitude),
+			'aspect FoV unit vector': tuple(aspect_fov_direction),
+			'aspect FoV up unit vector': tuple(aspect_fov_up),
+			'aspect frame X unit vector': tuple(aspect_frame_X),
+			'aspect frame Y unit vector': tuple(aspect_frame_Y),
+			'aspect frame Z unit vector': tuple(aspect_frame_Z),
+			'aspect frame quaternion (X, Y, Z, W)': tuple(aspect_quaternion),
+			'dimorphos location': tuple(sibling_asteroid_location),
+			'dimorphos frame X unit vector': tuple(dimorphos_X),
+			'dimorphos frame Y unit vector': tuple(dimorphos_Y),
+			'dimorphos frame Z unit vector': tuple(dimorphos_Z),
+			'dimorphos quaternion (X, Y, Z, W)': tuple(dimorphos_quaternion),
+			'sun location': tuple(sun_location),
+			'sun location unit vector': tuple(sun_unit_vector),
 			'solar phase angle (degrees)': solar_phase_angle,
-			'target distance (km)': target_distance
+			f'{target} distance (km)': target_distance
 		}
 	return result
 
-# timestamp = '2027-03-24T00:00:00.0000'
+
+# timestamp = '2027-03-23T06:00:00.0000'
 
 # info = info_for_asteroid_image_simulator(metakernel_path, utc_time=timestamp, target='Didymos')
 # for key, value in info.items():
 # 	print(f"{key}: {value}")
+
+
+# Alfredo's proof that ASPECT always points at Didymos
+# spice.furnsh(metakernel_path)
+# et = spice.utc2et('2027-03-23T06:00:00.0000')
+# r = spice.spkpos('DIDYMOS', et, 'MILANI_ASPECT_NIR1', 'NONE', 'MILANI_ASPECT_NIR1')[0]
+# print(r)
