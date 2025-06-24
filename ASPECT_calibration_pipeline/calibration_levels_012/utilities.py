@@ -1,22 +1,136 @@
 import cv2
 import numpy as np
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
-from typing import Literal, Iterable, Callable
-from numpy.lib.stride_tricks import sliding_window_view
-from scipy.interpolate import LinearNDInterpolator, interp1d
-import inspect
-from scipy.ndimage import gaussian_filter1d
-from scipy.integrate import trapezoid
-from scipy.stats import norm
-import warnings
 import json
 from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU
+from datetime import datetime
+from pathlib import Path
+import os
+import re
 
-# numerical eps
-_num_eps = 1e-5
 
-# Preprocess the data files
+def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
+    path = Path(path)
+    if not path.exists():
+        return False, f"File not found: {path}"
+    if not path.is_file():
+        return False, f"Path is not a file: {path}"
+    if path.suffix.lower() != '.fits':
+        return False, f"File does not have a .fits extension: {path}"
+    
+    return True, None
+
+def is_valid_json_file(path:str) -> Tuple[bool, Optional[str]]:
+    path = Path(path)
+    if not path.exists():
+        return False, f"File not found: {path}"
+    if not path.is_file():
+        return False, f"Path is not a file: {path}"
+    if path.suffix.lower() != '.json':
+        return False, f"File does not have a .json extension: {path}"
+    
+    return True, None
+
+def is_valid_meta_folder(path:str) -> Tuple[bool, Optional[str]]:
+    required_files = {"calib.json", "config.json", "telemetry.json"}
+    folder = Path(path)
+
+    if not folder.exists():
+        return False, f"Folder not found: {folder}"
+    if not folder.is_dir(): 
+        return False, f"Path is not a directory: {folder}"
+    
+    missing = [f for f in required_files if not (folder / f).is_file()]
+    if missing:
+        return False, f"Missing required files: {', '.join(missing)}"
+
+    return True, None
+
+def get_acq_folder(acq_path: str) -> Optional[str]:
+    for name in os.listdir(acq_path):
+        if os.path.isdir(os.path.join(acq_path, name)) and re.fullmatch(r'acq_\d{3}', name):
+            return os.path.join(acq_path, name)
+    return None  # If no matching folder is found
+
+def get_acqSeq(acq_folder: str) -> Dict[str, str]:
+    acqSeq = os.path.join(acq_folder, 'meta_acq/acqSeq.json')
+    boolean, error_message = is_valid_json_file(acqSeq)
+    if not boolean:
+        print(error_message)
+        return None
+
+    with open(acqSeq, 'r') as file:
+        data = json.load(file)
+    return data
+    
+def get_static_metadata() -> Dict[str, (str, str)]:
+    static_metadata = {
+        'INSTRUME' : ('ASPECT', 'Camera ID'),
+        'ORIGIN'   : ('ESA-HERA', ''),
+        'FILENAME' : ('', 'Name of hte actual FITS file'),
+        'SWCREATE' : ('', 'Software identification. "HERACAL v1.0" '),
+        'ORIGFILE' : ('', 'Original file name.'),
+        'PROCLEVL' : ('0', 'Calibration level'),
+        'MISSPHAS' : ('', 'HERA Mission Phase ID'),
+        'OBSERVPH' : ('', 'HERA Observation ID'),
+        'OBSTARGT' : ('', 'Observation target'),
+        # Instrument data
+        'DATE-OB'   : ('', 'UTC time of observation'),
+        'OBJECT'    : ('', 'Observed Object'),
+        'EXPOSURE'  : ('', 'Exposure time [s]'), 
+        'CCDTEMP'   : ('', 'Detector temperature'),
+        'AMBTEMP'   : ('', 'Ambient temperature'),
+        'SC_CLK'    : ('', 'SC clock Hera instrument format'),
+        'ERRORFLG'  : ('', 'Error flags for instrument'),
+        # Instrument specific data
+        'HIERARCH HSH_FILENAME'     : ('', 'Internal filename'),
+        'HIERARCH WINDOWED_IMAGE'   : ('', 'Full frame / windowed image'),
+        'OFFSET_X'                  : ('', 'Image offset'),
+        'OFFSET_Y'                  : ('', 'Image offset'),
+        'HIERARCH SENSOR_ADC_OFFSET': ('', ''),
+        'HIERARCH SENSOR_PIXEL_CLK_FREQ' : ('', ''),
+        'HIERACRH SENSOR_TEMPERATURE_DEGC' : ('', ''),
+        'HIERACRH TEMP_FPA'         : ('', 'FPA temperature [K]'),
+        'HIERACRH TEMP_BEE'         : ('', 'BEE tenperature [K]'),
+        'HIERARCH TEMP_HSP'         : ('', 'HSP temperature [K]'),
+        'HIERARCH TEMP_ICU1'        : ('', 'ICU1 temperature [K]'),
+        # SPICE data
+        'SPICE_MK'      : ('', 'SPICE meta kernel version'),
+        'SPICECLK'      : ('', 'SC clock SPICE format'),
+        'SUN_POSX'      : ('', 'Sun position vector X [km]'),
+        'SUN_POSY'      : ('', 'Sun position vector Y [km]'),
+        'SUN_POSZ'      : ('', 'Sun position vector Z [km]'),
+        'SOLAR_D'       : ('', 'Solar distance [AU]'),
+        'EARTPOSX'      : ('', 'Earth position vector X [km]'),
+        'EARTPOSY'      : ('', 'Earth position vector Y [km]'),
+        'EARTPOSZ'      : ('', 'Earth position vector Z [km]'),
+        'EARTH_D'       : ('', 'Earth distance [AU]'),
+        'TARGET'        : ('', 'Observation target (SPICE)'),
+        'TRG_POSX'      : ('', 'Target position vector X [km]'),
+        'TRG_POSY'      : ('', 'Target position vector Y [km]'),
+        'TRG_POSZ'      : ('', 'Target position vector Z [km]'),
+        'TRG_DIST'      : ('', 'Target distance [AU]'),
+        'SC_QUAT0'      : ('', 'Spacecraft quaterion 0'),
+        'SC_QUAT1'      : ('', 'Spacecraft quaterion 1'),
+        'SC_QUAT2'      : ('', 'Spacecraft quaterion 2'),
+        'SC_QUAT3'      : ('', 'Spacecraft quaterion 3'),
+        'CAM_RA'        : ('', 'Camera axis RA [deg]'),
+        'CAM_DEG'       : ('', 'Camera axis DEC [deg]'),
+        'CAM_NAZ'       : ('', 'Camera axis north azimuth [deg]'),
+        'SOL_ELNG'      : ('', 'Solar elongation [deg]'),
+        # Calibration specific data
+        'CALPHASE'      : ('', 'Calibration phase'),
+        'SPHCUR1'       : ('', 'Integrating sphere current 1'),
+        'SPHCUR2'       : ('', 'Integrating sphere current 2'),
+        'BBLCUR'        : ('', 'Broad-band source current'),
+        'BBLDIST'       : ('', 'Broad-band source distance'),
+        'MONDIST'       : ('', 'Monochromator band'),
+        'MONOWL'        : ('', 'Monochromator wavelength band'),
+        'MONOBAND'      : ('', 'Monochromator band'),
+        'MONOFLT'       : ('', 'Monochromator filter')
+
+    }
 
 # Based on SP1 and channel determine the order.
 # The sp value should be taken from the index 3
@@ -36,22 +150,15 @@ def check_order(sp: float, channel: str) -> str:
         case 'SWIR':
             return ''
 
-#Extract the cahnnel from calib.json file
-def read_channel(calibPath: str) -> str:
-    with open(calibPath, 'r') as file:
-        data = json.load(file)
-        if data == None: # As the example SWIR files do not have config data
-            return 'SWIR'
-        firstKey = list(data.keys())[0]  # Access the first top-level key
-        secondKey = list(data[firstKey].keys())[0]  # Access the first sub-key
+# Read metadata from config file
+def read_config(configPath: str, channel:str) -> Dict[str, Any]:
+    boolean, error_message = is_valid_json_file(configPath)
+    if not boolean:
+        print(error_message)
+        return None
+    
+    meta_data = {}
 
-        # Access the key indicating channel
-        channel = list(data[firstKey][secondKey].keys())[0]
-
-    return(channel)
-
-#read the meta data from config file
-def read_config(configPath: str, channel:str) -> Tuple[str, List[str], List[str], List[str], List[str]]:
     with open(configPath, 'r') as file:
         data = json.load(file)
 
@@ -66,6 +173,7 @@ def read_config(configPath: str, channel:str) -> Tuple[str, List[str], List[str]
             case 'SWIR':
                 taskFile = data['swirTaskFile']
         
+
         #Extract sp values from taskValues
         taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
         sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
@@ -77,7 +185,99 @@ def read_config(configPath: str, channel:str) -> Tuple[str, List[str], List[str]
         #Check the order based on SP1 index 3
         order = check_order(sp1Values[3], channel)
 
-    return(order, exposureTimes, sp1Values, sp2Values, sp3Values)
+        meta_data['ORDER'] = order
+        meta_data['EXPOSURE'] = exposureTimes
+        meta_data['SP1'] = sp1Values
+        meta_data['SP2'] = sp2Values
+        meta_data['SP3'] = sp3Values
+
+    return meta_data
+
+# Read metadata from telementry
+def read_telemetry(telemetry_path: str, channel: str) -> Dict[str, Any]:
+
+    boolean, error_message = is_valid_json_file(telemetry_path)
+    if not boolean:
+        print(error_message)
+        return None
+    
+    meta_data = {} 
+    with open(telemetry_path, 'r') as file:
+        data = json.load(file)
+
+
+        Acq_date = data['ACQ_DATE']
+        dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
+        meta_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+
+    return meta_data
+
+
+
+
+
+def get_channel_frames_names(acq_folder:str) -> List[Tuple[str, int]]:
+
+    channel_map = {
+        0: 'VIS',
+        1: 'NIR1',
+        2: 'NIR2',
+        3: 'SWIR'
+    }
+
+    channel_info: Dict[str, Tuple[int, str]] = {}
+    pattern = re.compile(r'^dc_(\d)_')
+    frame_pattern = re.compile(r'(exp_)\d{3}')
+
+    # Add channel names, frame counts and an original filename to a dictionary
+    for filename in os.listdir(acq_folder):
+        match  = pattern.match(filename)
+        if match:
+            index = int(match.group(1))
+            if index in channel_map:
+                channel_name = channel_map[index]
+                if channel_name in channel_info:
+                    count, orig_name = channel_info[channel_name]
+                    channel_info[channel_name] = (count + 1, orig_name)
+                else: 
+                    channel_info[channel_name] = (1, filename)
+
+    # Replace frame number with 'XXX' if more than one frame
+    for channel in channel_info:
+        count, orig_name = channel_info[channel]
+        if count > 1:
+            modified = frame_pattern.sub(r'\1XXX', orig_name)
+            channel_info[channel] = (count, modified)
+
+    return channel_info
+ 
+def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
+    acq_folder = get_acq_folder(acq_path)
+
+    if acq_folder == None:
+        print(f'no acq_XXX folder found inside: {acq_path}')
+    
+    meta_data = {}
+
+    meta_data['chanel_info'] = get_channel_frames_names(acq_folder)
+    meta_data.update(get_acqSeq(acq_folder)) 
+
+    return meta_data
+
+def collect_metadata(meta_folder:str , channel:str ) -> Dict[str, Any]:
+    boolean, error_message = is_valid_meta_folder(meta_folder)
+    if not boolean:
+        print(error_message)
+        return None
+    
+    meta_data = {}
+
+    config_path = os.path.join(meta_folder, 'config.json')
+    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
+    calib_path = os.path.join(meta_folder, 'calib.json')
+
+    config = read_config(config_path, channel)
+    meta_data.update(get_acqSeq(config)) 
 
 def combine_headers(vis: Header, nir1: Header, nir2: Header, swir: Header) -> Dict[str, Any]:
     header_dict = {}

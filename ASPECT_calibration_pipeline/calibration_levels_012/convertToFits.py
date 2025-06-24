@@ -23,20 +23,36 @@ dirPath/
     ├── calibration.json   
     ├── config.json         
     ├── hist_0.bin          
-    ├── iqsOutput.json      
+    ├── iqsOutput.json    
     └── telemetry.json     
 
 
 """
 
-def convert_to_fits(dirPath: str, output:str) -> str:
+def convert_to_fits(dir_path: str, output:str) -> str:
     """
     Parmeters:
         dirPath: Path to a folder containing data of an acquisition from a single sensor.
         output: Path to the folder where the fits files will be stored.
     """
+    meta_folder = os.path.join(dir_path, 'meta')
 
-    acquisitionPath = os.path.join(dirPath, "acq_000/") # path to acquisitions
+    channel_acq = utilities.collect_channel_acq_info(dir_path)
+
+    channel_info = channel_acq['channel_info']
+    ACQ_ID = channel_acq['ACQ_ID']
+    ACQ_SEQ_ID = channel_acq['ACQ_SEQ_ID']
+
+    channel_names = list(channel_info.keys())
+
+    # for channel in channel_names:
+
+
+    
+
+
+
+
     configPath = os.path.join(dirPath, "meta/config.json") # path to config file
     calibPath = os.path.join(dirPath, "meta/calib.json") # path to calib file
 

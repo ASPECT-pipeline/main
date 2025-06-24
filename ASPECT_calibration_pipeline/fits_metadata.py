@@ -18,7 +18,8 @@ functions to retrieve metadata and creates an updated fits.
 
 telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/telemetry.json"
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json" # Not used at the moment
-spice_metakernel_path = "/home/sysa/HERA/SPICE/hera_v180/hera/kernels/mk/hera_plan.tm" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+#spice_metakernel_path = "/home/sysa/HERA/SPICE/hera_v180/hera/kernels/mk/hera_plan.tm" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
+spice_metakernel_path = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_plan.tm" 
 fits_path = "/home/sysa/HERA/github/main/test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits"
 output_path = "test_data/test_outputs/simulated_full_datacube.fits"
 
@@ -771,6 +772,7 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
         target=image_target,
         utc_time=date_obs["DATE-OBS"][0]
     )
+    print(f'solar_elongation: {solar_elongation}')
     phase_angle = get_phase_angle(solar_elongation)
     target_position = get_target_position_vectors(
         spice_metakernel_path,
@@ -809,7 +811,6 @@ def retrieve_dynamic_metadata(telemetry_path: str, config_path: str, spice_metak
         frame=target_position_frame,
         observer='Milani'
     )
-    
     dynamic_metadata.update(date_obs)
     dynamic_metadata.update(spacecraft_clock_start)
     dynamic_metadata.update(original_file_name)
@@ -857,3 +858,76 @@ if test_main:
 
 if test_dynamic_metadata_retrieval:
     retrieve_dynamic_metadata(telemetry_path, config_path, spice_metakernel_path, test=True)
+
+
+
+
+"""
+Function to modify the mk/hera_plan.tm PATH_VALUES to point into the correct directory
+
+"""
+from pathlib import Path
+
+def print_metakernel_with_line_numbers(metakernel_path: str):
+    """
+    Prints the contents of a .tm meta-kernel file with line numbers for easy inspection.
+    """
+    metakernel_path = Path(metakernel_path).expanduser().resolve()
+
+    if not metakernel_path.exists():
+        print(f"❌ File not found: {metakernel_path}")
+        return
+
+    print(f"\n📄 Meta-kernel: {metakernel_path}\n{'-' * 80}")
+
+    with open(metakernel_path, 'r') as file:
+        for idx, line in enumerate(file, start=1):
+            print(f"{idx:4}: {line.rstrip()}")
+
+    print('-' * 80 + "\n✅ Done.\n")
+
+# print_metakernel_with_line_numbers(
+#     "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_plan.tm"
+# )
+
+from pathlib import Path
+
+def update_path_values_in_metakernel(metakernel_path: str, new_path_value: str):
+    """
+    Updates the PATH_VALUES entry in a SPICE .tm file to a new absolute path.
+
+    Args:
+        metakernel_path: Full path to the .tm file.
+        new_path_value: Absolute path to use in PATH_VALUES.
+    """
+    metakernel_path = Path(metakernel_path).expanduser().resolve()
+    new_path = Path(new_path_value).expanduser().resolve()
+
+    if not metakernel_path.exists():
+        print(f"❌ Meta-kernel file not found: {metakernel_path}")
+        return
+
+    backup_path = metakernel_path.with_suffix('.tm.bak_path')
+    metakernel_path.rename(backup_path)
+
+    updated_lines = []
+
+    with open(backup_path, 'r') as f:
+        for line in f:
+            if 'PATH_VALUES' in line and '=' in line:
+                indent = line[:line.index('P')]
+                new_line = f"{indent}PATH_VALUES       = ( '{new_path}' )\n"
+                updated_lines.append(new_line)
+            else:
+                updated_lines.append(line)
+
+    with open(metakernel_path, 'w') as f:
+        f.writelines(updated_lines)
+
+    print(f"✅ PATH_VALUES updated to: {new_path}")
+    print(f"🗂️  Original meta-kernel backed up as: {backup_path}")
+
+# update_path_values_in_metakernel(
+#     metakernel_path="/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_plan.tm",
+#     new_path_value="/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels"
+# )
