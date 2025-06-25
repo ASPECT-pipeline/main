@@ -64,13 +64,14 @@ def get_acqSeq(acq_folder: str) -> Dict[str, str]:
         data = json.load(file)
     return data
     
-def get_static_metadata() -> Dict[str, (str, str)]:
+def get_static_metadata() -> Dict[str, Tuple[str, str]]:
     static_metadata = {
         'INSTRUME' : ('ASPECT', 'Camera ID'),
         'ORIGIN'   : ('ESA-HERA', ''),
-        'FILENAME' : ('', 'Name of hte actual FITS file'),
-        'SWCREATE' : ('', 'Software identification. "HERACAL v1.0" '),
-        'ORIGFILE' : ('', 'Original file name.'),
+        'DATE'     : ('', 'UTC time of file creation'),
+        'FILENAME' : ('', 'Name of the actual fits file'),
+        'SWCREATE' : ('', 'Software identification'),
+        'ORIGFILE' : ('', 'Original file name'),
         'PROCLEVL' : ('0', 'Calibration level'),
         'MISSPHAS' : ('', 'HERA Mission Phase ID'),
         'OBSERVPH' : ('', 'HERA Observation ID'),
@@ -95,6 +96,7 @@ def get_static_metadata() -> Dict[str, (str, str)]:
         'HIERACRH TEMP_BEE'         : ('', 'BEE tenperature [K]'),
         'HIERARCH TEMP_HSP'         : ('', 'HSP temperature [K]'),
         'HIERARCH TEMP_ICU1'        : ('', 'ICU1 temperature [K]'),
+        'HIErARCH TEMP_TELE_1'      : ('', 'Telescope 1 temperature [K]'),
         # SPICE data
         'SPICE_MK'      : ('', 'SPICE meta kernel version'),
         'SPICECLK'      : ('', 'SC clock SPICE format'),
@@ -128,9 +130,13 @@ def get_static_metadata() -> Dict[str, (str, str)]:
         'MONDIST'       : ('', 'Monochromator band'),
         'MONOWL'        : ('', 'Monochromator wavelength band'),
         'MONOBAND'      : ('', 'Monochromator band'),
-        'MONOFLT'       : ('', 'Monochromator filter')
-
+        'MONOFLT'       : ('', 'Monochromator filter'),
+        'MONOGRAT'      : ('', 'Monochromator grating'),
+        'MONOSPH'       : ('', 'Monochromator sphere version'),
+        'MONOPHC'       : ('', 'Monochormator photocurrent'),
+        'DISTTRGT'      : ('', 'Distortion target description')
     }
+    return static_metadata
 
 # Based on SP1 and channel determine the order.
 # The sp value should be taken from the index 3
@@ -259,7 +265,7 @@ def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
     
     meta_data = {}
 
-    meta_data['chanel_info'] = get_channel_frames_names(acq_folder)
+    meta_data['channel_info'] = get_channel_frames_names(acq_folder)
     meta_data.update(get_acqSeq(acq_folder)) 
 
     return meta_data
