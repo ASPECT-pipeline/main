@@ -1,6 +1,6 @@
 import os
-import utilities
-import convertToFits
+import modules.utilities as utilities
+import modules.convertToFits as convertToFits
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_100')
 meta_folder = os.path.join(acq_path, 'meta')

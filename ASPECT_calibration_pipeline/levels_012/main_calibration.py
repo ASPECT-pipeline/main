@@ -1,12 +1,12 @@
 import os
-import convertToFits
-import convertWavelengths
-import removeDiagnostic
-import badPixels
-import darkSubtraction
-import flatField
-import radiometric
-import alignAndResample
+import modules.convertToFits
+import modules.convertWavelengths
+import modules.removeDiagnostic
+import modules.badPixels
+import modules.darkSubtraction
+import modules.flatField
+import modules.radiometric
+import modules.alignAndResample
 
 """
     The main program to execute the data processing pipeline.
