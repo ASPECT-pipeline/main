@@ -2,6 +2,7 @@ import spiceypy as spice
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import modules.utilities as utilities
+from typing import Any, Dict, List, Tuple, Optional
 import os
 
 """
@@ -25,6 +26,8 @@ Memo:
 """
 
 test_time = '2025-06-02T05:40:46.6666'
+# test_time = '2027-01-02T05:40:46.6666'
+
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_100')
 meta_folder = os.path.join(acq_path, 'meta')
@@ -51,6 +54,10 @@ def list_loaded_kernels():
         print(f"[{i}] Type: {type_:<5}  File: {file}")
 
 
+def km_to_au(km) -> float:
+    AU_PER_KM = 149597870.7
+    return km / AU_PER_KM
+
 def get_mk_identifier() -> str:
     """
     Query 'MK_IDENTIFIER' from the kernel pool.
@@ -65,7 +72,7 @@ def get_mk_identifier() -> str:
     else:
         return 'UNK'
 
-def get_sc_id(frame_name:str = 'MILANI_SPACECRAFT'):
+def get_sc_id(frame_name:str = 'MILANI_SPACECRAFT') -> int:
     frame_name = "MILANI_SPACECRAFT"
     frame_id = spice.namfrm(frame_name)
     return frame_id
@@ -73,6 +80,10 @@ def get_sc_id(frame_name:str = 'MILANI_SPACECRAFT'):
 def get_sclk(date_ob:str, frame_name:str = 'MILANI_SPACECRAFT') -> str:
     """
     converts the UTC observation time into SC clock SPICE format
+
+    Parameters:
+    date_ob (str): date and time of the observation retrieved from telemetry
+    frame_name (str): frame of the et time to be converted
 
     DISCLAIMER: Does not work with time form telemetry (1). For some reason -999 must be added to sc_id for MILANI sc id
     """
@@ -82,64 +93,95 @@ def get_sclk(date_ob:str, frame_name:str = 'MILANI_SPACECRAFT') -> str:
     sclk_str = spice.sce2s(sc_id - 999, et) # What is the correct sc_id value?
     return sclk_str
 
-def query_sun_position_vectors(
+def query_position_distance(
+        target: str = 'SUN',
         utc_time: str = test_time,
 		frame: str = 'J2000', # Is this the correct frame?
+        abcorr: str = 'NONE',
 		observer: str = 'MILANI_SPACECRAFT'
-    ):
+    )-> Tuple[np.ndarray, float]:
     """
-	Query the position vectors of the Sun in a specified time frame.
+	Query the position vectors of the target from the perspective of the observer in a specified time within a given reference frame.
 
 	Parameters:
+    target (str): The target body
 	utc_time (str): The UTC time for which the position vectors are required.
 	frame (str): The reference frame.
+    abcorr (str): Aberration correction flag
 	observer (str): The observing body.
 
 	Returns:
-	tuple: A tuple (X, Y, Z) representing the Sun's position vector.
+	tuple:  (A tuple (X, Y, Z) representing the target's position vector relative to the observer im km.),
+            (distnace between the target and the observer in km)
 	"""
     et = spice.str2et(utc_time)
-	
-    state, _ = spice.spkezr("SUN", et, frame, "NONE", observer)
+    state, _ = spice.spkezr(target, et, frame, abcorr, observer)
     position = state[:3] # X, Y, Z
+    distance_km = np.linalg.norm(position)
+    distance_au = km_to_au(distance_km)
 
-    return position
+    return position, distance_au
 
-def query_solar_distance(
-        target: str = 'SUN',
+
+def query_spacecraft_quaternions(
+        frame_name: str = 'HERA_SPACECRAFT',
         utc_time: str = test_time,
-        frame: str = 'J2000',
-        observer: str = 'MILANI_SPACECRAFT'
-
+        tol: int = 1.0,
+        ref: str = 'J2000'
     ):
-    """
-    Query the distance between a spacecraft and the Sun.
-    
-    Parameters:
-    spice_metakernel_path (str): Path to the SPICE metakernel file.
-    target (str): The spacecraft of interest.
-    utc_time (str): The UTC time for which the distance is required.
-    frame (str): The reference frame for calculations.
-    observer (str): The observing body (default is the Sun).
-    
-    Returns:
-    float: Distance between the spacecraft and the Sun in kilometers.
-    
-    """
 
-    # Query spacecraft position relative to the Sun
-    position = query_spacecraft_position_vectors(
-        target, utc_time, frame, observer
-    )
+    et = spice.utc2et(utc_time)
+    inst_id = get_sc_id(frame_name=frame_name)
+    print(f'inst_id: {inst_id}')
+    result = spice.ckgpav(-9102001, et, tol, ref)
+    print(type(result))
+    print(result)
+
+
+def list_ck_instruments():
+    """
+    Lists all currently loaded CK files and the NAIF instrument IDs they contain.
+    """
+    n_ck = spice.ktotal("CK")
+    if n_ck == 0:
+        print("No CK kernels are currently loaded.")
+        return
+
+    print(f"Loaded CK kernels: {n_ck}\n")
+
+    for i in range(n_ck):
+        try:
+            ck_file, _, _, _ = spice.kdata(i, "CK")
+            print(f"[{i}] CK File: {ck_file}")
+
+            # Get instrument IDs from this CK file
+            ids = spice.ckobj(ck_file)
+            if ids:
+                for inst_id in ids:
+                    try:
+                        name = spice.bodc2n(inst_id)
+                    except spice.stypes.SpiceyError:
+                        name = "(name not found)"
+                    print(f"    Instrument ID: {inst_id} → {name}")
+            else:
+                print("    No instrument IDs found in this CK file.")
+        except spice.stypes.SpiceyError as e:
+            print(f"    Error reading CK file: {e}")
+
+    print("\nDone.")
+
 
 
 load_meta_kernel(spice_mk_ops)
 # print(get_mk_identifier())
 # print(get_sclk(utilities.read_telemetry(telemetry_path, 'VIS')['DATE-OB']))
 # print(get_sclk(test_time))
-# print(query_sun_position_vectors())
+# print(type(query_position_distance()[1]))
+print(query_spacecraft_quaternions())
+# list_ck_instruments()
 
 unload_all_kernels()
 
 
 
+# Python3 ASPECT_calibration_pipeline/levels_012/hera_spice.py
