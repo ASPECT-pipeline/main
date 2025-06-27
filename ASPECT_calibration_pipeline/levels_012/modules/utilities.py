@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import os
 import re
+import hera_spice
 
 
 def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
@@ -284,6 +285,57 @@ def collect_metadata(meta_folder:str , channel:str ) -> Dict[str, Any]:
 
     config = read_config(config_path, channel)
     meta_data.update(get_acqSeq(config)) 
+
+
+def collect_spice_metadata(telemetry:str, mk: str, channel:str)-> Dict[str, str]:
+    """
+    Collect specified spice kernel data for fits primary header.
+
+    Parameters:
+        telemetry (str): Path to the telemetry JSON file of the acquisition
+        mk (str): Defines which meta kernel is loaded. Options: ops, plan
+        channel (str): Identifies to which channel the spice data is retrived
+
+    Returns: 
+        A dicitionary of header keywords and values
+    """
+    spice_metadata = {}
+
+    tele = read_telemetry(telemetry, channel)
+    utc_ob = tele['DATE-OB']
+    et = hera_spice.utc_2_et(utc_ob)
+    milani_frame = 'MILANI_SPACECRAFT'
+    
+    hera_spice.load_meta_kernel(mk) # Load the meta kernel
+
+    mk_id = hera_spice.query_mk_identifier() # Meta kernel version
+    spice_metadata['SPICE_MK'] = mk_id
+
+    sclk = hera_spice.get_sclk(et, milani_frame) # SC clock in spice format
+    spice_metadata['SPICECLK'] = sclk
+
+    # Sun position vector and distnace from observer
+    sun_position, sun_distance_au = hera_spice.query_position_distance(target='SUN', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
+    spice_metadata['SUN_POSX'] = sun_position[0]
+    spice_metadata['SUN_POSY'] = sun_position[1]
+    spice_metadata['SUN_POSZ'] = sun_position[2]
+    spice_metadata['SOLAR_D']  = sun_distance_au
+
+    # Sun position vector and distnace from observer
+    earth_position, earth_distance_au = hera_spice.query_position_distance(target='EARTH', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
+    spice_metadata['EARTPOSX'] = earth_position[0]
+    spice_metadata['EARTPOSY'] = earth_position[1]
+    spice_metadata['EARTPOSZ'] = earth_position[2]
+    spice_metadata['EARTH_D']  = earth_distance_au
+
+
+
+
+
+    hera_spice.unload_all_kernels() # Unload all kernels at the end
+
+
+
 
 def combine_headers(vis: Header, nir1: Header, nir2: Header, swir: Header) -> Dict[str, Any]:
     header_dict = {}

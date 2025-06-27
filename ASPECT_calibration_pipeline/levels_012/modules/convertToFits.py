@@ -2,7 +2,7 @@ import os
 import numpy as np
 import json
 from astropy.io import fits
-import utilities
+import modules.utilities as utilities
 
 """
 

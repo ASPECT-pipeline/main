@@ -24,6 +24,10 @@ def test_telemetry():
     result = utilities.read_telemetry(telemetry_path, 'VIS')
     print(result)
 
+def test_spice_metadata():
+    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
+    utilities.collect_spice_metadata(telemetry_path, '', '')
+
 # Test the fits file conversion as a whole
 def test_convert_to_fits():
     convertToFits.convert_to_fits(acq_path, None)
@@ -35,10 +39,11 @@ Function calls after this
 # test_acqseq()
 # test_channel_frames_names()
 # test_telemetry()
-test_convert_to_fits()
+# test_convert_to_fits()
+test_spice_metadata()
 
 
 
 
 
-# Python3 ASPECT_calibration_pipeline/calibration_levels_012/test_level_012.py
+# Python3 ASPECT_calibration_pipeline/levels_012/test_level_012.py
