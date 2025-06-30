@@ -27,13 +27,14 @@ dirPath/
 
 """
 
-def convert_to_fits(dir_path: str, output:str) -> str:
+def convert_to_fits(dir_path: str, target:str, output:str) -> str:
     """
     Parmeters:
         dirPath: Path to a folder containing data of an acquisition from a single sensor.
         output: Path to the folder where the fits files will be stored.
     """
     meta_folder = os.path.join(dir_path, 'meta')
+    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
 
     channel_acq = utilities.collect_channel_acq_info(dir_path)
 
@@ -72,7 +73,20 @@ def convert_to_fits(dir_path: str, output:str) -> str:
             if after_key in primary_header:
                 primary_header.insert(after_key, ("COMMENT", comment_text), after=True)
         
-        print(repr(primary_header))
+        # Original file name
+        channel_original_name = channel_info[channel][1]
+        primary_header['ORIGFILE'] = channel_original_name
+
+        primary_header['OBSTARGT'] = target # observation target
+
+        # Spice kernel data
+        spice_data = utilities.collect_spice_metadata(telemetry=telemetry_path, mk='ops',channel=channel)
+        for key, value in spice_data.items():
+            card = primary_header.cards[key]
+            comment = card.comment
+            primary_header[key] = (value, comment)
+
+        # print(repr(primary_header))
 
 
     

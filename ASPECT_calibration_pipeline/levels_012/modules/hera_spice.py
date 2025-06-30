@@ -27,7 +27,7 @@ Memo:
 test_time = '2025-06-15T05:40:46.6666'
 # test_time = '2027-01-02T05:40:46.6666'
 
-test_et = spice.utc2et(test_time)
+test_et = None
 
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_100')
@@ -41,9 +41,12 @@ def load_meta_kernel(mk: str):
         case 'plan' : mk_path = spice_mk_plan
         case _:
             raise ValueError(f'Unkown meta-kernel option: {mk}. Choose from: ops, plan')
-
-    spice.furnsh(mk_path)
-    print(f"Loaded meta-kernel: {mk_path}")
+    try:
+        spice.furnsh(mk_path)
+        print(f"Loaded meta-kernel: {mk_path}")
+        test_et = spice.utc2et(test_time)
+    except Exception as e:
+        print(f"Caught an exception while loading meta kernel {mk_path}: {e}")
 
 def unload_all_kernels():
     spice.kclear()
@@ -67,17 +70,24 @@ def query_mk_identifier() -> str:
     parameters
     identifier, start index, number of values, max length of string
     """
+    try:
+        mk_id = spice.gcpool("MK_IDENTIFIER", 0, 1, 80)
 
-    mk_id = spice.gcpool("MK_IDENTIFIER", 0, 1, 80)
-
-    if len(mk_id) > 0:
-        return mk_id[0]
-    else:
-        return 'UNK'
+        if len(mk_id) > 0:
+            return mk_id[0]
+        else:
+            return 'UNK'
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
 
 def get_sc_id(frame_name:str = 'MILANI_SPACECRAFT') -> int:
-    frame_id = spice.namfrm(frame_name)
-    return frame_id
+    try:
+        frame_id = spice.namfrm(frame_name)
+        return frame_id
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
 
 def utc_2_et(utc: str) -> float:
     return spice.utc2et(utc)
@@ -95,11 +105,14 @@ def get_sclk(et: float, sc_frame: str) -> str:
 
     DISCLAIMER: Does not work with time form telemetry (1). For some reason -999 must be added to sc_id for MILANI sc id
     """
-    # Convert UTC to ET
-    et = spice.utc2et(et)
-    sc_id = get_sc_id(sc_frame)
-    sclk_str = spice.sce2s(sc_id - 999, et) # What is the correct sc_id value?
-    return sclk_str
+    try:
+        # Convert UTC to ET
+        sc_id = get_sc_id(sc_frame)
+        sclk_str = spice.sce2s(sc_id - 999, et) # What is the correct sc_id value?
+        return sclk_str
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
 
 def query_position_distance(
         target: str = 'SUN',
@@ -122,16 +135,21 @@ def query_position_distance(
 	tuple:  (A tuple (X, Y, Z) representing the target's position vector relative to the observer im km.),
             (distnace between the target and the observer in km)
 	"""
-    state, _ = spice.spkezr(target, et, frame, abcorr, observer)
-    position = state[:3] # X, Y, Z
-    distance_km = np.linalg.norm(position)
-    distance_au = km_to_au(distance_km)
+
+    try:
+        state, _ = spice.spkezr(target, et, frame, abcorr, observer)
+        position = state[:3] # X, Y, Z
+        distance_km = np.linalg.norm(position)
+        distance_au = km_to_au(distance_km)
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
 
     return position, distance_au
 
 def query_spacecraft_quaternions(
         frame_name: str = 'HERA_SPACECRAFT',
-        utc_time: str = test_time,
+        et: str = test_et,
         tol: int = 1.0,
         ref: str = 'J2000'
     ) -> np.ndarray: 
@@ -139,7 +157,7 @@ def query_spacecraft_quaternions(
     """
     Parameters:
     frame_name: name of the observer that is converted to NAIF ID.
-    utc_time: UTC time of the observation that is then encoded spacecraft clock time.
+    et (float)  : Ephemeris time 
     tol: Time tolerance.
     ref: Reference frame.
 
@@ -147,7 +165,6 @@ def query_spacecraft_quaternions(
 
     """
 
-    et = spice.utc2et(utc_time)
     inst_id = get_sc_id(frame_name=frame_name)
     print(f'inst_id: {inst_id}')
     cmat, av, clkout = spice.ckgpav(-9102001, et, tol, ref)
@@ -174,77 +191,85 @@ def get_boresight_vector(inst_id: int) -> np.ndarray:
 
 def query_camera_pointing_info(
         camera_frame: str = 'MILANI_NAVCAM',
-        utc_time: str = test_time,
+        et: float = test_et,
         inertial_frame: str = 'J2000',
         target_frame: str = 'DIDYMOS_FIXED',
     ): 
     """
     Parameters:
         camera_frame: Name of the camera frame
-        utc_time: UTC time of the observation that is then encoded spacecraft clock time.
+        et (float)  : Ephemeris time 
         inertial_frame: Reference frame for RA/DEC (default: 'J2000')
         target_frame: Target body-fixed frame for azimuth
 
     Returns:
         Tuple of (RA_deg, DEC_deg, NorthAzimuth_deg)
     """
-    et = spice.utc2et(utc_time)
-    inst_id = get_sc_id(frame_name=camera_frame)
-    boresight = get_boresight_vector(inst_id) # typically [0, 0, 1]
 
-    # Rotate boresight into inertial frame
-    r_cam2j2000 = spice.pxform(camera_frame, inertial_frame, et) # Rotation matrix
-    bore_j2000 = r_cam2j2000 @ boresight 
+    try:
+        inst_id = get_sc_id(frame_name=camera_frame)
+        boresight = get_boresight_vector(inst_id) # typically [0, 0, 1]
 
-    _, ra_rad, dec_rad = spice.recrad(bore_j2000) # Spherical coordinates
-    ra_deg = np.degrees(ra_rad)
-    dec_deg = np.degrees(dec_rad)
+        # Rotate boresight into inertial frame
+        r_cam2j2000 = spice.pxform(camera_frame, inertial_frame, et) # Rotation matrix
+        bore_j2000 = r_cam2j2000 @ boresight 
 
-    # Rotate boresight into body-fixed frame
-    r_cam2body = spice.pxform(camera_frame, target_frame, et) # Rotation matrix
-    bore_body = r_cam2body @ boresight
+        _, ra_rad, dec_rad = spice.recrad(bore_j2000) # Spherical coordinates
+        ra_deg = np.degrees(ra_rad)
+        dec_deg = np.degrees(dec_rad)
 
-    x, y, z = bore_body
-    az_rad = np.arctan2(y, x)  # azimuth angle relative to +X axis
-    az_deg = (np.degrees(az_rad) + 360) % 360
+        # Rotate boresight into body-fixed frame
+        r_cam2body = spice.pxform(camera_frame, target_frame, et) # Rotation matrix
+        bore_body = r_cam2body @ boresight
 
-    return ra_deg, dec_deg, az_deg
+        x, y, z = bore_body
+        az_rad = np.arctan2(y, x)  # azimuth angle relative to +X axis
+        az_deg = (np.degrees(az_rad) + 360) % 360
 
+        return ra_deg, dec_deg, az_deg
+    
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
 
 def query_camera_solar_elongation(
-    utc_time: str = test_time, 
-    camera_frame: str = 'MILANI_NAVCAM', 
+    camera_frame: str = 'MILANI_NAVCAM',
+    et: float = test_et, 
+    abcorr: str = 'LT+S',
     observer:str = 'MILANI_SPACECRAFT'
     ) -> float:
     """
     Computes the solar elongation angle from the camera boresight direction
 
     Parameters:
-        utc_time: UTC time of the observation that is then encoded spacecraft clock time.
         camera_frame: Frame name of the camera (e.g., 'MILANI_NAVCAM')
+        et (float)  : Ephemeris time 
+        abcorr (str): Aberration correction flag
         observer: Spacecraft name (default 'MILANI_SPACECRAFT')
 
     Returns:
         Solar elongation angle in degrees (float)
     """
+    try:
+        inst_id = get_sc_id(frame_name=camera_frame)
+        boresight = get_boresight_vector(inst_id) # typically [0, 0, 1]
 
-    et = spice.utc2et(utc_time)
-    inst_id = get_sc_id(frame_name=camera_frame)
-    boresight = get_boresight_vector(inst_id) # typically [0, 0, 1]
+        r_cam2j2000 = spice.pxform(camera_frame, "J2000", et) # boresight into inertial frame
+        bore_j2000 = r_cam2j2000 @ boresight
 
-    r_cam2j2000 = spice.pxform(camera_frame, "J2000", et) # boresight into inertial frame
-    bore_j2000 = r_cam2j2000 @ boresight
+        sun_state, _ = spice.spkezr("SUN", et, "J2000", abcorr, observer) # Vector from the observer to sun
+        sun_vec = sun_state[:3]
+        sun_unit = sun_vec / np.linalg.norm(sun_vec)
 
-    sun_state, _ = spice.spkezr("SUN", et, "J2000", "LT+S", observer) # Vector from the observer to sun
-    sun_vec = sun_state[:3]
-    sun_unit = sun_vec / np.linalg.norm(sun_vec)
+        dot = np.dot(bore_j2000, sun_unit)
+        dot = np.clip(dot, -1.0, 1.0) 
+        angle_rad = np.arccos(dot)
+        angle_deg = np.degrees(angle_rad)
 
-    dot = np.dot(bore_j2000, sun_unit)
-    dot = np.clip(dot, -1.0, 1.0) 
-    angle_rad = np.arccos(dot)
-    angle_deg = np.degrees(angle_rad)
-
-    return(angle_deg)
+        return(angle_deg)
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
 
 def list_ck_instruments():
     """
@@ -300,7 +325,7 @@ def check_spk_coverage(body_id: int):
         except spice.stypes.SpiceyError as e:
             print(f"  [!] Failed reading {spk_file}: {e}")
 
-load_meta_kernel(spice_mk_ops)
+# load_meta_kernel(spice_mk_ops)
 # print(get_mk_identifier())
 # print(get_sclk(utilities.read_telemetry(telemetry_path, 'VIS')['DATE-OB']))
 # print(get_sclk(test_time))
@@ -308,13 +333,13 @@ load_meta_kernel(spice_mk_ops)
 # print(query_spacecraft_quaternions())
 
 # print(query_camera_pointing_info())
-print(query_camera_solar_elongation())
+# print(query_camera_solar_elongation())
 
 
 
 # list_ck_instruments()
 # check_spk_coverage(-9102110)
-unload_all_kernels()
+# unload_all_kernels()
 
 
 

@@ -8,8 +8,11 @@ from datetime import datetime
 from pathlib import Path
 import os
 import re
-import hera_spice
+import modules.hera_spice as hera_spice
+from datetime import datetime, timezone
 
+def get_current_utc_time_str():
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
 def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
     path = Path(path)
@@ -72,7 +75,7 @@ def get_static_metadata() -> Dict[str, Tuple[str, str]]:
         'DATE'     : ('', 'UTC time of file creation'),
         'FILENAME' : ('', 'Name of the actual fits file'),
         'SWCREATE' : ('', 'Software identification'),
-        'ORIGFILE' : ('', 'Original file name'),
+        'ORIGFILE' : ('', 'Original file name. Replace XXX with different frames.'),
         'PROCLEVL' : ('0', 'Calibration level'),
         'MISSPHAS' : ('', 'HERA Mission Phase ID'),
         'OBSERVPH' : ('', 'HERA Observation ID'),
@@ -119,7 +122,7 @@ def get_static_metadata() -> Dict[str, Tuple[str, str]]:
         'SC_QUAT2'      : ('', 'Spacecraft quaterion 2'),
         'SC_QUAT3'      : ('', 'Spacecraft quaterion 3'),
         'CAM_RA'        : ('', 'Camera axis RA [deg]'),
-        'CAM_DEG'       : ('', 'Camera axis DEC [deg]'),
+        'CAM_DEC'       : ('', 'Camera axis DEC [deg]'),
         'CAM_NAZ'       : ('', 'Camera axis north azimuth [deg]'),
         'SOL_ELNG'      : ('', 'Solar elongation [deg]'),
         # Calibration specific data
@@ -158,15 +161,15 @@ def check_order(sp: float, channel: str) -> str:
             return ''
 
 # Read metadata from config file
-def read_config(configPath: str, channel:str) -> Dict[str, Any]:
-    boolean, error_message = is_valid_json_file(configPath)
+def read_config(config_path: str, channel:str) -> Dict[str, Any]:
+    boolean, error_message = is_valid_json_file(config_path)
     if not boolean:
         print(error_message)
         return None
     
     meta_data = {}
 
-    with open(configPath, 'r') as file:
+    with open(config_path, 'r') as file:
         data = json.load(file)
 
         #read SP values for each image
@@ -188,6 +191,7 @@ def read_config(configPath: str, channel:str) -> Dict[str, Any]:
         sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
         #Extract exposure times
         exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
+        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
 
         #Check the order based on SP1 index 3
         order = check_order(sp1Values[3], channel)
@@ -208,16 +212,16 @@ def read_telemetry(telemetry_path: str, channel: str) -> Dict[str, Any]:
         print(error_message)
         return None
     
-    meta_data = {} 
+    telemetry_data = {} 
     with open(telemetry_path, 'r') as file:
         data = json.load(file)
 
 
         Acq_date = data['ACQ_DATE']
         dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
-        meta_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+        telemetry_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
 
-    return meta_data
+    return telemetry_data
 
 
 
@@ -283,11 +287,31 @@ def collect_metadata(meta_folder:str , channel:str ) -> Dict[str, Any]:
     telemetry_path = os.path.join(meta_folder, 'telemetry.json')
     calib_path = os.path.join(meta_folder, 'calib.json')
 
+    # UTC of file creation
+    date = get_current_utc_time_str()
+    meta_data['DATE'] = date
+
+    # FILENAME
+
     config = read_config(config_path, channel)
     meta_data.update(get_acqSeq(config)) 
 
+def collect_primary_metadata(meta_folder:str , channel:str )-> Dict[str, Any]:
+    boolean, error_message = is_valid_meta_folder(meta_folder)
+    if not boolean:
+        print(error_message)
+        return None
+    
+    primary_metadata = {}
 
-def collect_spice_metadata(telemetry:str, mk: str, channel:str)-> Dict[str, str]:
+    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
+    telemetry_metadata = read_telemetry(telemetry_path=telemetry_path, channel=channel)
+
+    config_path = os.path.join(meta_folder, 'config.json')
+    config_metadata = read_config(config_path=config_path, channel=channel)
+
+
+def collect_spice_metadata(telemetry:str, mk: str, channel:str, target: str = 'DIDYMOS', test: bool =True)-> Dict[str, str]:
     """
     Collect specified spice kernel data for fits primary header.
 
@@ -295,6 +319,7 @@ def collect_spice_metadata(telemetry:str, mk: str, channel:str)-> Dict[str, str]
         telemetry (str): Path to the telemetry JSON file of the acquisition
         mk (str): Defines which meta kernel is loaded. Options: ops, plan
         channel (str): Identifies to which channel the spice data is retrived
+        target (str): Target of the observation
 
     Returns: 
         A dicitionary of header keywords and values
@@ -303,10 +328,14 @@ def collect_spice_metadata(telemetry:str, mk: str, channel:str)-> Dict[str, str]
 
     tele = read_telemetry(telemetry, channel)
     utc_ob = tele['DATE-OB']
+    if test:
+        utc_ob = '2025-06-15T05:40:46.6666' # Testing
+
+    hera_spice.load_meta_kernel(mk) # Load the meta kernel
+
     et = hera_spice.utc_2_et(utc_ob)
     milani_frame = 'MILANI_SPACECRAFT'
-    
-    hera_spice.load_meta_kernel(mk) # Load the meta kernel
+    camera_frame = 'MILANI_NAVCAM'
 
     mk_id = hera_spice.query_mk_identifier() # Meta kernel version
     spice_metadata['SPICE_MK'] = mk_id
@@ -321,19 +350,44 @@ def collect_spice_metadata(telemetry:str, mk: str, channel:str)-> Dict[str, str]
     spice_metadata['SUN_POSZ'] = sun_position[2]
     spice_metadata['SOLAR_D']  = sun_distance_au
 
-    # Sun position vector and distnace from observer
+    # Earth position vector and distnace from observer
     earth_position, earth_distance_au = hera_spice.query_position_distance(target='EARTH', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
     spice_metadata['EARTPOSX'] = earth_position[0]
     spice_metadata['EARTPOSY'] = earth_position[1]
     spice_metadata['EARTPOSZ'] = earth_position[2]
     spice_metadata['EARTH_D']  = earth_distance_au
 
+    # IMPLEMENT THE OBSERVATION TARGET spice_metadata['TAGET'] = ...
+    spice_metadata['TARGET'] = target
 
+    # Target position vector and distnace from observer
+    target_position, target_distance_au = hera_spice.query_position_distance(target=target, et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
+    spice_metadata['TRG_POSX'] = target_position[0]
+    spice_metadata['TRG_POSY'] = target_position[1]
+    spice_metadata['TRG_POSZ'] = target_position[2]
+    spice_metadata['TRG_DIST']  = target_distance_au
 
+    
+    # Spacecraft quaternions
+    quaternions = hera_spice.query_spacecraft_quaternions(frame_name=milani_frame, et=et, tol=1, ref='J2000' )
+    spice_metadata['SC_QUAT0'] = quaternions[0]
+    spice_metadata['SC_QUAT1'] = quaternions[1]
+    spice_metadata['SC_QUAT2'] = quaternions[2]
+    spice_metadata['SC_QUAT3'] = quaternions[3]
 
+    # Camera attitude
+    ra_deg, dec_deg, naz_deg = hera_spice.query_camera_pointing_info(camera_frame=camera_frame, et=et, inertial_frame='J2000', target_frame='DIDYMOS_FIXED')
+    spice_metadata['CAM_RA'] = ra_deg
+    spice_metadata['CAM_DEC'] = dec_deg
+    spice_metadata['CAM_NAZ'] = naz_deg
+
+    # Camera solar elongation
+    solar_angle = hera_spice.query_camera_solar_elongation(camera_frame=camera_frame, et=et, abcorr='NONE',observer=milani_frame)
+    spice_metadata['SOL_ELNG'] = solar_angle
 
     hera_spice.unload_all_kernels() # Unload all kernels at the end
 
+    return spice_metadata
 
 
 

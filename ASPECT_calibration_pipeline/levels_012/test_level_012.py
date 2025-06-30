@@ -39,8 +39,8 @@ Function calls after this
 # test_acqseq()
 # test_channel_frames_names()
 # test_telemetry()
-# test_convert_to_fits()
-test_spice_metadata()
+test_convert_to_fits()
+# test_spice_metadata()
 
 
 
