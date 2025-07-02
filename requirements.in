@@ -1,3 +1,7 @@
+# System dependency required for the decompressor binary:
+# On Ubuntu: sudo apt-get install libjasper-dev
+# On MacOS: brew install jasper
+
 # run with Python 3.10
 astropy==6.1.7
 h5py==3.8.0

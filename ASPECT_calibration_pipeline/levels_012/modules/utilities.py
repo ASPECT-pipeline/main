@@ -4,12 +4,12 @@ from typing import Any, Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 import json
 from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU
-from datetime import datetime
 from pathlib import Path
 import os
 import re
 import modules.hera_spice as hera_spice
 from datetime import datetime, timezone
+import subprocess
 
 def get_current_utc_time_str():
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
@@ -160,6 +160,25 @@ def check_order(sp: float, channel: str) -> str:
         case 'SWIR':
             return ''
 
+# Read metadata from telementry
+def read_telemetry(telemetry_path: str, channel: str) -> Dict[str, Any]:
+
+    boolean, error_message = is_valid_json_file(telemetry_path)
+    if not boolean:
+        print(error_message)
+        return None
+    
+    telemetry_data = {} 
+    with open(telemetry_path, 'r') as file:
+        data = json.load(file)
+
+
+        Acq_date = data['ACQ_DATE']
+        dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
+        telemetry_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+
+    return telemetry_data
+
 # Read metadata from config file
 def read_config(config_path: str, channel:str) -> Dict[str, Any]:
     boolean, error_message = is_valid_json_file(config_path)
@@ -192,43 +211,40 @@ def read_config(config_path: str, channel:str) -> Dict[str, Any]:
         #Extract exposure times
         exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
         exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
-
+        sp1 = ','.join(str(x) for x in sp1Values)
+        sp2 = ','.join(str(x) for x in sp2Values)
+        sp3 = ','.join(str(x) for x in sp3Values)
         #Check the order based on SP1 index 3
         order = check_order(sp1Values[3], channel)
 
         meta_data['ORDER'] = order
         meta_data['EXPOSURE'] = exposureTimes
-        meta_data['SP1'] = sp1Values
-        meta_data['SP2'] = sp2Values
-        meta_data['SP3'] = sp3Values
+        meta_data['SP1'] = sp1
+        meta_data['SP2'] = sp2
+        meta_data['SP3'] = sp3
 
     return meta_data
 
-# Read metadata from telementry
-def read_telemetry(telemetry_path: str, channel: str) -> Dict[str, Any]:
+def det_temp_conversion(value: float, channel: str) -> float:
+    match channel:
+        case 'VIS':  return value * 0.6522 - 295.87
+        case 'NIR1': return value
+        case 'NIR2': return value
+        case 'SWIR': return (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
 
-    boolean, error_message = is_valid_json_file(telemetry_path)
-    if not boolean:
-        print(error_message)
-        return None
-    
-    telemetry_data = {} 
-    with open(telemetry_path, 'r') as file:
-        data = json.load(file)
+def exposure_conversion(value: float, channel: str) -> float:
+    match channel:
+        case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
+        case 'NIR1': return value / 100000
+        case 'NIR2': return value / 100000
+        case 'SWIR': return value 
 
+def get_channel_files(acq_folder:str) -> List[Tuple[str, int]]:
+    """
+    Extract channel names, common file name and a list of all filenames for each channel.
 
-        Acq_date = data['ACQ_DATE']
-        dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
-        telemetry_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
-
-    return telemetry_data
-
-
-
-
-
-def get_channel_frames_names(acq_folder:str) -> List[Tuple[str, int]]:
-
+    Returns[channel, Tuple[example_filename, [all_channel_filenames]]]
+    """
     channel_map = {
         0: 'VIS',
         1: 'NIR1',
@@ -236,30 +252,43 @@ def get_channel_frames_names(acq_folder:str) -> List[Tuple[str, int]]:
         3: 'SWIR'
     }
 
-    channel_info: Dict[str, Tuple[int, str]] = {}
+    channel_info: Dict[str, Tuple[str, List[str]]] = {}
     pattern = re.compile(r'^dc_(\d)_')
-    frame_pattern = re.compile(r'(exp_)\d{3}')
+    frame_pattern = re.compile(r'exp_(\d{3})')
 
-    # Add channel names, frame counts and an original filename to a dictionary
+    def get_frame_num(fname):
+        match = frame_pattern.search(fname)
+        if match:
+            return int(match.group(1))  # '003' -> 3
+        raise ValueError(f"Filename does not match expected pattern: {fname}")
+
+    channel_files: Dict[str, List[str]] = {}
+    # Add channel names, original filename and list of all files to a dictionary
     for filename in os.listdir(acq_folder):
-        match  = pattern.match(filename)
+        match = pattern.match(filename)
         if match:
             index = int(match.group(1))
             if index in channel_map:
                 channel_name = channel_map[index]
-                if channel_name in channel_info:
-                    count, orig_name = channel_info[channel_name]
-                    channel_info[channel_name] = (count + 1, orig_name)
-                else: 
-                    channel_info[channel_name] = (1, filename)
+                if channel_name in channel_files:
+                    org_file_list = channel_files[channel_name]
+                    channel_files[channel_name] = org_file_list + [filename]
+                else:
+                    channel_files[channel_name] = [filename]
 
-    # Replace frame number with 'XXX' if more than one frame
-    for channel in channel_info:
-        count, orig_name = channel_info[channel]
-        if count > 1:
-            modified = frame_pattern.sub(r'\1XXX', orig_name)
-            channel_info[channel] = (count, modified)
+    # Replace frame number of the original name with 'XXX' if more than one frame and sort the files
+    for channel in channel_files:
+        print(channel)
+        file_list = channel_files[channel]
+        sorted_files = sorted(file_list, key=get_frame_num)
+        if len(file_list) > 1:
+            orig_name = frame_pattern.sub(r'exp_XXX', file_list[0])
+            print(f'orig_filename: {orig_name}')
+        else:
+            orig_name = file_list[0]
+        channel_info[channel] = (orig_name, sorted_files)
 
+    # print(channel_info)
     return channel_info
  
 def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
@@ -270,31 +299,10 @@ def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
     
     meta_data = {}
 
-    meta_data['channel_info'] = get_channel_frames_names(acq_folder)
+    meta_data['channel_info'] = get_channel_files(acq_folder)
     meta_data.update(get_acqSeq(acq_folder)) 
 
     return meta_data
-
-def collect_metadata(meta_folder:str , channel:str ) -> Dict[str, Any]:
-    boolean, error_message = is_valid_meta_folder(meta_folder)
-    if not boolean:
-        print(error_message)
-        return None
-    
-    meta_data = {}
-
-    config_path = os.path.join(meta_folder, 'config.json')
-    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
-    calib_path = os.path.join(meta_folder, 'calib.json')
-
-    # UTC of file creation
-    date = get_current_utc_time_str()
-    meta_data['DATE'] = date
-
-    # FILENAME
-
-    config = read_config(config_path, channel)
-    meta_data.update(get_acqSeq(config)) 
 
 def collect_primary_metadata(meta_folder:str , channel:str )-> Dict[str, Any]:
     boolean, error_message = is_valid_meta_folder(meta_folder)
@@ -304,12 +312,62 @@ def collect_primary_metadata(meta_folder:str , channel:str )-> Dict[str, Any]:
     
     primary_metadata = {}
 
+    date = get_current_utc_time_str()
+    primary_metadata['DATE'] = date
+    # Telemetry
     telemetry_path = os.path.join(meta_folder, 'telemetry.json')
-    telemetry_metadata = read_telemetry(telemetry_path=telemetry_path, channel=channel)
+    boolean, error_message = is_valid_json_file(telemetry_path)
+    if not boolean:
+        print(error_message)
+        return None
+    with open(telemetry_path, 'r') as file:
+        data = json.load(file)
 
+        Acq_date = data['ACQ_DATE']
+        dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
+        primary_metadata['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+        channel_data = data[channel]
+        fault = channel_data['FAULT']
+        det_temp = channel_data['DET_TEMP']
+        det_temp = det_temp_conversion(det_temp, channel)
+        primary_metadata['ERRORFLG'] = fault
+        primary_metadata['CCDTEMP'] = det_temp
+    
+    # Config
     config_path = os.path.join(meta_folder, 'config.json')
-    config_metadata = read_config(config_path=config_path, channel=channel)
+    boolean, error_message = is_valid_json_file(config_path)
+    if not boolean:
+        print(error_message)
+        return None
+    with open(config_path, 'r') as file:
+        data = json.load(file)
 
+        match channel:
+            case 'VIS':
+                taskFile = data['visTaskFile']
+            case 'NIR1':
+                taskFile = data['nir1TaskFile']
+            case 'NIR2':
+                taskFile = data['nir2TaskFile']
+            case 'SWIR':
+                taskFile = data['swirTaskFile']
+        
+
+        #Extract sp values from taskValues
+        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
+        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
+        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
+        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
+        #Extract exposure times
+        exposure_times = [taskValues[i][4] for i in range(len(taskValues))]
+        if all(x == exposure_times[0] for x in exposure_times):
+            exposure_times = [exposure_times[0]]
+        exposures_in_s = [exposure_conversion(x, channel) for x in exposure_times]
+        exposures_str = ','.join(str(x) for x in exposures_in_s)
+        primary_metadata['EXPOSURE'] = exposures_str
+
+
+    return primary_metadata
 
 def collect_spice_metadata(telemetry:str, mk: str, channel:str, target: str = 'DIDYMOS', test: bool =True)-> Dict[str, str]:
     """
@@ -389,7 +447,50 @@ def collect_spice_metadata(telemetry:str, mk: str, channel:str, target: str = 'D
 
     return spice_metadata
 
+def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> str:
+    channel_map = {
+            'VIS'   : 0,
+            'NIR1'  : 1,
+            'NIR2'  : 2,
+            'SWIR'  : 3
+        }
+    asp_id = channel_map[channel]
+    print(f'utc time: {utc_time}')
+    utc_format = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%S.%f").strftime("%y%m%dT%H%M%S")
+    if sc_clk == '':
+        sc_clk = 'XXXXXX'
+    file_name = f'AS{asp_id}_{sc_clk}_{utc_format}_{calib_lvl}.fits'
+    return file_name
 
+def decompress_jp2(input_path: str, output_dir:str) -> str:
+    """
+    Decompress a JPEG2000 .jp2 image using the C-based './decompress' program.
+
+    Parameters:
+        input_path (str): Path to the input .jp2 file.
+        output_dir (str): Directory to store the output .bin file.
+    
+    Returns:
+        Path (str): Path to the decompressed .bin file.
+    """
+
+    os.makedirs(output_dir, exist_ok=True) # Cretate the output directory if does not exist
+    base_name = os.path.basename(input_path)
+    if base_name.endswith(".jp2"):
+        output_filename = base_name[:-4]  # remove '.jp2'
+    else:
+        raise ValueError("Input file does not end with .jp2")
+
+    output_path = os.path.join(output_dir, output_filename)
+
+    # Resolve absolute path to decompress binary (relative to this script's location)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    decompress_path = os.path.join(script_dir, "decompress")
+
+    with open(input_path, "rb") as f_in, open(output_path, "wb") as f_out:
+        subprocess.run([decompress_path], stdin=f_in, stdout=f_out, check=True)
+    
+    return output_path
 
 def combine_headers(vis: Header, nir1: Header, nir2: Header, swir: Header) -> Dict[str, Any]:
     header_dict = {}

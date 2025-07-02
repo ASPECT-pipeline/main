@@ -20,18 +20,8 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 main_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.append(parent_dir)
 
-import ASPECT_calibration_pipeline.calibration_levels_012.main_calibration as main_calibration
-import utilities
-import dataFiltering
-import convertToFits
-import convertWavelengths
-import removeDiagnostic
-import badPixels
-import darkSubtraction
-import flatField
-import radiometric
-import alignAndResample
-import dataFiltering
+import main_calibration
+
 
 #Path to VIS, NIR1 and NIR2
 vis = os.path.join(main_dir, "test_data/levels_012_test/test_data/vis_ho_600w_1875")
@@ -47,6 +37,7 @@ swir_fits = os.path.join(main_dir, "test_data/levels_012_test/test_output/test_1
 output = os.path.join(main_dir, "test_data/levels_012_test/test_output")
 outputPath = os.path.join(output, "simulated_test_3")
 
+aspect_fly_fits_vis = os.path.join(output, 'ASPECT_fly/AS0_XXXXXX_200101T014231_0A.fits')
 
 # calibrationMain.pipeline(vis, nir1, nir2, swir, outputPath)
 # calibrationMain.pipeline(simulated_vis, simulated_nir1, simulated_nir2, swir_fits, outputPath)
@@ -126,9 +117,9 @@ def read_output_files():
     # read_fits_file(simulated_vis)
     # read_fits_file(simulated_nir1)
     # read_fits_file(simulated_nir2)
-    read_fits_file(simulated_full)
+    # read_fits_file(aspect_fly_fits_vis)
 
-read_output_files()
+# read_output_files()
 
 """
 Function to create manually an example fits file 
@@ -268,3 +259,6 @@ def test_level_01(path: str, output: str):
     return
 
 # test_level_01(vis, outputPath)
+
+
+# Python3 ASPECT_calibration_pipeline/levels_012/testPipeline/test.py
