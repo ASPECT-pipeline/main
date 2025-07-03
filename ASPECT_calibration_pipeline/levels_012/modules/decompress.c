@@ -29,11 +29,6 @@
 #define MAX_HEIGHT      1024
 #define BYTES_PER_PIXEL 2    // 16-bit 
 
-// Byte swap utility (assuming endianness needs to be flipped)
-static inline uint16_t swap16(uint16_t val, int dummy) {
-    return (val << 8) | (val >> 8);
-}
-
 // global static buffer
 uint16_t output_img[MAX_HEIGHT*MAX_WIDTH];  // buffer to read the whole raw image, for 16bit 2048x2048 
 
@@ -89,7 +84,7 @@ int main(void) {
   for(y=0; y < height; y++) {
     for(x=0; x < width; x++) {
       int sample = jas_image_readcmptsample(image, 0, x, y);
-      output_img[y * width + x] = swap16((uint16_t)sample, 0);
+      output_img[y * width + x] = (uint16_t)sample;
     }
   }
 

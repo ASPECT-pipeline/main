@@ -1,5 +1,6 @@
 import os
-import modules.convertToFits
+from pathlib import Path
+import modules.convertToFits as convertToFits
 import modules.convertWavelengths
 import modules.removeDiagnostic
 import modules.badPixels
@@ -7,6 +8,7 @@ import modules.darkSubtraction
 import modules.flatField
 import modules.radiometric
 import modules.alignAndResample
+import modules.utilities as utilities
 
 """
     The main program to execute the data processing pipeline.
@@ -39,7 +41,13 @@ import modules.alignAndResample
     - pipeline function, which calls the calibrationPipeline for each sensor and aligns and combines to form the complete file.
 """
 
-def calibration_pipeline(path: str, output: str) -> str:
+def calibration_pipeline(
+        input_dir: str | Path, 
+        output_dir: str | Path,
+        software: str = 'ASPECTCAL v1.0',
+        target: str = 'DIDYMOS',
+        object: str = 'Didymos',
+    ) -> str:
     """
     These functions perform the level 0 and 1 of the pipeline
     Parmeters:
@@ -47,8 +55,19 @@ def calibration_pipeline(path: str, output: str) -> str:
         output: Path to the folder where the fits files will be stored.
     """
 
-    # Use convert_to_fits function to convert the data in the directory into a FITS file
-    fits_file = convertToFits.convert_to_fits(path, output)
+    # Verify the existance of directory paths and convert them into Path objects
+    input_dir = utilities.verify_directory_path(input_dir)
+    output_dir = utilities.verify_directory_path(output_dir)
+
+    # Convert the input directory into FITS file(s)
+    fits_file = convertToFits.convert_to_fits(
+                                            dir_path=input_dir, 
+                                            output_dir=output_dir,
+                                            software=software, 
+                                            target=target, 
+                                            object=object 
+                                        )
+    
     print(f'New file saved: {fits_file}')
 
     # Convert the wavelengths

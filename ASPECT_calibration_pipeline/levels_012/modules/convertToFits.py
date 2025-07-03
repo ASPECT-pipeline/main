@@ -1,47 +1,61 @@
 import os
 import numpy as np
-import json
 from astropy.io import fits
+from pathlib import Path
 import modules.utilities as utilities
 
 import matplotlib.pyplot as plt # for testing
 
 """
 
-This file is for converting a folder with binary files and metadata into one FITS file that has 
-all acquisitions of a single channel in a 3D-cube.
+This file converts an acquisition folder into channel specific FITS files containing 
+all frames from the respective channel and header metadata about the acquisition.
 
-The function:
-convertToFits(dirPath, outputFolder) takes as parameters the path to the directory containing the data. 
-The folder at dirPath is expected to have the following structure:
+The acquisition directory is expected to have to follow the structure and naming below.
+The acquisition directory can contain images from multiple channels.
 
-dirPath/             
+dir_path/             
 ├── acq_000/                
-│   ├── dc_1_exp_000.bin         
-│   ├── dc_1_exp_001.bin         
+│   ├── dc_0_exp_000.bin.jp2         
+│   ├── dc_0_exp_001.bin.jp2        
 │   └── ...                
 │
 └── meta/                   
-    ├── calibration.json   
+    ├── calib.json   
     ├── config.json           
     └── telemetry.json     
 
 
 """
 
-def convert_to_fits(dir_path: str, target:str, output_dir:str) -> str:
+def convert_to_fits(
+        dir_path: Path,
+        output_dir: Path, 
+        software: str = 'ASPECTCAL v1.0',
+        target: str = 'DIDYMOS',
+        object: str = 'Didymos',
+    ) -> Path:
+
     """
     Parmeters:
-        dirPath: Path to a folder containing data of an acquisition from a single sensor.
-        output: Path to the folder where the fits files will be stored.
+        dir_path (Path):    Directory containing the acquisition files.
+        output_dir (Path):  Directory where the Fits file(s) are stored.
+        software (str):     Pipeline software identification. 
+        target (str):       Taret in SPICE format
+        object (str):       target in free format
+    
+    Return:
+        Path: Path to the directory containing the Fits file(s) (output_dir)
     """
-    meta_folder = os.path.join(dir_path, 'meta')
-    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
-    config_path = os.path.join(meta_folder, 'config.json')
+    dir_path = Path(dir_path)
+    output_dir = Path(output_dir)
 
-    acq_folder = os.path.join(dir_path, 'acq_000')
+    acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(dir_path)
 
-    channel_acq = utilities.collect_channel_acq_info(dir_path)
+    channel_acq = utilities.channel_files(acq_dir)
+    print(channel_acq)
+
+    return
 
     channel_info = channel_acq['channel_info']
     ACQ_ID = channel_acq['ACQ_ID']
@@ -159,9 +173,13 @@ def convert_to_fits(dir_path: str, target:str, output_dir:str) -> str:
             image_data = []
             for i, bin_file in enumerate(channel_files):
                 file_path = os.path.join(acq_folder, bin_file)
-                decompressed_output_dir = os.path.join(dir_path, 'acq_000_decompressed')
-                decompressed_output = utilities.decompress_jp2(file_path, decompressed_output_dir)
-                array = np.fromfile(decompressed_output, dtype=np.uint16).reshape((height, width))
+                if bin_file.endswith(".jp2"):
+                    decompressed_output_dir = os.path.join(dir_path, 'acq_000_decompressed')
+                    decompressed_output = utilities.decompress_jp2(file_path, decompressed_output_dir)
+                    array = np.fromfile(decompressed_output, dtype=np.uint16).reshape((height, width))
+                else:
+                    array = np.fromfile(file_path, dtype=np.uint16).reshape((height, width))
+
                 image_data.append(array)
 
             data_cube = np.array(image_data) # Stack the images into a cube

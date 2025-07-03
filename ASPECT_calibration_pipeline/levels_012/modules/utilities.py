@@ -1,15 +1,138 @@
 import cv2
 import numpy as np
+from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 import json
 from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU
-from pathlib import Path
 import os
 import re
 import modules.hera_spice as hera_spice
 from datetime import datetime, timezone
 import subprocess
+from pathlib import Path
+import warnings
+
+def verify_directory_path(p: str | Path) -> Path:
+    """
+    Convert input to a Path object by pathlib python library and verify it is an ecisting directory.
+
+    Parameters:
+        p (str | Path): The path to check
+    
+    Returns:
+        Path: the verified directory path.
+    
+    Raises:
+        ValueError: If the path does not exist or is not a directory.
+    """
+    path = Path(p)
+
+    if not path.exists():
+        raise ValueError(f'Path does not exist: {path}')
+    if not path.is_dir():
+        raise ValueError(f'Path is not a directory: {path}')
+
+def verify_acquisition_directory(p: Path) -> tuple[Path, Path, Path, Path]:
+    """
+    Verifies that the given acquisition directory contains:
+     - a 'meta' subdirectory with 'telemetry.json' and 'config.json'
+     - a subdirectory whose name starts with 'acq_'
+
+    Parameters: 
+        p (Path): Path to the acquisition directory.
+
+    Returns:
+        Tuple[Path, Path, Path, Path]: Paths to (acq_dir, meta_dir, telemetery_file, and config_file)
+
+    Raises:
+        ValueError: If any expected subdirectory or file is missing
+    """
+    
+    if not p.exists() or not p.is_dir():
+        raise ValueError(f"Provided path does not exist or is not a directory: {p}")
+    
+    acq_dirs = sorted(
+        [d for d in p.iterdir() if d.is_dir() and d.name.startswith('acq_')]
+    )
+    if not acq_dirs:
+        raise ValueError(f"No subsirectory starting with 'acq_' found in {p}")
+    if len(acq_dirs) > 1:
+        warnings.warn(
+            f"Multiple 'acq_' directories found in {p}. Using the first one: {acq_dirs[0].name}\nModify convertToFits and utilities/verify_acquisition_directory to handle more acquisitions at once",
+            category=UserWarning
+        )
+    acq_dir = acq_dirs[0]
+
+    meta_dir = p / 'meta'
+    if not meta_dir.is_dir():
+        raise ValueError(f"Missing 'meta' directory in {p}")
+
+    telemetry_file = meta_dir / 'telemetry.json'
+    config_file = meta_dir / 'config.json'
+
+    if not telemetry_file.is_file():
+        raise ValueError(f"Missing 'telemetry.json' in: {meta_dir}")
+    if not config_file.is_file():
+        raise ValueError(f"Missing 'config.json' in: {meta_dir}")
+    
+    return(acq_dir, meta_dir, telemetry_file, config_file)
+
+def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
+    """
+    Separates the acquisition folder content into separate channels based on their name.
+    Generates the original filename for each channel and a list of files belonnign to that channel. 
+
+    Parameters: 
+        acq_dir (Path): Acquisition directory
+    
+    Returns:
+        Dict[channel, Tuple[example_filename, [all_channel_filenames]]]
+    """
+    channel_map = {
+        0: 'VIS',
+        1: 'NIR1',
+        2: 'NIR2',
+        3: 'SWIR'
+    }
+    # Regular expressions for channel and frame
+    pattern = re.compile(r'^dc_(\d)_')
+    frame_pattern = re.compile(r'exp_(\d{3})')
+
+    # Extracts frame number for sorting. 
+    def get_frame_num(fname: str) -> int:
+        match = frame_pattern.search(fname)
+        if match:
+            return int(match.group(1))  # '003' -> 3
+        raise ValueError(f"Filename does not match expected pattern: {fname}")
+
+    channel_files: Dict[str, List[str]] = defaultdict(list)
+
+    for file in acq_dir.iterdir():
+        if not file.is_file():
+            continue
+        match = pattern.match(file.name)
+        if match:
+            index = int(match.group(1))
+            if index in channel_map:
+                channel_name = channel_map[index]
+                channel_files[channel_name].append(file.name)
+
+
+    channel_info: Dict[str, Tuple[str, List[str]]] = {}
+
+    for channel, files in channel_files.items():
+        sorted_files = sorted(files, key=get_frame_num)
+        if len(sorted_files) > 1:
+            orig_name = frame_pattern.sub('exp_XXX', sorted_files[0])
+        else: 
+            orig_name = sorted_files[0]
+        channel_info[channel] = (orig_name, sorted_files)
+
+    return channel_info
+
+
+
 
 def get_current_utc_time_str():
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
@@ -25,31 +148,7 @@ def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
     
     return True, None
 
-def is_valid_json_file(path:str) -> Tuple[bool, Optional[str]]:
-    path = Path(path)
-    if not path.exists():
-        return False, f"File not found: {path}"
-    if not path.is_file():
-        return False, f"Path is not a file: {path}"
-    if path.suffix.lower() != '.json':
-        return False, f"File does not have a .json extension: {path}"
-    
-    return True, None
 
-def is_valid_meta_folder(path:str) -> Tuple[bool, Optional[str]]:
-    required_files = {"calib.json", "config.json", "telemetry.json"}
-    folder = Path(path)
-
-    if not folder.exists():
-        return False, f"Folder not found: {folder}"
-    if not folder.is_dir(): 
-        return False, f"Path is not a directory: {folder}"
-    
-    missing = [f for f in required_files if not (folder / f).is_file()]
-    if missing:
-        return False, f"Missing required files: {', '.join(missing)}"
-
-    return True, None
 
 def get_acq_folder(acq_path: str) -> Optional[str]:
     for name in os.listdir(acq_path):
@@ -59,15 +158,75 @@ def get_acq_folder(acq_path: str) -> Optional[str]:
 
 def get_acqSeq(acq_folder: str) -> Dict[str, str]:
     acqSeq = os.path.join(acq_folder, 'meta_acq/acqSeq.json')
-    boolean, error_message = is_valid_json_file(acqSeq)
-    if not boolean:
-        print(error_message)
-        return None
 
     with open(acqSeq, 'r') as file:
         data = json.load(file)
     return data
+
+def get_channel_files(acq_folder:str) -> List[Tuple[str, int]]:
+    """
+    Extract channel names, common file name and a list of all filenames for each channel.
+
+    Returns[channel, Tuple[example_filename, [all_channel_filenames]]]
+    """
+    channel_map = {
+        0: 'VIS',
+        1: 'NIR1',
+        2: 'NIR2',
+        3: 'SWIR'
+    }
+
+    channel_info: Dict[str, Tuple[str, List[str]]] = {}
+    pattern = re.compile(r'^dc_(\d)_')
+    frame_pattern = re.compile(r'exp_(\d{3})')
+
+    def get_frame_num(fname):
+        match = frame_pattern.search(fname)
+        if match:
+            return int(match.group(1))  # '003' -> 3
+        raise ValueError(f"Filename does not match expected pattern: {fname}")
+
+    channel_files: Dict[str, List[str]] = {}
+    # Add channel names, original filename and list of all files to a dictionary
+    for filename in os.listdir(acq_folder):
+        match = pattern.match(filename)
+        if match:
+            index = int(match.group(1))
+            if index in channel_map:
+                channel_name = channel_map[index]
+                if channel_name in channel_files:
+                    org_file_list = channel_files[channel_name]
+                    channel_files[channel_name] = org_file_list + [filename]
+                else:
+                    channel_files[channel_name] = [filename]
+
+    # Replace frame number of the original name with 'XXX' if more than one frame and sort the files
+    for channel in channel_files:
+        print(channel)
+        file_list = channel_files[channel]
+        sorted_files = sorted(file_list, key=get_frame_num)
+        if len(file_list) > 1:
+            orig_name = frame_pattern.sub(r'exp_XXX', file_list[0])
+            print(f'orig_filename: {orig_name}')
+        else:
+            orig_name = file_list[0]
+        channel_info[channel] = (orig_name, sorted_files)
+
+    # print(channel_info)
+    return channel_info
     
+def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
+    acq_folder = get_acq_folder(acq_path)
+
+    if acq_folder == None:
+        print(f'no acq_XXX folder found inside: {acq_path}')
+    
+    meta_data = {}
+
+    meta_data['channel_info'] = get_channel_files(acq_folder)
+    meta_data.update(get_acqSeq(acq_folder)) 
+
+    return meta_data
 def get_static_metadata() -> Dict[str, Tuple[str, str]]:
     static_metadata = {
         'INSTRUME' : ('ASPECT', 'Camera ID'),
@@ -145,6 +304,7 @@ def get_static_metadata() -> Dict[str, Tuple[str, str]]:
 # Based on SP1 and channel determine the order.
 # The sp value should be taken from the index 3
 # to prevent miss identification.
+
 def check_order(sp: float, channel: str) -> str:
     match channel:
         case 'VIS' | 'NIR1':
@@ -239,70 +399,7 @@ def exposure_conversion(value: float, channel: str) -> float:
         case 'NIR2': return value / 100000
         case 'SWIR': return value 
 
-def get_channel_files(acq_folder:str) -> List[Tuple[str, int]]:
-    """
-    Extract channel names, common file name and a list of all filenames for each channel.
-
-    Returns[channel, Tuple[example_filename, [all_channel_filenames]]]
-    """
-    channel_map = {
-        0: 'VIS',
-        1: 'NIR1',
-        2: 'NIR2',
-        3: 'SWIR'
-    }
-
-    channel_info: Dict[str, Tuple[str, List[str]]] = {}
-    pattern = re.compile(r'^dc_(\d)_')
-    frame_pattern = re.compile(r'exp_(\d{3})')
-
-    def get_frame_num(fname):
-        match = frame_pattern.search(fname)
-        if match:
-            return int(match.group(1))  # '003' -> 3
-        raise ValueError(f"Filename does not match expected pattern: {fname}")
-
-    channel_files: Dict[str, List[str]] = {}
-    # Add channel names, original filename and list of all files to a dictionary
-    for filename in os.listdir(acq_folder):
-        match = pattern.match(filename)
-        if match:
-            index = int(match.group(1))
-            if index in channel_map:
-                channel_name = channel_map[index]
-                if channel_name in channel_files:
-                    org_file_list = channel_files[channel_name]
-                    channel_files[channel_name] = org_file_list + [filename]
-                else:
-                    channel_files[channel_name] = [filename]
-
-    # Replace frame number of the original name with 'XXX' if more than one frame and sort the files
-    for channel in channel_files:
-        print(channel)
-        file_list = channel_files[channel]
-        sorted_files = sorted(file_list, key=get_frame_num)
-        if len(file_list) > 1:
-            orig_name = frame_pattern.sub(r'exp_XXX', file_list[0])
-            print(f'orig_filename: {orig_name}')
-        else:
-            orig_name = file_list[0]
-        channel_info[channel] = (orig_name, sorted_files)
-
-    # print(channel_info)
-    return channel_info
  
-def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
-    acq_folder = get_acq_folder(acq_path)
-
-    if acq_folder == None:
-        print(f'no acq_XXX folder found inside: {acq_path}')
-    
-    meta_data = {}
-
-    meta_data['channel_info'] = get_channel_files(acq_folder)
-    meta_data.update(get_acqSeq(acq_folder)) 
-
-    return meta_data
 
 def collect_primary_metadata(meta_folder:str , channel:str )-> Dict[str, Any]:
     boolean, error_message = is_valid_meta_folder(meta_folder)
