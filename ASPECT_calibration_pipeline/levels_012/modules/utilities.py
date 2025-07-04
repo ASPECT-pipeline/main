@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import subprocess
 from pathlib import Path
 import warnings
+from modules._constants import kelvin
 
 def verify_directory_path(p: str | Path) -> Path:
     """
@@ -33,7 +34,8 @@ def verify_directory_path(p: str | Path) -> Path:
     if not path.is_dir():
         raise ValueError(f'Path is not a directory: {path}')
 
-def verify_acquisition_directory(p: Path) -> tuple[Path, Path, Path, Path]:
+    return path
+def verify_acquisition_directory(p: Path) -> Tuple[Path, Path, Path, Path]:
     """
     Verifies that the given acquisition directory contains:
      - a 'meta' subdirectory with 'telemetry.json' and 'config.json'
@@ -89,6 +91,7 @@ def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
     Returns:
         Dict[channel, Tuple[example_filename, [all_channel_filenames]]]
     """
+    acq_dir = Path(acq_dir)
     channel_map = {
         0: 'VIS',
         1: 'NIR1',
@@ -131,418 +134,8 @@ def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
 
     return channel_info
 
-
-
-
 def get_current_utc_time_str():
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
-
-def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
-    path = Path(path)
-    if not path.exists():
-        return False, f"File not found: {path}"
-    if not path.is_file():
-        return False, f"Path is not a file: {path}"
-    if path.suffix.lower() != '.fits':
-        return False, f"File does not have a .fits extension: {path}"
-    
-    return True, None
-
-
-
-def get_acq_folder(acq_path: str) -> Optional[str]:
-    for name in os.listdir(acq_path):
-        if os.path.isdir(os.path.join(acq_path, name)) and re.fullmatch(r'acq_\d{3}', name):
-            return os.path.join(acq_path, name)
-    return None  # If no matching folder is found
-
-def get_acqSeq(acq_folder: str) -> Dict[str, str]:
-    acqSeq = os.path.join(acq_folder, 'meta_acq/acqSeq.json')
-
-    with open(acqSeq, 'r') as file:
-        data = json.load(file)
-    return data
-
-def get_channel_files(acq_folder:str) -> List[Tuple[str, int]]:
-    """
-    Extract channel names, common file name and a list of all filenames for each channel.
-
-    Returns[channel, Tuple[example_filename, [all_channel_filenames]]]
-    """
-    channel_map = {
-        0: 'VIS',
-        1: 'NIR1',
-        2: 'NIR2',
-        3: 'SWIR'
-    }
-
-    channel_info: Dict[str, Tuple[str, List[str]]] = {}
-    pattern = re.compile(r'^dc_(\d)_')
-    frame_pattern = re.compile(r'exp_(\d{3})')
-
-    def get_frame_num(fname):
-        match = frame_pattern.search(fname)
-        if match:
-            return int(match.group(1))  # '003' -> 3
-        raise ValueError(f"Filename does not match expected pattern: {fname}")
-
-    channel_files: Dict[str, List[str]] = {}
-    # Add channel names, original filename and list of all files to a dictionary
-    for filename in os.listdir(acq_folder):
-        match = pattern.match(filename)
-        if match:
-            index = int(match.group(1))
-            if index in channel_map:
-                channel_name = channel_map[index]
-                if channel_name in channel_files:
-                    org_file_list = channel_files[channel_name]
-                    channel_files[channel_name] = org_file_list + [filename]
-                else:
-                    channel_files[channel_name] = [filename]
-
-    # Replace frame number of the original name with 'XXX' if more than one frame and sort the files
-    for channel in channel_files:
-        print(channel)
-        file_list = channel_files[channel]
-        sorted_files = sorted(file_list, key=get_frame_num)
-        if len(file_list) > 1:
-            orig_name = frame_pattern.sub(r'exp_XXX', file_list[0])
-            print(f'orig_filename: {orig_name}')
-        else:
-            orig_name = file_list[0]
-        channel_info[channel] = (orig_name, sorted_files)
-
-    # print(channel_info)
-    return channel_info
-    
-def collect_channel_acq_info(acq_path:str) -> Dict[str, Any]:
-    acq_folder = get_acq_folder(acq_path)
-
-    if acq_folder == None:
-        print(f'no acq_XXX folder found inside: {acq_path}')
-    
-    meta_data = {}
-
-    meta_data['channel_info'] = get_channel_files(acq_folder)
-    meta_data.update(get_acqSeq(acq_folder)) 
-
-    return meta_data
-def get_static_metadata() -> Dict[str, Tuple[str, str]]:
-    static_metadata = {
-        'INSTRUME' : ('ASPECT', 'Camera ID'),
-        'ORIGIN'   : ('ESA-HERA', ''),
-        'DATE'     : ('', 'UTC time of file creation'),
-        'FILENAME' : ('', 'Name of the actual fits file'),
-        'SWCREATE' : ('', 'Software identification'),
-        'ORIGFILE' : ('', 'Original file name. Replace XXX with different frames.'),
-        'PROCLEVL' : ('0', 'Calibration level'),
-        'MISSPHAS' : ('', 'HERA Mission Phase ID'),
-        'OBSERVPH' : ('', 'HERA Observation ID'),
-        'OBSTARGT' : ('', 'Observation target'),
-        # Instrument data
-        'DATE-OB'   : ('', 'UTC time of observation'),
-        'OBJECT'    : ('', 'Observed Object'),
-        'EXPOSURE'  : ('', 'Exposure time [s]'), 
-        'CCDTEMP'   : ('', 'Detector temperature'),
-        'AMBTEMP'   : ('', 'Ambient temperature'),
-        'SC_CLK'    : ('', 'SC clock Hera instrument format'),
-        'ERRORFLG'  : ('', 'Error flags for instrument'),
-        # Instrument specific data
-        'HIERARCH HSH_FILENAME'     : ('', 'Internal filename'),
-        'HIERARCH WINDOWED_IMAGE'   : ('', 'Full frame / windowed image'),
-        'OFFSET_X'                  : ('', 'Image offset'),
-        'OFFSET_Y'                  : ('', 'Image offset'),
-        'HIERARCH SENSOR_ADC_OFFSET': ('', ''),
-        'HIERARCH SENSOR_PIXEL_CLK_FREQ' : ('', ''),
-        'HIERACRH SENSOR_TEMPERATURE_DEGC' : ('', ''),
-        'HIERACRH TEMP_FPA'         : ('', 'FPA temperature [K]'),
-        'HIERACRH TEMP_BEE'         : ('', 'BEE tenperature [K]'),
-        'HIERARCH TEMP_HSP'         : ('', 'HSP temperature [K]'),
-        'HIERARCH TEMP_ICU1'        : ('', 'ICU1 temperature [K]'),
-        'HIErARCH TEMP_TELE_1'      : ('', 'Telescope 1 temperature [K]'),
-        # SPICE data
-        'SPICE_MK'      : ('', 'SPICE meta kernel version'),
-        'SPICECLK'      : ('', 'SC clock SPICE format'),
-        'SUN_POSX'      : ('', 'Sun position vector X [km]'),
-        'SUN_POSY'      : ('', 'Sun position vector Y [km]'),
-        'SUN_POSZ'      : ('', 'Sun position vector Z [km]'),
-        'SOLAR_D'       : ('', 'Solar distance [AU]'),
-        'EARTPOSX'      : ('', 'Earth position vector X [km]'),
-        'EARTPOSY'      : ('', 'Earth position vector Y [km]'),
-        'EARTPOSZ'      : ('', 'Earth position vector Z [km]'),
-        'EARTH_D'       : ('', 'Earth distance [AU]'),
-        'TARGET'        : ('', 'Observation target (SPICE)'),
-        'TRG_POSX'      : ('', 'Target position vector X [km]'),
-        'TRG_POSY'      : ('', 'Target position vector Y [km]'),
-        'TRG_POSZ'      : ('', 'Target position vector Z [km]'),
-        'TRG_DIST'      : ('', 'Target distance [AU]'),
-        'SC_QUAT0'      : ('', 'Spacecraft quaterion 0'),
-        'SC_QUAT1'      : ('', 'Spacecraft quaterion 1'),
-        'SC_QUAT2'      : ('', 'Spacecraft quaterion 2'),
-        'SC_QUAT3'      : ('', 'Spacecraft quaterion 3'),
-        'CAM_RA'        : ('', 'Camera axis RA [deg]'),
-        'CAM_DEC'       : ('', 'Camera axis DEC [deg]'),
-        'CAM_NAZ'       : ('', 'Camera axis north azimuth [deg]'),
-        'SOL_ELNG'      : ('', 'Solar elongation [deg]'),
-        # Calibration specific data
-        'CALPHASE'      : ('', 'Calibration phase'),
-        'SPHCUR1'       : ('', 'Integrating sphere current 1'),
-        'SPHCUR2'       : ('', 'Integrating sphere current 2'),
-        'BBLCUR'        : ('', 'Broad-band source current'),
-        'BBLDIST'       : ('', 'Broad-band source distance'),
-        'MONDIST'       : ('', 'Monochromator band'),
-        'MONOWL'        : ('', 'Monochromator wavelength band'),
-        'MONOBAND'      : ('', 'Monochromator band'),
-        'MONOFLT'       : ('', 'Monochromator filter'),
-        'MONOGRAT'      : ('', 'Monochromator grating'),
-        'MONOSPH'       : ('', 'Monochromator sphere version'),
-        'MONOPHC'       : ('', 'Monochormator photocurrent'),
-        'DISTTRGT'      : ('', 'Distortion target description')
-    }
-    return static_metadata
-
-# Based on SP1 and channel determine the order.
-# The sp value should be taken from the index 3
-# to prevent miss identification.
-
-def check_order(sp: float, channel: str) -> str:
-    match channel:
-        case 'VIS' | 'NIR1':
-            if sp > 19000:
-                return 'h'
-            else:
-                return 'l'
-        case 'NIR2':
-            if sp > 20000:
-                return 'h'
-            else:
-                return 'l'
-        case 'SWIR':
-            return ''
-
-# Read metadata from telementry
-def read_telemetry(telemetry_path: str, channel: str) -> Dict[str, Any]:
-
-    boolean, error_message = is_valid_json_file(telemetry_path)
-    if not boolean:
-        print(error_message)
-        return None
-    
-    telemetry_data = {} 
-    with open(telemetry_path, 'r') as file:
-        data = json.load(file)
-
-
-        Acq_date = data['ACQ_DATE']
-        dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
-        telemetry_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
-
-    return telemetry_data
-
-# Read metadata from config file
-def read_config(config_path: str, channel:str) -> Dict[str, Any]:
-    boolean, error_message = is_valid_json_file(config_path)
-    if not boolean:
-        print(error_message)
-        return None
-    
-    meta_data = {}
-
-    with open(config_path, 'r') as file:
-        data = json.load(file)
-
-        #read SP values for each image
-        match channel:
-            case 'VIS':
-                taskFile = data['visTaskFile']
-            case 'NIR1':
-                taskFile = data['nir1TaskFile']
-            case 'NIR2':
-                taskFile = data['nir2TaskFile']
-            case 'SWIR':
-                taskFile = data['swirTaskFile']
-        
-
-        #Extract sp values from taskValues
-        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
-        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
-        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
-        #Extract exposure times
-        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
-        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
-        sp1 = ','.join(str(x) for x in sp1Values)
-        sp2 = ','.join(str(x) for x in sp2Values)
-        sp3 = ','.join(str(x) for x in sp3Values)
-        #Check the order based on SP1 index 3
-        order = check_order(sp1Values[3], channel)
-
-        meta_data['ORDER'] = order
-        meta_data['EXPOSURE'] = exposureTimes
-        meta_data['SP1'] = sp1
-        meta_data['SP2'] = sp2
-        meta_data['SP3'] = sp3
-
-    return meta_data
-
-def det_temp_conversion(value: float, channel: str) -> float:
-    match channel:
-        case 'VIS':  return value * 0.6522 - 295.87
-        case 'NIR1': return value
-        case 'NIR2': return value
-        case 'SWIR': return (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
-
-def exposure_conversion(value: float, channel: str) -> float:
-    match channel:
-        case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
-        case 'NIR1': return value / 100000
-        case 'NIR2': return value / 100000
-        case 'SWIR': return value 
-
- 
-
-def collect_primary_metadata(meta_folder:str , channel:str )-> Dict[str, Any]:
-    boolean, error_message = is_valid_meta_folder(meta_folder)
-    if not boolean:
-        print(error_message)
-        return None
-    
-    primary_metadata = {}
-
-    date = get_current_utc_time_str()
-    primary_metadata['DATE'] = date
-    # Telemetry
-    telemetry_path = os.path.join(meta_folder, 'telemetry.json')
-    boolean, error_message = is_valid_json_file(telemetry_path)
-    if not boolean:
-        print(error_message)
-        return None
-    with open(telemetry_path, 'r') as file:
-        data = json.load(file)
-
-        Acq_date = data['ACQ_DATE']
-        dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
-        primary_metadata['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
-        channel_data = data[channel]
-        fault = channel_data['FAULT']
-        det_temp = channel_data['DET_TEMP']
-        det_temp = det_temp_conversion(det_temp, channel)
-        primary_metadata['ERRORFLG'] = fault
-        primary_metadata['CCDTEMP'] = det_temp
-    
-    # Config
-    config_path = os.path.join(meta_folder, 'config.json')
-    boolean, error_message = is_valid_json_file(config_path)
-    if not boolean:
-        print(error_message)
-        return None
-    with open(config_path, 'r') as file:
-        data = json.load(file)
-
-        match channel:
-            case 'VIS':
-                taskFile = data['visTaskFile']
-            case 'NIR1':
-                taskFile = data['nir1TaskFile']
-            case 'NIR2':
-                taskFile = data['nir2TaskFile']
-            case 'SWIR':
-                taskFile = data['swirTaskFile']
-        
-
-        #Extract sp values from taskValues
-        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
-        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
-        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
-        #Extract exposure times
-        exposure_times = [taskValues[i][4] for i in range(len(taskValues))]
-        if all(x == exposure_times[0] for x in exposure_times):
-            exposure_times = [exposure_times[0]]
-        exposures_in_s = [exposure_conversion(x, channel) for x in exposure_times]
-        exposures_str = ','.join(str(x) for x in exposures_in_s)
-        primary_metadata['EXPOSURE'] = exposures_str
-
-
-    return primary_metadata
-
-def collect_spice_metadata(telemetry:str, mk: str, channel:str, target: str = 'DIDYMOS', test: bool =True)-> Dict[str, str]:
-    """
-    Collect specified spice kernel data for fits primary header.
-
-    Parameters:
-        telemetry (str): Path to the telemetry JSON file of the acquisition
-        mk (str): Defines which meta kernel is loaded. Options: ops, plan
-        channel (str): Identifies to which channel the spice data is retrived
-        target (str): Target of the observation
-
-    Returns: 
-        A dicitionary of header keywords and values
-    """
-    spice_metadata = {}
-
-    tele = read_telemetry(telemetry, channel)
-    utc_ob = tele['DATE-OB']
-    if test:
-        utc_ob = '2025-06-15T05:40:46.6666' # Testing
-
-    hera_spice.load_meta_kernel(mk) # Load the meta kernel
-
-    et = hera_spice.utc_2_et(utc_ob)
-    milani_frame = 'MILANI_SPACECRAFT'
-    camera_frame = 'MILANI_NAVCAM'
-
-    mk_id = hera_spice.query_mk_identifier() # Meta kernel version
-    spice_metadata['SPICE_MK'] = mk_id
-
-    sclk = hera_spice.get_sclk(et, milani_frame) # SC clock in spice format
-    spice_metadata['SPICECLK'] = sclk
-
-    # Sun position vector and distnace from observer
-    sun_position, sun_distance_au = hera_spice.query_position_distance(target='SUN', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
-    spice_metadata['SUN_POSX'] = sun_position[0]
-    spice_metadata['SUN_POSY'] = sun_position[1]
-    spice_metadata['SUN_POSZ'] = sun_position[2]
-    spice_metadata['SOLAR_D']  = sun_distance_au
-
-    # Earth position vector and distnace from observer
-    earth_position, earth_distance_au = hera_spice.query_position_distance(target='EARTH', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
-    spice_metadata['EARTPOSX'] = earth_position[0]
-    spice_metadata['EARTPOSY'] = earth_position[1]
-    spice_metadata['EARTPOSZ'] = earth_position[2]
-    spice_metadata['EARTH_D']  = earth_distance_au
-
-    # IMPLEMENT THE OBSERVATION TARGET spice_metadata['TAGET'] = ...
-    spice_metadata['TARGET'] = target
-
-    # Target position vector and distnace from observer
-    target_position, target_distance_au = hera_spice.query_position_distance(target=target, et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
-    spice_metadata['TRG_POSX'] = target_position[0]
-    spice_metadata['TRG_POSY'] = target_position[1]
-    spice_metadata['TRG_POSZ'] = target_position[2]
-    spice_metadata['TRG_DIST']  = target_distance_au
-
-    
-    # Spacecraft quaternions
-    quaternions = hera_spice.query_spacecraft_quaternions(frame_name=milani_frame, et=et, tol=1, ref='J2000' )
-    spice_metadata['SC_QUAT0'] = quaternions[0]
-    spice_metadata['SC_QUAT1'] = quaternions[1]
-    spice_metadata['SC_QUAT2'] = quaternions[2]
-    spice_metadata['SC_QUAT3'] = quaternions[3]
-
-    # Camera attitude
-    ra_deg, dec_deg, naz_deg = hera_spice.query_camera_pointing_info(camera_frame=camera_frame, et=et, inertial_frame='J2000', target_frame='DIDYMOS_FIXED')
-    spice_metadata['CAM_RA'] = ra_deg
-    spice_metadata['CAM_DEC'] = dec_deg
-    spice_metadata['CAM_NAZ'] = naz_deg
-
-    # Camera solar elongation
-    solar_angle = hera_spice.query_camera_solar_elongation(camera_frame=camera_frame, et=et, abcorr='NONE',observer=milani_frame)
-    spice_metadata['SOL_ELNG'] = solar_angle
-
-    hera_spice.unload_all_kernels() # Unload all kernels at the end
-
-    return spice_metadata
 
 def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> str:
     channel_map = {
@@ -559,35 +152,360 @@ def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> 
     file_name = f'AS{asp_id}_{sc_clk}_{utc_format}_{calib_lvl}.fits'
     return file_name
 
-def decompress_jp2(input_path: str, output_dir:str) -> str:
+def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
+    """
+    Converts the 'DET_TEMP' entries from telemetry to Celcius and Kelvin
+
+    Parameters:
+        value (float): Detector temperature DN value
+        channel (str): Instrument channel
+
+    Returns:
+        Tuple(Celsius, Kelvin)
+    """
+
+    match channel:
+        case 'VIS':
+            c = value * 0.6522 - 295.87
+            return (c, c + kelvin)
+        case 'NIR1': return (value, value)
+        case 'NIR2': return (value, value)
+        case 'SWIR':
+            c = (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
+            return (c, c + kelvin)
+
+def exposure_conversion(value: float, channel: str) -> float:
+    match channel:
+        case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
+        case 'NIR1': return value / 100000
+        case 'NIR2': return value / 100000
+        case 'SWIR': return value 
+
+def collect_primary_metadata(
+        swcreate: str, 
+        orig_file: str, 
+        missphas: str, 
+        observph: str, 
+        obstargt: str
+    ) -> Dict[str, Tuple[str, str]]:
+    """
+    Generates the high level FITS metadata headers for primary HDU
+
+    Parameters:
+        swcreate (str): Software id 
+        orig_file (str): original filename
+        missphas (str): mission phase ID
+        observph (str): Observation ID
+        obstargt (str): observation target
+    Returns: 
+        Dict[header_keyword, Tuple(value, comment)]
+    """
+    date = get_current_utc_time_str()
+
+    metadata = {
+        'INSTRUME' : ('ASPECT', 'Camera ID'),
+        'ORIGIN'   : ('ESA-HERA', ''),
+        'DATE'     : (date, 'UTC time of file creation'),
+        'FILENAME' : ('', 'Name of the actual fits file'), # generated later by form_fits_name. needs sc clock count.
+        'SWCREATE' : (swcreate, 'Software identification'),
+        'ORIGFILE' : (orig_file, 'Original file name. Replace XXX with different frames.'),
+        'PROCLEVL' : ('0', 'Calibration level'),
+        'MISSPHAS' : (missphas, 'HERA Mission Phase ID'),
+        'OBSERVPH' : (observph, 'HERA Observation ID'),
+        'OBSTARGT' : (obstargt, 'Observation target'),
+    }
+
+    return metadata
+
+def collect_instrument_metadata(
+        telemetry_path: Path, 
+        config_path: Path, 
+        channel: str,
+        object: str
+    ) -> Dict[str, Tuple[str, str]]:
+    """
+    Collects instrument metadata.
+
+    Parameters:
+        telemetry_path (Path): Path object to the telemetry file
+        config_path (Path): Path object to the config file
+        channel (str): Channel information to look for
+        object (str): Name for the observed object
+    
+    Returns:
+         Dict[header_keyword, Tuple(value, comment)]
+    """
+
+    telemetry_path = Path(telemetry_path)
+    config_path = Path(config_path)
+
+    telemetry_data = json.loads(telemetry_path.read_text(encoding='utf=8')) # Telemetry etries
+    channel_specific_telemetry = telemetry_data[channel]
+
+    config_data = json.loads(config_path.read_text(encoding='utf-8')) # Config entries
+    
+    metadata = {}
+
+    Acq_date = telemetry_data['ACQ_DATE']
+    dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
+    metadata['DATE-OB'] = (dt.strftime("%Y-%m-%dT%H:%M:%S.000"), 'UTC time of observation')
+
+    metadata['OBJECT'] = (object, 'Observed object')
+
+    match channel:
+            case 'VIS': taskFile = config_data['visTaskFile']
+            case 'NIR1': taskFile = config_data['nir1TaskFile']
+            case 'NIR2': taskFile = config_data['nir2TaskFile']
+            case 'SWIR': taskFile = config_data['swirTaskFile']
+        
+    task_values = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
+    #Extract exposure times
+    exposure_times = [task_values[i][4] for i in range(len(task_values))]
+    if all(x == exposure_times[0] for x in exposure_times):
+        exposure_times = [exposure_times[0]]
+    exposures_in_s = [exposure_conversion(x, channel) for x in exposure_times]
+    exposures_str = ','.join(str(x) for x in exposures_in_s)
+    metadata['EXPOSURE'] = (exposures_str, 'Exposure time [s]')
+
+    det_temp = channel_specific_telemetry['DET_TEMP']
+    c, k = det_temp_conversion(det_temp, channel)
+    c = round(c, 2)
+    k = round(k, 2)
+    metadata['CCDTEMP'] = (k, f'Detector temp [K] ({c} [C])')
+
+    metadata['AMBTEMP'] = ('', 'Ambient temperature')
+
+    metadata['SC_CLK'] = ('', 'SC clock Hera instrument format')
+
+    fault = channel_specific_telemetry['FAULT']
+    metadata['ERRORFLG'] = (fault, 'Error flags for instrument')
+
+    return metadata
+    
+def collect_instrument_specific_metadata(
+        telemetry_path: Path, 
+        config_path: Path, 
+        channel: str,
+    ) -> Dict[str, Tuple[str, str]]:
+    """
+    Collects instrument specific metadata.
+
+    Parameters:
+        telemetry_path (Path): Path object to the telemetry file
+        config_path (Path): Path object to the config file
+        channel (str): Channel information to look for
+    
+    Returns:
+        Dict[header_keyword, Tuple(value, comment)]
+    """
+
+    metadata = {}
+
+    #### Impelement here the ASPECT specific metadata
+
+    return metadata
+
+def collect_spice_metadata(
+        telemetry_path: Path, 
+        mk: str | Path,  
+        target: str = 'DIDYMOS', 
+        test: bool =True
+    )-> Dict[str, Tuple[str, str]]:
+    """
+    Collect specified spice kernel data for fits primary header.
+
+    Parameters:
+        telemetry (str): Path to the telemetry JSON file of the acquisition
+        mk (str | Path): Path to the meta kernel file.
+        target (str): Target of the observation
+
+    Returns: 
+        Dict[header_keyword, Tuple(value, comment)]
+    """
+    telemetry_path = Path(telemetry_path) 
+    mk = str(mk)
+
+    telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8')) # Telemetry etries
+
+    utc_ob = telemetry_data['ACQ_DATE']
+    if test:
+        utc_ob = '2025-06-15T05:40:46.6666' # Testing
+
+    spice_metadata = {}
+
+    hera_spice.load_meta_kernel(mk) # Load the meta kernel
+
+    et = hera_spice.utc_2_et(utc_ob)
+    milani_frame = 'MILANI_SPACECRAFT'
+    camera_frame = 'MILANI_NAVCAM'
+
+    mk_id = hera_spice.query_mk_identifier() # Meta kernel version
+    spice_metadata['SPICE_MK'] = (mk_id, 'SPICE meta kernel version')
+
+    sclk = hera_spice.get_sclk(et, milani_frame) # SC clock in spice format
+    spice_metadata['SPICECLK'] = (sclk, 'SC clock SPICE format')
+
+    # Sun position vector and distnace from observer
+    sun_position, sun_distance_au = hera_spice.query_position_distance(target='SUN', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
+    spice_metadata['SUN_POSX'] = (sun_position[0], 'Sun position vector X [km]')
+    spice_metadata['SUN_POSY'] = (sun_position[1], 'Sun position vector Y [km]')
+    spice_metadata['SUN_POSZ'] = (sun_position[2], 'Sun position vector Z [km]')
+    spice_metadata['SOLAR_D']  = (sun_distance_au, 'Solar distance [AU]')
+
+    # Earth position vector and distnace from observer
+    earth_position, earth_distance_au = hera_spice.query_position_distance(target='EARTH', et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
+    spice_metadata['EARTPOSX'] = (earth_position[0], 'Earth position vector X [km]')
+    spice_metadata['EARTPOSY'] = (earth_position[1], 'Earth position vector Y [km]')
+    spice_metadata['EARTPOSZ'] = (earth_position[2], 'Earth position vector Z [km]')
+    spice_metadata['EARTH_D']  = (earth_distance_au, 'Earth distance [AU]')
+
+    # IMPLEMENT THE OBSERVATION TARGET spice_metadata['TAGET'] = ...
+    spice_metadata['TARGET'] = (target, 'Observation target')
+
+    # Target position vector and distnace from observer
+    target_position, target_distance_au = hera_spice.query_position_distance(target=target, et=et, frame='J2000', abcorr='NONE', observer=milani_frame)
+    spice_metadata['TRG_POSX'] = (target_position[0], 'Target position vector X [km]')
+    spice_metadata['TRG_POSY'] = (target_position[1], 'Target position vector Y [km]')
+    spice_metadata['TRG_POSZ'] = (target_position[2], 'Target position vector Z [km]')
+    spice_metadata['TRG_DIST']  = (target_distance_au, 'Target distance [AU]')
+
+    
+    # Spacecraft quaternions
+    quaternions = hera_spice.query_spacecraft_quaternions(frame_name=milani_frame, et=et, tol=1, ref='J2000' )
+    spice_metadata['SC_QUAT0'] = (quaternions[0], 'Spacecraft quaternion 0')
+    spice_metadata['SC_QUAT1'] = (quaternions[1], 'Spacecraft quaternion 1')
+    spice_metadata['SC_QUAT2'] = (quaternions[2], 'Spacecraft quaternion 2')
+    spice_metadata['SC_QUAT3'] = (quaternions[3], 'Spacecraft quaternion 3')
+
+    # Camera attitude
+    ra_deg, dec_deg, naz_deg = hera_spice.query_camera_pointing_info(camera_frame=camera_frame, et=et, inertial_frame='J2000', target_frame='DIDYMOS_FIXED')
+    spice_metadata['CAM_RA'] = (ra_deg, 'Camera axis RA [deg]')
+    spice_metadata['CAM_DEC'] = (dec_deg, 'Camera axis DEC [deg]')
+    spice_metadata['CAM_NAZ'] = (naz_deg, 'Camera axis north azimuth [deg]')
+
+    # Camera solar elongation
+    solar_angle = hera_spice.query_camera_solar_elongation(camera_frame=camera_frame, et=et, abcorr='NONE',observer=milani_frame)
+    spice_metadata['SOL_ELNG'] = (solar_angle, 'Solar elongation')
+
+    hera_spice.unload_all_kernels() # Unload all kernels at the end
+
+    return spice_metadata
+
+def collect_calibration_metadata() -> Dict[str, Tuple[str, str]]:
+    """
+    Collects instrument specific metadata.
+
+    Parameters:
+    
+    Returns:
+        Dict[header_keyword, Tuple(value, comment)]
+    """
+
+    metadata = {}
+
+    #### Impelement here the ASPECT calibration
+
+    return metadata
+
+def decompress_jp2(input_path: str | Path, output_dir: str | Path) -> Path:
     """
     Decompress a JPEG2000 .jp2 image using the C-based './decompress' program.
 
     Parameters:
-        input_path (str): Path to the input .jp2 file.
-        output_dir (str): Directory to store the output .bin file.
+        input_path (str | Path): Path object to the input .jp2 file.
+        output_dir (str | Path): Directory to store the output .bin file.
     
     Returns:
-        Path (str): Path to the decompressed .bin file.
+        Path (Path): Path object to the decompressed .bin file.
     """
+    input_path = Path(input_path)
+    output_dir = Path(output_dir)
 
-    os.makedirs(output_dir, exist_ok=True) # Cretate the output directory if does not exist
-    base_name = os.path.basename(input_path)
-    if base_name.endswith(".jp2"):
-        output_filename = base_name[:-4]  # remove '.jp2'
+    output_dir.mkdir(parents=True, exist_ok=True) # Cretate the output directory if does not exist
+    if input_path.suffix == '.jp2':
+        output_filename = input_path.stem 
     else:
         raise ValueError("Input file does not end with .jp2")
 
-    output_path = os.path.join(output_dir, output_filename)
+    output_path = Path(output_dir) / output_filename 
 
     # Resolve absolute path to decompress binary (relative to this script's location)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    decompress_path = os.path.join(script_dir, "decompress")
+    script_dir = Path(__file__).resolve().parent
+    decompress_path = Path(script_dir) / "decompress"
 
     with open(input_path, "rb") as f_in, open(output_path, "wb") as f_out:
-        subprocess.run([decompress_path], stdin=f_in, stdout=f_out, check=True)
+        subprocess.run([str(decompress_path)], stdin=f_in, stdout=f_out, check=True)
     
     return output_path
+
+def check_order(sp: float, channel: str) -> str:
+    match channel:
+        case 'VIS' | 'NIR1':
+            if sp > 19000:
+                return 'high'
+            else:
+                return 'low'
+        case 'NIR2':
+            if sp > 20000:
+                return 'high'
+            else:
+                return 'low'
+        case 'SWIR':
+            return ''
+
+# Read metadata from config file
+def collect_image_metadata(config_path: Path, channel: Path) -> Dict[str, Tuple[str, str]]:
+    
+    meta_data = {}
+
+    config_data = json.loads(config_path.read_text(encoding='utf-8')) # Config entries
+
+
+    #read SP values for each image
+    match channel:
+        case 'VIS':
+            taskFile = config_data['visTaskFile']
+        case 'NIR1':
+            taskFile = config_data['nir1TaskFile']
+        case 'NIR2':
+            taskFile = config_data['nir2TaskFile']
+        case 'SWIR':
+            taskFile = config_data['swirTaskFile']
+    
+
+    #Extract sp values from taskValues
+    taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
+    sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
+    sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
+    sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
+    #Extract exposure times
+    exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
+    exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
+    sp1 = ','.join(str(x) for x in sp1Values)
+    sp2 = ','.join(str(x) for x in sp2Values)
+    sp3 = ','.join(str(x) for x in sp3Values)
+    #Check the order based on SP1 index 3
+    order = check_order(sp1Values[3], channel)
+
+    meta_data['ORDER'] = (order, 'low / high')
+    meta_data['EXPOSURE'] = (exposureTimes, 'Exposuretime(s. Multiple if vary between frames')
+    meta_data['SP1'] = (sp1, 'Setpoint 1')
+    meta_data['SP2'] = (sp2, 'Setpoint 2')
+    meta_data['SP3'] = (sp3, 'Setpoint 3')
+
+    return meta_data
+
+def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
+    path = Path(path)
+    if not path.exists():
+        return False, f"File not found: {path}"
+    if not path.is_file():
+        return False, f"Path is not a file: {path}"
+    if path.suffix.lower() != '.fits':
+        return False, f"File does not have a .fits extension: {path}"
+    
+    return True, None
+
 
 def combine_headers(vis: Header, nir1: Header, nir2: Header, swir: Header) -> Dict[str, Any]:
     header_dict = {}

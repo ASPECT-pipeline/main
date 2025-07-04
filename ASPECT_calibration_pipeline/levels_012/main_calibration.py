@@ -1,14 +1,10 @@
 import os
 from pathlib import Path
 import modules.convertToFits as convertToFits
-import modules.convertWavelengths
-import modules.removeDiagnostic
-import modules.badPixels
-import modules.darkSubtraction
-import modules.flatField
-import modules.radiometric
-import modules.alignAndResample
 import modules.utilities as utilities
+import modules.convertWavelengths as convertWavelengths
+import modules.removeDiagnostic as removeDiagnostic
+import modules.
 
 """
     The main program to execute the data processing pipeline.
@@ -45,6 +41,8 @@ def calibration_pipeline(
         input_dir: str | Path, 
         output_dir: str | Path,
         software: str = 'ASPECTCAL v1.0',
+        missphase: str = '',
+        observph: str = '',
         target: str = 'DIDYMOS',
         object: str = 'Didymos',
     ) -> str:
@@ -58,48 +56,52 @@ def calibration_pipeline(
     # Verify the existance of directory paths and convert them into Path objects
     input_dir = utilities.verify_directory_path(input_dir)
     output_dir = utilities.verify_directory_path(output_dir)
-
     # Convert the input directory into FITS file(s)
-    fits_file = convertToFits.convert_to_fits(
-                                            dir_path=input_dir, 
-                                            output_dir=output_dir,
-                                            software=software, 
-                                            target=target, 
-                                            object=object 
-                                        )
+    fits_files = convertToFits.convert_to_fits(
+            dir_path=input_dir, 
+            output_dir=output_dir,
+            software=software,
+            missphase=missphase,
+            observph=observph, 
+            target=target, 
+            object=object 
+        )
     
-    print(f'New file saved: {fits_file}')
+    print(f'New file saved: {fits_files}')
 
-    # Convert the wavelengths
-    # path = os.path.join(output, fits_file)
-    fits_file = convertWavelengths.convert_wl(fits_file, output)
-    print(f'New file created: {fits_file}')
+    # Process each fits file separately
 
-    #Extract diagnostic pixels. The function will only extract pixels on NIR1 and NIR2 channels
-    # path = os.path.join(output, fits_file)
-    fits_file = removeDiagnostic.extract_diagnostic_pixels(fits_file, output)
-    print(f'New file created: {fits_file}')
+    for fits_file in fits_files:
 
-    # Use removeBadPixels to change the value to the mean of the neighbours
-    # path = os.path.join(output, fits_file)
-    fits_file = badPixels.remove_bad_pixels(fits_file, output)
-    print(f'New file created: {fits_file}')
+        # Convert the wavelengths
+        fits_file = convertWavelengths.convert_wl(fits_file, output_dir)
+        print(f'New file created: {fits_file}')
 
-    # Use darSubstraction to substract the dark frame from fits file and
-    # create a new fits file
-    # path = os.path.join(output, fits_file)
-    fits_file = darkSubtraction.dark_subtraction(fits_file, output)
-    print(f'New file created: {fits_file}')
+        #Extract diagnostic pixels. The function will only extract pixels on NIR1 and NIR2 channels
+        # path = os.path.join(output, fits_file)
+        fits_file = removeDiagnostic.extract_diagnostic_pixels(fits_file, output)
+        print(f'New file created: {fits_file}')
 
-    # Use flatFieldCalibration function
-    # path = os.path.join(output, fits_file) 
-    fits_file = flatField.flat_field_calibration(fits_file, output)
-    print(f'New file created: {fits_file}')
+        # Use removeBadPixels to change the value to the mean of the neighbours
+        # path = os.path.join(output, fits_file)
+        fits_file = badPixels.remove_bad_pixels(fits_file, output)
+        print(f'New file created: {fits_file}')
 
-    # # Use radiometricCalbration function
-    # path = os.path.join(output, fits_file)
-    fits_file = radiometric.radiometric_calibration(fits_file, output)
-    print(f'New file created: {fits_file}')
+        # Use darSubstraction to substract the dark frame from fits file and
+        # create a new fits file
+        # path = os.path.join(output, fits_file)
+        fits_file = darkSubtraction.dark_subtraction(fits_file, output)
+        print(f'New file created: {fits_file}')
+
+        # Use flatFieldCalibration function
+        # path = os.path.join(output, fits_file) 
+        fits_file = flatField.flat_field_calibration(fits_file, output)
+        print(f'New file created: {fits_file}')
+
+        # # Use radiometricCalbration function
+        # path = os.path.join(output, fits_file)
+        fits_file = radiometric.radiometric_calibration(fits_file, output)
+        print(f'New file created: {fits_file}')
 
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
@@ -123,7 +125,13 @@ def pipeline(vis, nir1, nir2, swir, output):
     # nir2 = calibration_pipeline(nir2, os.path.join(output, "NIR2"))
     # swir = calibration_pipeline(swir, os.path.join(output, "SWIR"))
 
-    # print(f'Successfully calibrated all channels')
+    # # print(f'Successfully calibrated all channels')
 
-    aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
-    print(f"New file created: {aligned_fits}")
+    # aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
+    # print(f"New file created: {aligned_fits}")
+
+acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
+fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
+
+print(calibration_pipeline(acq_path, fits_output_dir))
+

@@ -2,6 +2,7 @@ import spiceypy as spice
 import numpy as np
 from typing import Tuple
 import os
+from pathlib import Path
 from modules._constants import spice_mk_ops, spice_mk_plan
 
 """
@@ -34,19 +35,15 @@ acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_100')
 meta_folder = os.path.join(acq_path, 'meta')
 telemetry_path = os.path.join(meta_folder, 'telemetry.json')
 
-def load_meta_kernel(mk: str):
+def load_meta_kernel(mk: str | Path):
     """Load the given meta-kernel (.tm) file."""
-    match mk:
-        case 'ops'  : mk_path = spice_mk_ops
-        case 'plan' : mk_path = spice_mk_plan
-        case _:
-            raise ValueError(f'Unkown meta-kernel option: {mk}. Choose from: ops, plan')
+    mk = str(mk)
     try:
-        spice.furnsh(mk_path)
-        print(f"Loaded meta-kernel: {mk_path}")
+        spice.furnsh(mk)
+        print(f"Loaded meta-kernel: {mk}")
         test_et = spice.utc2et(test_time)
     except Exception as e:
-        print(f"Caught an exception while loading meta kernel {mk_path}: {e}")
+        print(f"Caught an exception while loading meta kernel {mk}: {e}")
 
 def unload_all_kernels():
     spice.kclear()
