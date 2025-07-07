@@ -4,7 +4,6 @@ import modules.convertToFits as convertToFits
 import modules.utilities as utilities
 import modules.convertWavelengths as convertWavelengths
 import modules.removeDiagnostic as removeDiagnostic
-import modules.
 
 """
     The main program to execute the data processing pipeline.
@@ -55,7 +54,6 @@ def calibration_pipeline(
 
     # Verify the existance of directory paths and convert them into Path objects
     input_dir = utilities.verify_directory_path(input_dir)
-    output_dir = utilities.verify_directory_path(output_dir)
     # Convert the input directory into FITS file(s)
     fits_files = convertToFits.convert_to_fits(
             dir_path=input_dir, 
@@ -106,19 +104,52 @@ def calibration_pipeline(
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
 
-def pipeline(vis, nir1, nir2, swir, output):
+def pipeline_levels_012(
+        input_dir: str | Path, 
+        output_dir: str | Path,
+        software: str = 'ASPECTCAL v1.0',
+        missphase: str = '',
+        observph: str = '',
+        target: str = 'DIDYMOS',
+        object: str = 'Didymos',
+    ) -> str:
     """
-    levels 0 to 1 to each cahnnel and combine all channels into one FITS
+    Executes the calibration levels 0, 1, 2 of the ASPECT calibation pipeline. 
+    The pipeline consist of converting the raw binary data into FITS files,
+    performing clibration steps to each channel individually, and lastly 
+    combining all cahnnels into one FITS file containing one calibrated 
+    hyperspectral data cube.
     
     Parameters:
-        vis: path to folder containing visible cahnnel acquisition data
-        nir1: path to folder containing near-infrared 1 cahnnel acquisition data
-        nir2: path to folder containing near-infrared 2 cahnnel acquisition data
-        swir: path to folder containing swir cahnnel acquisition data
+        input_dir (str | Path):    Directory containing the acquisition files.
+        output_dir (str | Path):  Directory where a new directory containg all new files will be sotred.
+        software (str): Pipeline software identification.
+        missphase (str): Identification of the mission phase.
+        observph (str): Identification of the observation ID
+        target (str): Taret in SPICE format
+        object (str): Unique name for target
+    
+    Return: Path to the single combined FITS file as the result of level 2B
     """
-    #create a folder for fits file
-    os.makedirs(output, exist_ok=True)
 
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+
+    output_dir = utilities.verify_directory_path(output_dir)
+
+    output_dir = Path(output_dir) / observph # output directory for this acquisition
+    output_dir.mkdir(parent=True, exist_ok=True) # create the directory for this acquisition
+
+    acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(input_dir)
+
+    channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]
+    channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
+
+    for channel in channel_names:
+
+        orig_filename, files = acq_dir[channel]
+        print(f'{channel} channel, original filename: {orig_filename}, files:')
+        print(files)
 
     # vis = calibration_pipeline(vis, os.path.join(output, "VIS"))
     # nir1 = calibration_pipeline(nir1, os.path.join(output, "NIR1"))
@@ -131,7 +162,7 @@ def pipeline(vis, nir1, nir2, swir, output):
     # print(f"New file created: {aligned_fits}")
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
-fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
+fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_outputs/ASPECT_fly')
 
-print(calibration_pipeline(acq_path, fits_output_dir))
+pipeline_levels_012(acq_path, fits_output_dir, missphase='TEST', observph='101')
 

@@ -22,7 +22,7 @@ autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encodi
 autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_1_decoded.dat01.img')
 autoseq_decoding_ouput = os.path.join(autoseq_dir, 'pipeline_diff_decoded/505')
 
-simulated_cube = os.path(getcwd())
+simulated_cube = os.path(os.getcwd())
 
 # Getting channels frame counts and original fiel names from acquisition folder
 def test_channel_frames_names():

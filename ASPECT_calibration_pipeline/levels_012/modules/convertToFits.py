@@ -128,8 +128,9 @@ def convert_to_fits(
                 try:
                     with file_path.open('rb') as f:
                         bin_data = f.read()
-                    value = int.from_bytes(bin_data, 'big' , signed=False) #np.frombuffer(bin_data, dtype=np.uint32)[0]  # Check the correct byte format
-                    # swir_data.append(value)
+                    if len(bin_data) != 4: 
+                        raise ValueError(f'SWIR file {file_path} does not contain excatly 4 bytes.')
+                    value = int.from_bytes(bin_data, 'big' , signed=False)
                 except Exception as e:
                     raise IOError(f"Error reading binary file {file_path}: {e}") from e
                 col = fits.Column(name=f'SWIR_{i}', format='J', array=[value]) # J for 32-bit, I for 16-bit integers
