@@ -11,18 +11,18 @@ acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
 # acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
 decoded_binaries = os.path.join(acq_path, 'acq_000_decompressed')
 meta_folder = os.path.join(acq_path, 'meta')
-fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
-aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_0A.fits')
+fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/101')
+aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_1C.fits')
 aspect_fly_fits_nir1 = os.path.join(fits_output_dir, 'AS1_XXXXXX_200101T014800_0A.fits')
 aspect_fly_fits_nir2 = os.path.join(fits_output_dir, 'AS2_XXXXXX_200101T014800_0A.fits')
-aspect_fly_fits_swir = os.path.join(fits_output_dir, 'AS3_XXXXXX_200101T014231_0A.fits')
+aspect_fly_fits_swir = os.path.join(fits_output_dir, 'AS3_XXXXXX_200101T014411_1B.fits')
 
 autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809')
-autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding/dc_1_exp_000_diffEnc.bin.jp2')
-autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_1_decoded.dat01.img')
+autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding/dc_0_exp_001_diffEnc.bin.jp2')
+autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat02.img')
 autoseq_decoding_ouput = os.path.join(autoseq_dir, 'pipeline_diff_decoded/505')
 
-simulated_cube = os.path(os.getcwd())
+# simulated_cube = os.path(os.getcwd())
 
 # Getting channels frame counts and original fiel names from acquisition folder
 def test_channel_frames_names():
@@ -50,7 +50,7 @@ def test_spice_metadata():
 def test_convert_to_fits(output: str):
     convertToFits.convert_to_fits(acq_path, output)
 
-def read_fits_file(path):
+def read_fits_file(path, visualise = True):
     with fits.open(path) as hdul:
         print(f'Fitsfile from path:')
         print({path})
@@ -61,16 +61,19 @@ def read_fits_file(path):
             print(f'Header for HDU {i}')
             print(repr(h))
 
-            if isinstance(hdu, fits.ImageHDU):
-                print("→ This is an ImageHDU")
-                for i, frame in enumerate(hdu.data):
-                    plt.imshow(frame, cmap='gray')
-                    plt.title(f'frame: {i}')
-                    plt.show()
-            elif isinstance(hdu, fits.BinTableHDU):
-                print("→ This is a Binary Table HDU")
-                print(f'SWIR data:')
-                print(hdu.data)
+            if visualise:
+                if isinstance(hdu, fits.ImageHDU):
+                    print("→ This is an ImageHDU")
+                    print(f'data type: {type(hdu.data)}')
+                    for i, frame in enumerate(hdu.data):
+                        plt.imshow(frame, cmap='gray')
+                        plt.title(f'frame: {i}')
+                        plt.show()
+                elif isinstance(hdu, fits.BinTableHDU):
+                    print("→ This is a Binary Table HDU")
+                    print(f'data type: {type(hdu.data)}')
+                    print(f'SWIR data:')
+                    print(hdu.data)
             
         print()
 
@@ -120,8 +123,8 @@ def test_decoding(input:str, output: str, compare: str):
 
     try:
         # Load binary data and convert to images
-        data_1 = np.fromfile(decoded, dtype=np.uint16).reshape((518, 648))
-        data_2 = np.fromfile(compare, dtype=np.uint16).reshape((518, 648))
+        data_1 = np.fromfile(decoded, dtype=np.uint16).reshape((1024, 1024))
+        data_2 = np.fromfile(compare, dtype=np.uint16).reshape((1024, 1024))
 
         print(f'data shape: {data_1.shape}, {data_2.shape}')
         print(f'data match: {np.array_equal(data_1, data_2)}')
@@ -161,10 +164,10 @@ Function calls after this
 # test_acqseq()
 # test_channel_frames_names()
 # test_primary_metadata()
-test_convert_to_fits(output=fits_output_dir)
+# test_convert_to_fits(output=fits_output_dir)
 # test_spice_metadata()
 
-# read_fits_file(aspect_fly_fits_vis)
+read_fits_file(aspect_fly_fits_vis, True)
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
 

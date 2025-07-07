@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from astropy.io import fits
+from pathlib import Path
 
 """
 Function for converting the pixel values into scientific units.
@@ -11,12 +12,19 @@ Function for converting the pixel values into scientific units.
 """
 
 
-def radiometric_calibration(fits_path: str, output: str) -> str:
+def radiometric_calibration(fits_path: str, output_dir: str) -> str:
     """
+    Function for converting the pixel values into scientific units.
+
     Parmeters:
         fits_path: Path to the FITS file.
-        output: Path to the folder where the new fits file will be stored.
+        output_dir: Path to the folder where the new fits file will be stored.
+
+    Returns:
+        path to the created fits file.
     """
+    fits_path = Path(fits_path)
+    output_dir = Path(output_dir)
 
     # Open the fits file
     with fits.open(fits_path) as hdul:
@@ -36,7 +44,7 @@ def radiometric_calibration(fits_path: str, output: str) -> str:
         if channel == 'SWIR':
             bin_table_data = hdul[1].data.copy() #To store the calibrated BinTable
             for col_name in bin_table_data.names:
-                bin_table_data[col_name] = (bin_table_data[col_name] * coefficient).astype(np.int16)
+                bin_table_data[col_name] = (bin_table_data[col_name] * coefficient).astype(np.float64)
 
             new_bin_table_hdu = fits.BinTableHDU(data=bin_table_data, header=hdul[1].header)
             HDUs.append(new_bin_table_hdu)
@@ -45,7 +53,7 @@ def radiometric_calibration(fits_path: str, output: str) -> str:
             newDataCube = hdul[1].data.copy()#To store the calibrated datacube
             #loop over the 2D images inside the extension
             for i, image in enumerate(newDataCube):
-                newDataCube[i] = (image * coefficient).astype(np.int16) # multiply the image with the coefficient 
+                newDataCube[i] = (image * coefficient).astype(np.float64) # multiply the image with the coefficient 
             
             ImageHDU = fits.ImageHDU(data=newDataCube, header=img_header)
             HDUs.append(ImageHDU)
@@ -55,13 +63,17 @@ def radiometric_calibration(fits_path: str, output: str) -> str:
             if not isinstance(hdul[i], fits.ImageHDU):  # Skip the original Image HDU
                 HDUs.append(hdul[i])
 
+        hdu_list = fits.HDUList(HDUs)
         # File name for new fits
-        file_name = f'{channel}_1B_Rc.fits'
-
-        # Create the new fits file with radio metric calibrated images
-        hdu_list = fits.HDUList(HDUs)
-        fits_file = os.path.join(output, file_name)
-        hdu_list = fits.HDUList(HDUs)
+        stem = fits_path.stem
+        suffix = fits_path.suffix
+        new_calibration_level = '1C'
+        file_name = stem[:25] + new_calibration_level + suffix
+        primary_header = hdu_list[0].header
+        primary_header['FILENAME'] = file_name
+        primary_header['PROCLEVL'] = new_calibration_level
+        # Create the new fits file with dark-subtracted images
+        fits_file = os.path.join(output_dir, file_name)
         hdu_list.writeto(fits_file, overwrite=True)
 
     return(fits_file)

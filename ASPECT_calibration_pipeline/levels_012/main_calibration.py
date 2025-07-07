@@ -1,9 +1,14 @@
 import os
 from pathlib import Path
+from typing import Tuple, List
 import modules.convertToFits as convertToFits
 import modules.utilities as utilities
-import modules.convertWavelengths as convertWavelengths
-import modules.removeDiagnostic as removeDiagnostic
+import modules.calibrateHeader as calibrateHeader
+import modules.extractCDS as extractCDS
+import modules.darkSubtraction as darkSubtraction
+import modules.flatField as flatField
+import modules.badPixels as badPixels
+import modules.radiometric as radiometric
 
 """
     The main program to execute the data processing pipeline.
@@ -39,6 +44,8 @@ import modules.removeDiagnostic as removeDiagnostic
 def calibration_pipeline(
         input_dir: str | Path, 
         output_dir: str | Path,
+        channel: str,
+        channel_info: Tuple[str, List[str]],
         software: str = 'ASPECTCAL v1.0',
         missphase: str = '',
         observph: str = '',
@@ -52,12 +59,12 @@ def calibration_pipeline(
         output: Path to the folder where the fits files will be stored.
     """
 
-    # Verify the existance of directory paths and convert them into Path objects
-    input_dir = utilities.verify_directory_path(input_dir)
     # Convert the input directory into FITS file(s)
-    fits_files = convertToFits.convert_to_fits(
+    fits_file = convertToFits.convert_to_fits(
             dir_path=input_dir, 
             output_dir=output_dir,
+            channel=channel,
+            channel_info=channel_info,
             software=software,
             missphase=missphase,
             observph=observph, 
@@ -65,41 +72,32 @@ def calibration_pipeline(
             object=object 
         )
     
-    print(f'New file saved: {fits_files}')
+    print(f'New file saved: {fits_file}')
 
-    # Process each fits file separately
+    # Process the calibration steps
 
-    for fits_file in fits_files:
+    fits_file = calibrateHeader.calibrate_header(fits_file, output_dir)
+    print(f'New file created: {fits_file}')
 
-        # Convert the wavelengths
-        fits_file = convertWavelengths.convert_wl(fits_file, output_dir)
-        print(f'New file created: {fits_file}')
+    # Extract diagnostic pixels from NIR2 and NIR2. Convert the values to float64
+    fits_file = extractCDS.extract_cds_pixels(fits_file, output_dir)
+    print(f'New file created: {fits_file}')
 
-        #Extract diagnostic pixels. The function will only extract pixels on NIR1 and NIR2 channels
-        # path = os.path.join(output, fits_file)
-        fits_file = removeDiagnostic.extract_diagnostic_pixels(fits_file, output)
-        print(f'New file created: {fits_file}')
+    # Use darSubstraction to substract the dark frame from fits file and
+    fits_file = darkSubtraction.dark_subtraction(fits_file, output_dir)
+    print(f'New file created: {fits_file}')
 
-        # Use removeBadPixels to change the value to the mean of the neighbours
-        # path = os.path.join(output, fits_file)
-        fits_file = badPixels.remove_bad_pixels(fits_file, output)
-        print(f'New file created: {fits_file}')
+    # Correct the flatfield image 
+    fits_file = flatField.flat_field_calibration(fits_file, output_dir)
+    print(f'New file created: {fits_file}')
 
-        # Use darSubstraction to substract the dark frame from fits file and
-        # create a new fits file
-        # path = os.path.join(output, fits_file)
-        fits_file = darkSubtraction.dark_subtraction(fits_file, output)
-        print(f'New file created: {fits_file}')
+    # Change the value of bad pixels to the mean of the neighbours
+    fits_file = badPixels.remove_bad_pixels(fits_file, output_dir)
+    print(f'New file created: {fits_file}')
 
-        # Use flatFieldCalibration function
-        # path = os.path.join(output, fits_file) 
-        fits_file = flatField.flat_field_calibration(fits_file, output)
-        print(f'New file created: {fits_file}')
-
-        # # Use radiometricCalbration function
-        # path = os.path.join(output, fits_file)
-        fits_file = radiometric.radiometric_calibration(fits_file, output)
-        print(f'New file created: {fits_file}')
+    # Apply radiometric calibration
+    fits_file = radiometric.radiometric_calibration(fits_file, output_dir)
+    print(f'New file created: {fits_file}')
 
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
@@ -135,10 +133,12 @@ def pipeline_levels_012(
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
 
-    output_dir = utilities.verify_directory_path(output_dir)
-
     output_dir = Path(output_dir) / observph # output directory for this acquisition
-    output_dir.mkdir(parent=True, exist_ok=True) # create the directory for this acquisition
+    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
+
+    # Verify the existance of directory paths and convert them into Path objects
+    input_dir = utilities.verify_directory_path(input_dir)
+    output_dir = utilities.verify_directory_path(output_dir)
 
     acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(input_dir)
 
@@ -146,10 +146,17 @@ def pipeline_levels_012(
     channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
 
     for channel in channel_names:
+        channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames_belongs_this_channels]]
 
-        orig_filename, files = acq_dir[channel]
-        print(f'{channel} channel, original filename: {orig_filename}, files:')
-        print(files)
+        calibrated_fits_file = calibration_pipeline(input_dir=input_dir, 
+                                                    output_dir=output_dir, 
+                                                    channel=channel,
+                                                    channel_info=channel_info,
+                                                    software=software,
+                                                    missphase=missphase,
+                                                    observph=observph,
+                                                    target=target,
+                                                    object=object)
 
     # vis = calibration_pipeline(vis, os.path.join(output, "VIS"))
     # nir1 = calibration_pipeline(nir1, os.path.join(output, "NIR1"))
@@ -162,7 +169,8 @@ def pipeline_levels_012(
     # print(f"New file created: {aligned_fits}")
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
-fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_outputs/ASPECT_fly')
+fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
 
 pipeline_levels_012(acq_path, fits_output_dir, missphase='TEST', observph='101')
 
+# Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py

@@ -152,35 +152,6 @@ def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> 
     file_name = f'AS{asp_id}_{sc_clk}_{utc_format}_{calib_lvl}.fits'
     return file_name
 
-def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
-    """
-    Converts the 'DET_TEMP' entries from telemetry to Celcius and Kelvin
-
-    Parameters:
-        value (float): Detector temperature DN value
-        channel (str): Instrument channel
-
-    Returns:
-        Tuple(Celsius, Kelvin)
-    """
-
-    match channel:
-        case 'VIS':
-            c = value * 0.6522 - 295.87
-            return (c, c + kelvin)
-        case 'NIR1': return (value, value)
-        case 'NIR2': return (value, value)
-        case 'SWIR':
-            c = (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
-            return (c, c + kelvin)
-
-def exposure_conversion(value: float, channel: str) -> float:
-    match channel:
-        case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
-        case 'NIR1': return value / 100000
-        case 'NIR2': return value / 100000
-        case 'SWIR': return value 
-
 def collect_primary_metadata(
         swcreate: str, 
         orig_file: str, 
@@ -208,7 +179,7 @@ def collect_primary_metadata(
         'DATE'     : (date, 'UTC time of file creation'),
         'FILENAME' : ('', 'Name of the actual fits file'), # generated later by form_fits_name. needs sc clock count.
         'SWCREATE' : (swcreate, 'Software identification'),
-        'ORIGFILE' : (orig_file, 'Original file name. Replace XXX with different frames.'),
+        'ORIGFILE' : (orig_file, 'Original file name.'),
         'PROCLEVL' : ('0', 'Calibration level'),
         'MISSPHAS' : (missphas, 'HERA Mission Phase ID'),
         'OBSERVPH' : (observph, 'HERA Observation ID'),
@@ -263,15 +234,11 @@ def collect_instrument_metadata(
     exposure_times = [task_values[i][4] for i in range(len(task_values))]
     if all(x == exposure_times[0] for x in exposure_times):
         exposure_times = [exposure_times[0]]
-    exposures_in_s = [exposure_conversion(x, channel) for x in exposure_times]
-    exposures_str = ','.join(str(x) for x in exposures_in_s)
-    metadata['EXPOSURE'] = (exposures_str, 'Exposure time [s]')
+    exposures_str = ','.join(str(x) for x in exposure_times)
+    metadata['EXPOSURE'] = (exposures_str, "Exposuretime(s) [DNs]")
 
     det_temp = channel_specific_telemetry['DET_TEMP']
-    c, k = det_temp_conversion(det_temp, channel)
-    c = round(c, 2)
-    k = round(k, 2)
-    metadata['CCDTEMP'] = (k, f'Detector temp [K] ({c} [C])')
+    metadata['CCDTEMP'] = (det_temp, f'Detector temp [DNs]')
 
     metadata['AMBTEMP'] = ('', 'Ambient temperature')
 
@@ -439,22 +406,42 @@ def decompress_jp2(input_path: str | Path, output_dir: str | Path) -> Path:
     return output_path
 
 def check_order(sp: float, channel: str) -> str:
+    """
+    Checks the order of the acquisition. The order is either high or low based on the third frame's setpoint reading.
+
+    Parameters:
+        sp (float): Setpoint value
+        channel (str): channel name
+    
+    Returns: 
+        str: high / low 
+    """
     match channel:
         case 'VIS' | 'NIR1':
             if sp > 19000:
-                return 'high'
+                return 'HIGH'
             else:
-                return 'low'
+                return 'LOW'
         case 'NIR2':
             if sp > 20000:
-                return 'high'
+                return 'HIGH'
             else:
-                return 'low'
+                return 'LOW'
         case 'SWIR':
             return ''
 
 # Read metadata from config file
-def collect_image_metadata(config_path: Path, channel: Path) -> Dict[str, Tuple[str, str]]:
+def collect_image_metadata(config_path: Path, channel: str) -> Dict[str, Tuple[str, str]]:
+    """
+    Collect image specific metadata
+
+    Parameters: 
+        config_path (Path): Path object to the config file
+        channel (str): Instrument channel
+
+    Returns:
+        Dict[header_keyword, Tuple(value, comment)]
+    """
     
     meta_data = {}
 
@@ -487,13 +474,100 @@ def collect_image_metadata(config_path: Path, channel: Path) -> Dict[str, Tuple[
     #Check the order based on SP1 index 3
     order = check_order(sp1Values[3], channel)
 
-    meta_data['ORDER'] = (order, 'low / high')
-    meta_data['EXPOSURE'] = (exposureTimes, 'Exposuretime(s. Multiple if vary between frames')
+    meta_data['CHANNEL'] = (channel, 'Instrument channel')
+    meta_data['ORDER'] = (order, 'LOW / HIGH')
+    meta_data['EXPOSURE'] = (exposureTimes, 'Exposuretime(s) [DNs].')
     meta_data['SP1'] = (sp1, 'Setpoint 1')
     meta_data['SP2'] = (sp2, 'Setpoint 2')
     meta_data['SP3'] = (sp3, 'Setpoint 3')
 
     return meta_data
+
+def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
+    """
+    Converts the 'DET_TEMP' entries from telemetry to Celcius and Kelvin
+
+    Parameters:
+        value (float): Detector temperature DN value
+        channel (str): Instrument channel
+
+    Returns:
+        Tuple(Celsius, Kelvin)
+    """
+    match channel:
+        case 'VIS':
+            c = value * 0.6522 - 295.87
+            return (c, c + kelvin)
+        case 'NIR1': return (value, value)
+        case 'NIR2': return (value, value)
+        case 'SWIR':
+            c = (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
+            return (c, c + kelvin)
+
+def exposure_conversion(value: float, channel: str) -> float:
+    """
+    Converts exposure DN into seconds.
+
+    Parameters:
+        value (float): exposure DN
+        channel (str): channel
+    
+    Returns: 
+        float exposure in seconds
+    """
+    match channel:
+        case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
+        case 'NIR1': return value / 100000
+        case 'NIR2': return value / 100000
+        case 'SWIR': return value 
+
+def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> str:
+    """
+    Calculates the wavelengths from setpoint values
+
+    Parameters:
+        channel: instrument channel
+        order: order of the acquisition (high / low)
+        sp_values: Piezo actuator setpoint values
+
+    Returns:
+        str: wavelengths in string separated by comma
+    """
+    wavelengths = []
+    
+    match (channel, order):
+        # The correct values for the corretion needed
+        case 'VIS', 'HIGH':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.0749 * sp_values[i] - 786.9)
+                wavelengths.append(wavelength)
+        case 'VIS', 'LOW':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.1244 * sp_values[i] - 1498.2)
+                wavelengths.append(wavelength)
+        case 'NIR1', 'HIGH':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.1331 * sp_values[i] - 1823.1)
+                wavelengths.append(wavelength)
+        case 'NIR1', 'LOW':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.2379 * sp_values[i] - 3190.5)
+                wavelengths.append(wavelength)
+        case 'NIR2', 'HIGH':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.1293 * sp_values[i] - 1619.4)
+                wavelengths.append(wavelength)
+        case 'NIR2', 'LOW':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.2366 * sp_values[i] - 2925.8)
+                wavelengths.append(wavelength)
+        case 'SWIR', '':
+            for i in range(0, len(sp_values)):
+                wavelength = round(0.2869 * sp_values[i] - 3847.2)
+                wavelengths.append(wavelength)
+    
+    return ",".join(map(str, wavelengths))
+
 
 def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
     path = Path(path)
