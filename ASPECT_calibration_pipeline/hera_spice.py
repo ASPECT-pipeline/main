@@ -757,6 +757,56 @@ def query_attitude(
 
 	return rotated_X, rotated_Y, rotated_Z, quaternion
 
+def query_right_ascension(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame: str = "J2000",
+		target: str = "Milani",
+		observer: str = "EARTH"
+	):
+
+	spice.furnsh(metakernel_path)
+
+	# 2. Convert UTC to ephemeris time (TDB seconds past J2000)
+	et = spice.utc2et(utc_time)
+
+	# 3. Get state vector of MILANI relative to Earth in J2000 (no light‑time correction)
+	#    state: [x, y, z, vx, vy, vz]
+	state, _ = spice.spkezr(target, et, frame, "NONE", observer)
+	x, y, _ = state[:3]
+
+	# 4. Compute RA = atan2(y, x), convert to degrees, wrap into [0,360)
+	ra_rad = np.arctan2(y, x)
+	ra_deg = np.degrees(ra_rad) % 360.0
+
+	return ra_deg
+
+def query_declination(
+		metakernel_path: str,
+		utc_time: str = test_time,
+		frame: str = "J2000",
+		target: str = "Milani",
+		observer: str = "EARTH"
+	):
+
+	spice.furnsh(metakernel_path)
+
+    # 2. Convert UTC to ephemeris time (TDB seconds past J2000)
+	et = spice.utc2et(utc_time)
+
+	# 3. Get state vector of MILANI relative to Earth in J2000 (no light‑time correction)
+	state, _ = spice.spkezr(target, et, frame, "NONE", observer)
+	x, y, z = state[:3]
+
+	# 4. Compute radial distance
+	r = np.sqrt(x**2 + y**2 + z**2)
+
+	# 5. Compute Dec = arcsin(z / r), convert to degrees
+	dec_rad = np.arcsin(z / r)
+	dec_deg = np.degrees(dec_rad)
+
+	return dec_deg
+
 def info_for_asteroid_image_simulator(metakernel_path: str, utc_time: str = test_time, target: str = "Dimorphos"):
 	"""
 	Provides information for the asteroid image simulator.
