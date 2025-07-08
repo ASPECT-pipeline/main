@@ -145,7 +145,6 @@ def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> 
             'SWIR'  : 3
         }
     asp_id = channel_map[channel]
-    print(f'utc time: {utc_time}')
     utc_format = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%S.%f").strftime("%y%m%dT%H%M%S")
     if sc_clk == '':
         sc_clk = 'XXXXXX'
@@ -580,43 +579,70 @@ def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
     
     return True, None
 
+def combine_primary_headers(headers: list[Header]) -> Header:
+    if not headers: 
+        raise ValueError('No headers provided for combination')
+    
+    combined_header = headers[0].copy()
+    combined_header['ORIGFILE'] = ('dc_X_exp_XXX.bin', 'Original file name.')
+    combined_header['PROCLEVL'] = ('2B', 'Calibration level')
+    exposure = ''
+    det_temp = ''
+    det_temp_c = ''
+    for i, hdr in enumerate(headers):
+        exp = hdr.get('EXPOSURE')
+        exposure += f'{exp}, '
+        dt = hdr.get('CCDTEMP')
+        det_temp += f'{dt}, '
+        try:
+            numeric = float(dt)
+            det_temp_c += f'{numeric - kelvin}, '
+        except (ValueError, TypeError):
+            det_temp_c += f'UNK, '
+    
+    exposure = exposure.rstrip(',')
+    det_temp = det_temp.rstrip(',')
+    det_temp_c = det_temp_c.rstrip(',')
+    combined_header['EXPOSURE'] = (exposure, 'Exposure times [s]')
+    combined_header['CCDTEMP'] = (det_temp, f'Detector temp [K] ({det_temp_c} [C])')
 
-def combine_headers(vis: Header, nir1: Header, nir2: Header, swir: Header) -> Dict[str, Any]:
-    header_dict = {}
-    #VIS
-    header_dict['V_ORDER'] = vis.get('ORDER')
-    header_dict['V_WL'] = vis.get('WAVELEN')
-    header_dict['V_EXPOS'] = vis.get('EXPOS')
-    header_dict['V_SP1'] = vis.get('PIEZO1')
-    header_dict['V_SP2'] = vis.get('PIEZO2')
-    header_dict['V_SP3'] = vis.get('PIEZO3')
-    header_dict['V_NUM'] = vis.get('NAXIS3')
-    #NIR1
-    header_dict['N1_ORDER'] = nir1.get('ORDER')
-    header_dict['N1_WL'] = nir1.get('WAVELEN')
-    header_dict['N1_EXPOS'] = nir1.get('EXPOS')
-    header_dict['N1_SP1'] = nir1.get('PIEZO1')
-    header_dict['N1_SP2'] = nir1.get('PIEZO2')
-    header_dict['N1_SP3'] = nir1.get('PIEZO3')
-    header_dict['N1_NUM'] = nir1.get('NAXIS3')
-    #NIR2
-    header_dict['N2_ORDER'] = nir2.get('ORDER')
-    header_dict['N2_WL'] = nir2.get('WAVELEN')
-    header_dict['N2_EXPOS'] = nir2.get('EXPOS')
-    header_dict['N2_SP1'] = nir2.get('PIEZO1')
-    header_dict['N2_SP2'] = nir2.get('PIEZO2')
-    header_dict['N2_SP3'] = nir2.get('PIEZO3')
-    header_dict['N2_NUM'] = nir2.get('NAXIS3')
-    #SWIR
-    header_dict['S_ORDER'] = swir.get('ORDER')
-    header_dict['S_WL'] = swir.get('WAVELEN')
-    header_dict['S_EXPOS'] = swir.get('EXPOS')
-    header_dict['S_SP1'] = swir.get('PIEZO1')
-    header_dict['S_SP2'] = swir.get('PIEZO2')
-    header_dict['S_SP3'] = swir.get('PIEZO3')
-    header_dict['S_NUM'] = swir.get('NAXIS2')
+    return combined_header
 
-    return header_dict
+def combine_image_headers(headers: List[Header]) -> Header:
+    if not headers: 
+        raise ValueError('No headers provided for combination')
+    
+    combined_header = headers[0].copy()
+    del combined_header['ORDER']
+    del combined_header['WAVELEN']
+    del combined_header['SP1']
+    del combined_header['SP2']
+    del combined_header['SP3']
+    exposure = ''
+    channels = ''
+    for i, hdr in enumerate(headers):
+        exp = hdr.get('EXPOSURE')
+        exposure += f'{exp}, '
+        channel = hdr.get('CHANNEL')
+        channels += f'{channel}, '
+        order = hdr.get('ORDER')
+        combined_header[f'{channel}_O'] = (order, f'LOW / HIGH')
+        wl = hdr.get('WAVELEN')
+        combined_header[f'{channel}_WL'] = (wl, f'{channel} wavelengths')
+        sp1 = hdr.get('SP1')
+        combined_header[f'{channel}_SP1'] = (sp1, f'{channel} Setpoint 1')
+        sp2 = hdr.get('SP2')
+        combined_header[f'{channel}_SP2'] = (sp2, f'{channel} Setpoint 2')
+        sp3 = hdr.get('SP3')
+        combined_header[f'{channel}_SP3'] = (sp3, f'{channel} Setpoint 3')
+
+    exposure = exposure.rstrip(',')
+    channels = channels.rstrip(',')
+    combined_header['EXPOSURE'] = (exposure, 'Exposure times [s]')
+    combined_header['CHANNELS'] = (channels, 'Instrument channels')
+
+    
+    return combined_header
 
 def append_header(hdu: ImageHDU, dict: Dict[str, Any]) -> ImageHDU:
     header = hdu.header
@@ -772,3 +798,59 @@ def cropND(img: np.ndarray, bounding: tuple[int, int]) -> np.ndarray:
     end = tuple(map(np.add, start, bounding))
     slices = tuple(map(slice, start, end))
     return img[slices]
+
+
+print()
+"""
+Testing functions that can be removed 
+"""
+
+def estimate_bit_depth(binary_file, width, height):
+    file_size = os.path.getsize(binary_file)
+    pixels = width * height
+
+    bytes_per_pixel = file_size / pixels
+
+    with open(binary_file, 'rb') as file:
+            binaryData = file.read()
+            image = np.frombuffer(binaryData, dtype=np.uint16)
+            print(f'Image Array:')
+            image = image.reshape((height, width))
+            bit_depth = int(np.ceil(np.log2(np.max(image) + 1)))
+    return bytes_per_pixel, bit_depth
+
+
+def rename_bin_files(directory: str | Path):
+
+    directory = Path(directory)
+
+    channel_map = {
+        'VIS' : '0',
+        'NIR1': '1',
+        'NIR2': '2',
+        'SWIR': '3'
+    }
+
+    for file in directory.iterdir():
+        if file.is_file():
+            match = re.search(r'-(VIS|NIR1|NIR2|SWIR)-', file.name)
+            if not match:
+                print(f'Skipping unrecognized channel: {file.name}')
+                continue
+
+            channel_name = match.group(1)
+            channel_id = channel_map[channel_name]
+
+            try:
+                frame_str = file.stem[-3:]
+                int(frame_str)
+            except ValueError:
+                print(f'Skipping file with invalid frame number: {file.name}')
+                continue
+
+            new_name = f'dc_{channel_id}_exp_{frame_str}.bin'
+            new_path = file.with_name(new_name)
+
+            file.rename(new_path)
+            print(f'Renamed: {file.name} -> {new_name}')
+

@@ -58,7 +58,6 @@ def convert_to_fits(
 
     acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(dir_path)
 
-
     orig_file_name, files = channel_info
 
     # List of HDU blocks
@@ -141,6 +140,9 @@ def convert_to_fits(
         elif channel == 'NIR1' or channel == 'NIR2':
             height = 518
             width = 648
+            if missphase == 'TEST':
+                height = 512
+                width = 640
         else: 
             raise ValueError(f"Unknown channel: {channel}. Expected one of: 'VIS', 'NIR1', 'NIR', 'SWIR'." )
         

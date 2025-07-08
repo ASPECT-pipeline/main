@@ -22,6 +22,16 @@ autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encodi
 autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat02.img')
 autoseq_decoding_ouput = os.path.join(autoseq_dir, 'pipeline_diff_decoded/505')
 
+simulated_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000')
+simulated_vis = os.path.join(simulated_dir, '2027-03-23 06:00:00-VIS-camera-McEwen-10ms-0000.bin')
+simulated_nir1 = os.path.join(simulated_dir, 'dc_1_exp_000.bin')
+
+simulated_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
+simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_1B.fits')
+simulated_output_nir1 = os.path.join(simulated_output_dir, 'AS1_XXXXXX_270323T060000_1B.fits')
+simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_XXXXXX_270323T060000_1B.fits')
+simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_XXXXXX_270323T060000_2B.fits')
+
 # simulated_cube = os.path(os.getcwd())
 
 # Getting channels frame counts and original fiel names from acquisition folder
@@ -61,6 +71,7 @@ def read_fits_file(path, visualise = True):
             print(f'Header for HDU {i}')
             print(repr(h))
 
+
             if visualise:
                 if isinstance(hdu, fits.ImageHDU):
                     print("→ This is an ImageHDU")
@@ -76,6 +87,43 @@ def read_fits_file(path, visualise = True):
                     print(hdu.data)
             
         print()
+
+def readBinfile(filePath, channel):
+    if channel == "VIS": 
+        height = 1024
+        width = 1024
+    elif channel == "NIR":
+        height = 512
+        width = 640
+    # print(f"height: {height} \nwidht: {width}")
+
+    bytes_per_pixel, bit_depth = utilities.estimate_bit_depth(filePath, width, height)
+    print(f'{channel} bytes per pixel: {bytes_per_pixel}')
+    print(f'{channel} bit depth: {bit_depth}')
+    effective_max = 2**bit_depth - 1
+    print(f'effective max: {effective_max}')
+    
+
+    try:
+        with open(filePath, 'rb') as file:
+            binaryData = file.read()
+            print(f"Read {len(binaryData)} bytes")
+
+            imageArray = np.frombuffer(binaryData, dtype=np.uint16)
+            imageArray = imageArray.reshape((height, width))
+
+            plt.figure(figsize=(8,5))
+            plt.imshow(imageArray, cmap='gray')
+            plt.title(f'channel {channel}')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.show()
+
+
+    except FileNotFoundError:
+        print(f"File {filePath} not found")
+    except Exception as e:
+        print(f"An error occured: {e}")
 
 def read_bin_dir(dir_path: str | Path):
     dir_path = Path(dir_path)
@@ -113,6 +161,40 @@ def read_bin_dir(dir_path: str | Path):
         plt.axis('off')
         plt.show()
 
+def update_fits_exposure(path, new_exposure, save_as=None):
+    with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
+        for hdu in hdul:
+            if 'EXPOSURE' in hdu.header:
+                print(f"Old EXPOSURE: {hdu.header['EXPOSURE']}")
+                hdu.header['EXPOSURE'] = new_exposure
+                print(f"New EXPOSURE: {hdu.header['EXPOSURE']}")
+
+        if save_as:
+            hdul.writeto(save_as, overwrite=True)
+            print(f"Saved updated file to {save_as}")
+        else:
+            print(f"Updated in place: {path}")
+
+def update_fits_wl(path, save_as=None):
+    wl_map = {
+        'VIS' : '675,690,705,720,735,750,765,780,795,810,825',
+        'NIR1': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
+        'NIR2': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
+        'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
+    }
+    with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
+        for hdu in hdul:
+            if 'WAVELEN' in hdu.header:
+                channel = hdu.header['CHANNEL']
+                print(f"Old WL: {hdu.header['WAVELEN']}")
+                hdu.header['WAVELEN'] = wl_map[channel]
+                print(f"New WL: {hdu.header['WAVELEN']}")
+
+        if save_as:
+            hdul.writeto(save_as, overwrite=True)
+            print(f"Saved updated file to {save_as}")
+        else:
+            print(f"Updated in place: {path}")
 
 def test_decoding(input:str, output: str, compare: str):
 
@@ -167,9 +249,14 @@ Function calls after this
 # test_convert_to_fits(output=fits_output_dir)
 # test_spice_metadata()
 
-read_fits_file(aspect_fly_fits_vis, True)
+read_fits_file(simulated_output_ASP, True)
+# update_fits_exposure(simulated_output_nir2, 0.02)
+# update_fits_wl(simulated_output_nir2)
+# readBinfile(simulated_nir1, 'NIR')
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
+
+# utilities.rename_bin_files(simulated_dir)
 
 
 

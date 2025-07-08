@@ -9,6 +9,7 @@ import modules.darkSubtraction as darkSubtraction
 import modules.flatField as flatField
 import modules.badPixels as badPixels
 import modules.radiometric as radiometric
+import modules.alignAndResample as alignAndResample
 
 """
     The main program to execute the data processing pipeline.
@@ -102,7 +103,7 @@ def calibration_pipeline(
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
 
-def pipeline_levels_012(
+def pipeline_levels_01(
         input_dir: str | Path, 
         output_dir: str | Path,
         software: str = 'ASPECTCAL v1.0',
@@ -145,6 +146,7 @@ def pipeline_levels_012(
     channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]
     channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
 
+    level_1B_files = []
     for channel in channel_names:
         channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames_belongs_this_channels]]
 
@@ -158,19 +160,62 @@ def pipeline_levels_012(
                                                     target=target,
                                                     object=object)
 
-    # vis = calibration_pipeline(vis, os.path.join(output, "VIS"))
-    # nir1 = calibration_pipeline(nir1, os.path.join(output, "NIR1"))
-    # nir2 = calibration_pipeline(nir2, os.path.join(output, "NIR2"))
-    # swir = calibration_pipeline(swir, os.path.join(output, "SWIR"))
+        level_1B_files.append(calibrated_fits_file)
+    print(f'Successfully calibrated all channels')
 
-    # # print(f'Successfully calibrated all channels')
+    return (output_dir, level_1B_files)
 
-    # aligned_fits = alignAndResample.align_fits_files(vis, nir1, nir2, swir, output)
-    # print(f"New file created: {aligned_fits}")
+
+def pipeline_level_02(fits_dir: str | Path, output_dir: str | Path, instrument: str = 'vis-nir1-nir2') -> str:
+    """
+    Combines fits files into one single fits file.
+
+    Parameters:
+        fits_dir (str | Path): Directory path to fits files ()
+        output_dir (str | Path): Path to the directory where the new file is stored.
+        instrument (str): Defines which channels are combined in level 2
+
+    Returns 
+        (str): path to the created FITS file
+    """
+    fits_dir = Path(fits_dir)
+
+    channel_map = {
+        'vis' : 0,
+        'nir1' : 1,
+        'nir2' : 2,
+        'swir' : 3
+    }
+
+    channels = instrument.split('-')
+    valid_channel_ids = {str(channel_map[ch]) for ch in channels} # a list of channel IDs that match the instrument parameter
+
+    files_to_be_combined = []
+    for file in fits_dir.iterdir():
+        try:
+            stem = file.stem
+            if not stem.endswith('1B'):
+                continue
+            
+            if stem[2] in valid_channel_ids:
+                files_to_be_combined.append(file)
+        except IndexError:
+            print(f'Skipping malformed filename: {file.name}')
+
+    combined_fits_file = alignAndResample.combine_fits_files(files=files_to_be_combined, output_dir=output_dir)
+    print(f'Fits files combined. New file: {combined_fits_file}')
+
+    return combined_fits_file
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
 fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
 
-pipeline_levels_012(acq_path, fits_output_dir, missphase='TEST', observph='101')
+acq_path_sim = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen')
+fits_output_dir_sim = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated')
+fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
+
+
+# pipeline_levels_01(acq_path_sim, fits_output_dir_sim, missphase='TEST', observph='2027-03-23_06_00_00-McEwen', object='D1D2')
+pipeline_level_02(fits_output_dir_sim_, fits_output_dir_sim_)
 
 # Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py

@@ -30,7 +30,6 @@ test_time = '2027-01-02T05:40:46.6666'
 
 test_et = None
 
-
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_100')
 meta_folder = os.path.join(acq_path, 'meta')
 telemetry_path = os.path.join(meta_folder, 'telemetry.json')

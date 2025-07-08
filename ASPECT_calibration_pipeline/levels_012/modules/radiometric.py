@@ -67,13 +67,13 @@ def radiometric_calibration(fits_path: str, output_dir: str) -> str:
         # File name for new fits
         stem = fits_path.stem
         suffix = fits_path.suffix
-        new_calibration_level = '1C'
+        new_calibration_level = '1B'
         file_name = stem[:25] + new_calibration_level + suffix
         primary_header = hdu_list[0].header
         primary_header['FILENAME'] = file_name
         primary_header['PROCLEVL'] = new_calibration_level
         # Create the new fits file with dark-subtracted images
-        fits_file = os.path.join(output_dir, file_name)
+        fits_file = Path(output_dir) / file_name
         hdu_list.writeto(fits_file, overwrite=True)
 
     return(fits_file)

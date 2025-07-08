@@ -4,6 +4,6 @@ spice_mk_plan = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels
 spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_ops.tm"
 
 # Adjust this to point to the metakernel to be used for FITS header data
-spice_mk = spice_mk_ops
+spice_mk = spice_mk_plan
 
 kelvin: float = 273.15

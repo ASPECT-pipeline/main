@@ -53,56 +53,61 @@ def extract_cds_pixels(fits_path: str | Path, output_dir: str | Path) -> str:
         img_data = img_HDU.data # Image data
         img_header = img_HDU.header # Image HDU header
         channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
+        missphas = primary_header.get('MISSPHAS')
         
         HDUs = []  # Create new list of HDU's and append the primary HDU, new image HDU and other extensions
         HDUs.insert(0, hdul[0])
-        if channel in ('NIR1', 'NIR2'):
-            #Get image dimensions
-            width = img_header.get('NAXIS1')
-            height = img_header.get('NAXIS2')
-            slices = img_header.get('NAXIS3')
-
-
-            # Empty array for cleaned data
-            cleanedData = np.zeros((slices, height - 6, width - 8), dtype=img_data.dtype)
-            
-            # Prepare a list to hold the columns for the VLA table
-            vla_columns = []
-            
-            # Step 4: Iterate over each slice of the cube
-            for i, image in enumerate(img_data):
-                
-                # Extract the diagnostic data from the slice
-                cleanedImage, diagnostics = utilities.extract_diagnostics(image)
-                
-                # Create a FITS column for the current slice, with the name indicating the slice
-                col_name = f'Image_{i+1}'
-                vla_columns.append(fits.Column(name=col_name, format='PI()', array=diagnostics))
-
-                # Append the cleanedImage to the new image HDU
-                cleanedData[i, :, :] = cleanedImage
-
-            
-            # Create Image HDU with keywords
-            cleaned_cube = fits.ImageHDU(data=cleanedData.astype(np.float64), header=img_header) # Also converts the images to double precission
-
-            # Create a binary table HDU for the diagnostic pixels
-            vla_hdu = fits.BinTableHDU.from_columns(vla_columns)
-
-            HDUs.append(cleaned_cube)
-            HDUs.append(vla_hdu)
-        elif channel == 'VIS':
+        if missphas == 'TEST':
             double_precission = fits.ImageHDU(data=img_data.astype(np.float64), header=img_header)
             HDUs.append(double_precission)
         else:
-            cols = []
-            for col in img_data.columns:
-                name = col.name
-                value = img_data[name].astype(np.float64)
-                new_col = fits.Column(name=name, format='D', array=value)
-                cols.append(new_col)
-            new_table = fits.BinTableHDU.from_columns(cols, header=img_header) 
-            HDUs.append(new_table)
+            if channel in ('NIR1', 'NIR2'):
+                #Get image dimensions
+                width = img_header.get('NAXIS1')
+                height = img_header.get('NAXIS2')
+                slices = img_header.get('NAXIS3')
+
+
+                # Empty array for cleaned data
+                cleanedData = np.zeros((slices, height - 6, width - 8), dtype=img_data.dtype)
+                
+                # Prepare a list to hold the columns for the VLA table
+                vla_columns = []
+                
+                # Step 4: Iterate over each slice of the cube
+                for i, image in enumerate(img_data):
+                    
+                    # Extract the diagnostic data from the slice
+                    cleanedImage, diagnostics = utilities.extract_diagnostics(image)
+                    
+                    # Create a FITS column for the current slice, with the name indicating the slice
+                    col_name = f'Image_{i+1}'
+                    vla_columns.append(fits.Column(name=col_name, format='PI()', array=diagnostics))
+
+                    # Append the cleanedImage to the new image HDU
+                    cleanedData[i, :, :] = cleanedImage
+
+                
+                # Create Image HDU with keywords
+                cleaned_cube = fits.ImageHDU(data=cleanedData.astype(np.float64), header=img_header) # Also converts the images to double precission
+
+                # Create a binary table HDU for the diagnostic pixels
+                vla_hdu = fits.BinTableHDU.from_columns(vla_columns)
+
+                HDUs.append(cleaned_cube)
+                HDUs.append(vla_hdu)
+            elif channel == 'VIS':
+                double_precission = fits.ImageHDU(data=img_data.astype(np.float64), header=img_header)
+                HDUs.append(double_precission)
+            else:
+                cols = []
+                for col in img_data.columns:
+                    name = col.name
+                    value = img_data[name].astype(np.float64)
+                    new_col = fits.Column(name=name, format='D', array=value)
+                    cols.append(new_col)
+                new_table = fits.BinTableHDU.from_columns(cols, header=img_header) 
+                HDUs.append(new_table)
 
         hdu_list = fits.HDUList(HDUs)
         stem = fits_path.stem
