@@ -50,12 +50,12 @@ def radiometric_calibration(fits_path: str, output_dir: str) -> str:
             HDUs.append(new_bin_table_hdu)
 
         else:
-            newDataCube = hdul[1].data.copy()#To store the calibrated datacube
+            new_data_cube = img_HDU.data.astype(np.float64, copy=True)
             #loop over the 2D images inside the extension
-            for i, image in enumerate(newDataCube):
-                newDataCube[i] = (image * coefficient).astype(np.float64) # multiply the image with the coefficient 
+            for i, image in enumerate(new_data_cube):
+                new_data_cube[i] = (image * coefficient).astype(np.float64) # multiply the image with the coefficient 
             
-            ImageHDU = fits.ImageHDU(data=newDataCube, header=img_header)
+            ImageHDU = fits.ImageHDU(data=new_data_cube, header=img_header)
             HDUs.append(ImageHDU)
 
         # Add all other extensions except for the original Image HDU

@@ -45,15 +45,16 @@ def flat_field_calibration(fits_path: str, output_dir: str) -> str:
             flatField = np.ones((height, width), dtype=hdul[1].data.dtype)
 
             # To store the calibrated datacube
-            newDataCube = img_HDU.data.copy()
+            new_data_cube = img_HDU.data.astype(np.float64, copy=True)
+            flatField = flatField.astype(np.float64)
 
             # loop over the 2D images inside the extension
-            for i, image in enumerate(newDataCube):
+            for i, image in enumerate(new_data_cube):
                 # Divide the image with the flatfield 
-                newDataCube[i] = image / flatField
+                new_data_cube[i] = image / flatField
             
         
-            ImageHDU = fits.ImageHDU(data=newDataCube, header=img_header)
+            ImageHDU = fits.ImageHDU(data=new_data_cube, header=img_header)
             HDUs.append(ImageHDU)
             # Add all other extensions except for the original Image HDU
             for i in range(1, len(hdul)):

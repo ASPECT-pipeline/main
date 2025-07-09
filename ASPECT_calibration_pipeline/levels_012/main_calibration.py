@@ -9,7 +9,7 @@ import modules.darkSubtraction as darkSubtraction
 import modules.flatField as flatField
 import modules.badPixels as badPixels
 import modules.radiometric as radiometric
-import modules.alignAndResample as alignAndResample
+import modules.mergeFits as mergeFits
 
 """
     The main program to execute the data processing pipeline.
@@ -196,26 +196,28 @@ def pipeline_level_02(fits_dir: str | Path, output_dir: str | Path, instrument: 
             stem = file.stem
             if not stem.endswith('1B'):
                 continue
-            
+            if file.suffix.lower() != '.fits':
+                continue
             if stem[2] in valid_channel_ids:
                 files_to_be_combined.append(file)
         except IndexError:
             print(f'Skipping malformed filename: {file.name}')
 
-    combined_fits_file = alignAndResample.combine_fits_files(files=files_to_be_combined, output_dir=output_dir)
+    combined_fits_file = mergeFits.merge_fits_files(files=files_to_be_combined, output_dir=output_dir)
     print(f'Fits files combined. New file: {combined_fits_file}')
 
     return combined_fits_file
 
-acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
+acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
 fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
+fits_output_dir_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
 
 acq_path_sim = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen')
 fits_output_dir_sim = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated')
 fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
 
 
-# pipeline_levels_01(acq_path_sim, fits_output_dir_sim, missphase='TEST', observph='2027-03-23_06_00_00-McEwen', object='D1D2')
-pipeline_level_02(fits_output_dir_sim_, fits_output_dir_sim_)
+pipeline_levels_01(acq_path, fits_output_dir, missphase='FLY_TEST', observph='104', object='DARK')
+# pipeline_level_02(fits_output_dir_, fits_output_dir_)
 
 # Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py

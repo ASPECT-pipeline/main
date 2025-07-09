@@ -125,6 +125,7 @@ def convert_to_fits(
                 if len(bin_data) != 4: 
                     raise ValueError(f'SWIR file {file_path} does not contain excatly 4 bytes.')
                 value = int.from_bytes(bin_data, 'big' , signed=False)
+                value = np.int32(value)
             except Exception as e:
                 raise IOError(f"Error reading binary file {file_path}: {e}") from e
             col = fits.Column(name=f'SWIR_{i}', format='J', array=[value]) # J for 32-bit, I for 16-bit integers
@@ -152,9 +153,9 @@ def convert_to_fits(
             if bin_file.endswith(".jp2"):
                 decompressed_output_dir = Path(dir_path) / 'acq_000_decompressed'
                 decompressed_output = utilities.decompress_jp2(file_path, decompressed_output_dir)
-                array = np.fromfile(decompressed_output, dtype=np.uint16).reshape((height, width))
+                array = np.fromfile(decompressed_output, dtype='>u2').reshape((height, width)) # big-endian 16-bit unsigned
             else:
-                array = np.fromfile(file_path, dtype=np.uint16).reshape((height, width))
+                array = np.fromfile(file_path, dtype='<u2').reshape((height, width)) # big-endian 16-bit unsigned
 
             image_data.append(array)
 

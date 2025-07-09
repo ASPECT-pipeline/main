@@ -47,11 +47,11 @@ def dark_subtraction(fits_path: str | Path, output_dir: str | Path) -> str:
             darkFrame = np.zeros((height, width), dtype=hdul[1].data.dtype)
 
             # To store the calibrated datacube
-            new_data_cube = img_HDU.data.copy()
+            new_data_cube = img_HDU.data.astype(np.float64, copy=True)
+            darkFrame = darkFrame.astype(np.float64)
 
             # Loop over the 2D images inside the extension
             for i, image in enumerate(new_data_cube):
-                
                 # Subtract the dark frame from image
                 new_data_cube[i] = image - darkFrame
 

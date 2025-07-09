@@ -6,15 +6,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import re
+import cv2
+import math
+from matplotlib.patches import Patch
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
 # acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
 decoded_binaries = os.path.join(acq_path, 'acq_000_decompressed')
 meta_folder = os.path.join(acq_path, 'meta')
-fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/101')
-aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_1C.fits')
-aspect_fly_fits_nir1 = os.path.join(fits_output_dir, 'AS1_XXXXXX_200101T014800_0A.fits')
-aspect_fly_fits_nir2 = os.path.join(fits_output_dir, 'AS2_XXXXXX_200101T014800_0A.fits')
+fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
+aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_1B.fits')
+aspect_fly_fits_nir1 = os.path.join(fits_output_dir, 'AS1_XXXXXX_200101T014800_1A.fits')
+aspect_fly_fits_nir2 = os.path.join(fits_output_dir, 'AS2_XXXXXX_200101T014800_1B.fits')
 aspect_fly_fits_swir = os.path.join(fits_output_dir, 'AS3_XXXXXX_200101T014411_1B.fits')
 
 autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809')
@@ -23,11 +26,11 @@ autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.
 autoseq_decoding_ouput = os.path.join(autoseq_dir, 'pipeline_diff_decoded/505')
 
 simulated_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000')
-simulated_vis = os.path.join(simulated_dir, '2027-03-23 06:00:00-VIS-camera-McEwen-10ms-0000.bin')
+simulated_vis = os.path.join(simulated_dir, 'dc_0_exp_000.bin')
 simulated_nir1 = os.path.join(simulated_dir, 'dc_1_exp_000.bin')
 
 simulated_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
-simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_1B.fits')
+simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_0A.fits')
 simulated_output_nir1 = os.path.join(simulated_output_dir, 'AS1_XXXXXX_270323T060000_1B.fits')
 simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_XXXXXX_270323T060000_1B.fits')
 simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_XXXXXX_270323T060000_2B.fits')
@@ -69,7 +72,7 @@ def read_fits_file(path, visualise = True):
 
             h = hdu.header
             print(f'Header for HDU {i}')
-            print(repr(h))
+            # print(repr(h))
 
 
             if visualise:
@@ -77,17 +80,202 @@ def read_fits_file(path, visualise = True):
                     print("→ This is an ImageHDU")
                     print(f'data type: {type(hdu.data)}')
                     for i, frame in enumerate(hdu.data):
+                        print(f'points from frame {i}')
+                        print(f'(250, 250): {frame[250][250]}')
+                        print(f'(10, 150): {frame[10][150]}')
+                        print(f'(300, 300): {frame[300][300]}')
                         plt.imshow(frame, cmap='gray')
                         plt.title(f'frame: {i}')
                         plt.show()
                 elif isinstance(hdu, fits.BinTableHDU):
+
                     print("→ This is a Binary Table HDU")
                     print(f'data type: {type(hdu.data)}')
                     print(f'SWIR data:')
-                    print(hdu.data)
+                    # print(hdu.data)
             
         print()
 
+def visualise_fits(fitsPath, visualise:bool = True, spect:bool = False):
+    name = os.path.splitext(os.path.basename(fitsPath))[0]
+    print(f'Reading file: {name}')
+    # Open FITS file using astropy
+    with fits.open(fitsPath) as hdul:
+        print(f'info:\n {hdul.info()}') # Print the info of the hdul
+        total_size = hdul._file.size # Total size of the file
+        print(f"Total File Size: {total_size} bytes")
+        num_extensions = len(hdul) - 1 # Number of extensions
+        print(f"Number of Extensions: {num_extensions}")
+
+
+        # Iterate through each extension
+        for i, hdu in enumerate(hdul):
+            print('')
+            print(f'\nHDU number: {i}') # Extension number
+            header = hdu.header
+            data = hdu.data
+            # print(f'Data cube shape: {data.shape}')
+
+            print(repr(header))
+            
+
+            if isinstance(hdu, fits.ImageHDU):
+                naxis1 = header.get('NAXIS1')  # Width
+                naxis2 = header.get('NAXIS2')  # Height
+                naxis3 = header.get('NAXIS3')  # Number of images
+
+
+                # Determine grid layout
+                max_images_per_row = 5
+                rows = math.ceil(naxis3 / max_images_per_row)
+                cols = min(max_images_per_row, naxis3)
+
+                # utils.plot_random_spectra(data, header)
+                x = 110
+                y = 130
+                if spect:
+                    spectra = []
+                    for i in range(naxis3):
+                        val = data[i, y, x]
+                        spectra.append(val)
+
+                    print(spectra)
+                    print(f'vis bg: {data[0, 490, 585]}')
+                    print(f'nir bg: {data[12, 490, 585]}')
+
+                    vis_wl = [int(w.strip()) for w in header['VIS_WL'].split(',')]
+                    nir1_wl = [int(w.strip()) for w in header['NIR1_WL'].split(',')]
+                    nir2_wl = [int(w.strip()) for w in header['NIR2_WL'].split(',')]
+                    nir_wl = nir1_wl + nir2_wl
+                    all_wavelengths = vis_wl + nir1_wl + nir2_wl
+                    spectra = np.array(spectra)
+                    spectra = spectra.astype(np.float32)
+                    spectra[:11] /= 4096 # 2^12
+                    spectra[11:] /= 16384 # 2^14
+                    print(f'Spectra length: {len(spectra)}')
+                    print(f'Spectra length: {len(all_wavelengths)}')
+                    print(f'vis wl: {len(vis_wl)}')
+                    print(f'nir1 wl: {len(nir1_wl)}')
+                    print(f'nir2 wl: {len(nir2_wl)}')
+                    vis_len = len(vis_wl)
+                    nir1_len = len(nir1_wl)
+                    nir2_len = len(nir2_wl)
+                    nir1_s = spectra[vis_len : vis_len+nir1_len]
+                    nir2_s = spectra[vis_len+nir1_len : ]
+
+                    # plt.figure(figsize=(10, 5))
+                    # plt.plot(all_wavelengths, spectra, 'ro-', label="Spectra")
+                    # plt.xlabel("Wavelength (nm)")
+                    # plt.ylabel("values")
+                    # plt.title(f"Spectra from ({x}, {y})")
+                    # plt.legend()
+                    # plt.show()
+
+                    # Display multiple spectras across the image
+                    positions = [(250,250), (110, 130), (130, 300), (475, 260)]
+                    spectra_list = [
+                        np.concatenate([data[:11, y, x] / 4096, data[11:, y, x] / 16384])
+                        for (x, y) in positions
+                    ]
+                    figure = utilities.plot_spectra_with_image(spectra_list,positions,data[0], all_wavelengths)
+                    figure.show()
+
+                    # corrected, _ = utils.nir2_offset_correction(nir1_wl, nir1_s, nir2_wl, nir2_s)
+                    # connected = np.concatenate((spectra[: vis_len+nir1_len], corrected))
+                    # print('lengths after segment correction')
+                    # print(len(connected))
+
+                    # # outliers = utils.remove_outliers(spectra, all_wavelengths)
+
+                    # plt.figure(figsize=(10, 5))
+                    # plt.plot(all_wavelengths, spectra, 'ro-', label="Original Spectra")
+                    # plt.plot(all_wavelengths, connected, 'bo-', label="connected")
+                    # plt.xlabel("Wavelength (nm)")
+                    # plt.ylabel("values")
+                    # plt.title("Spectra from (250, 250)")
+                    # plt.legend()
+                    # plt.show()
+
+
+                    """
+                    FOLLOWING PART IS MISSING CONVERSION COEFFIENTS
+                    """
+                    # vis_c = utils.load_conversion_file(vis_conversion)
+                    # vis_results = utils.query_coefficients(vis_c, vis_wl)
+                    # nir_c = utils.load_conversion_file(nir_conversion)
+                    # nir_results = utils.query_coefficients(nir_c, nir_wl)
+                    # combined_results = {**vis_results, **nir_results}
+
+                    # reflectances = []
+                    # for i, wl in enumerate(all_wavelengths):
+                    #     print(f'wl: {i}: {wl}')
+                    #     coefficient = combined_results[wl]
+                    #     # print(f'coef: {coefficient}')
+                    #     dn = spectra[i]
+                    #     # print(f'dn: {dn}')
+                    #     if i > 10:
+                    #         exposure = 0.02
+                    #     else: 
+                    #         exposure = 0.01
+                    #     dn_coef = dn / coefficient
+                    #     reflectance = dn_coef / exposure
+                    #     reflectances.append(reflectance)
+
+                    # plt.figure(figsize=(10, 5))
+                    # plt.plot(all_wavelengths, reflectance, 'ro-', label="Original Spectra")
+                    # plt.xlabel("Wavelength (nm)")
+                    # plt.ylabel("reflectance")
+                    # plt.title("Spectra from (250, 250)")
+                    # plt.legend()
+                    # plt.show()
+
+                if visualise:
+                    plt.figure()
+                    plt.suptitle('Frame 0', fontsize=16)
+                    plt.imshow(data[0], cmap='gray')
+                    plt.title(f'Slice 0')
+                    plt.axis('off')
+
+                    plt.tight_layout()
+                    plt.show()
+
+                    plt.figure()
+                    plt.suptitle('Frame 0', fontsize=16)
+                    plt.imshow(data[11], cmap='gray')
+                    plt.title(f'Slice 0')
+                    plt.axis('off')
+
+                    plt.tight_layout()
+                    plt.show()
+
+                # Display all 2D images
+                    # plt.figure(figsize=(cols * 4, rows * 4))
+                    # plt.suptitle('2D Slices from Data Cube', fontsize=16)
+                    # for i in range(naxis3):
+                    #     plt.subplot(rows, cols, i + 1)
+                    #     plt.imshow(data[i, :, :], cmap='gray')
+                    #     plt.title(f'Slice {i + 1}')
+                    #     plt.axis('off')
+
+                    # plt.tight_layout()
+                    # plt.show()
+
+                    visN = cv2.normalize(data[1], None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                    nirN = cv2.normalize(data[14], None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                    legend_elements = [
+                        Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
+                        Patch(facecolor='red', edgecolor='black', label='Only in vis image'),
+                        Patch(facecolor='green', edgecolor='black', label='Only in nir image')
+                    ]
+                    overlay = utilities.overlay_images(data[0], data[11])
+                    plt.figure()
+                    plt.suptitle('Vis and Nir frame overlay', fontsize=16)
+                    plt.imshow(overlay)
+                    plt.axis('off')      
+                    plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+                    plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+
+                    plt.show()
 def readBinfile(filePath, channel):
     if channel == "VIS": 
         height = 1024
@@ -109,9 +297,11 @@ def readBinfile(filePath, channel):
             binaryData = file.read()
             print(f"Read {len(binaryData)} bytes")
 
-            imageArray = np.frombuffer(binaryData, dtype=np.uint16)
+            imageArray = np.frombuffer(binaryData, dtype='<u2')
             imageArray = imageArray.reshape((height, width))
-
+            print(f'array type: {imageArray.dtype}')
+            print(f'values [500][500] - [510][510]')
+            print(imageArray[500:510, 500:510])
             plt.figure(figsize=(8,5))
             plt.imshow(imageArray, cmap='gray')
             plt.title(f'channel {channel}')
@@ -202,7 +392,14 @@ def test_decoding(input:str, output: str, compare: str):
     decoded = utilities.decompress_jp2(input, output)
     print(f'decoded file: {decoded}')
     print(f'comparing to: {compare}')
+    decoded = Path(decoded)
+    with decoded.open('rb') as f:
+        raw = f.read(20)
+    data_be = np.frombuffer(raw, dtype='>u2')  # big-endian
+    data_le = np.frombuffer(raw, dtype='<u2')  # little-endian
 
+    print("Big-endian:", data_be)
+    print("Little-endian:", data_le)
     try:
         # Load binary data and convert to images
         data_1 = np.fromfile(decoded, dtype=np.uint16).reshape((1024, 1024))
@@ -239,7 +436,8 @@ def test_decoding(input:str, output: str, compare: str):
     except FileNotFoundError as e:
         print(f"Error: {e}")
         return False
-
+    
+ 
 """
 Function calls after this
 """
@@ -249,15 +447,15 @@ Function calls after this
 # test_convert_to_fits(output=fits_output_dir)
 # test_spice_metadata()
 
-read_fits_file(simulated_output_ASP, True)
+read_fits_file(aspect_fly_fits_nir2, True)
+# visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_nir2, 0.02)
 # update_fits_wl(simulated_output_nir2)
-# readBinfile(simulated_nir1, 'NIR')
+# readBinfile(simulated_vis, 'VIS')
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
 
 # utilities.rename_bin_files(simulated_dir)
-
 
 
 # Python3 ASPECT_calibration_pipeline/levels_012/test_level_012.py

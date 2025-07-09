@@ -13,6 +13,9 @@ import subprocess
 from pathlib import Path
 import warnings
 from modules._constants import kelvin
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.patches as mpatches
+import matplotlib.gridspec as gridspec
 
 def verify_directory_path(p: str | Path) -> Path:
     """
@@ -694,7 +697,6 @@ def extract_diagnostics(image: np.ndarray) -> Tuple[np.ndarray, List[List[int]]]
         left:-right  # Remove left and right columns
     ]
 
-
     return (cleanedImage, diagnosticPixels)
 
 def laplacian(img: np.ndarray) -> np.ndarray:
@@ -806,14 +808,16 @@ Testing functions that can be removed
 """
 
 def estimate_bit_depth(binary_file, width, height):
+    print(f'file: {binary_file}')
     file_size = os.path.getsize(binary_file)
     pixels = width * height
-
+    print(f'file size: {file_size}')
+    print(f'pixels: {pixels}')
     bytes_per_pixel = file_size / pixels
-
+    print(f'bytes per pixel: {bytes_per_pixel}')
     with open(binary_file, 'rb') as file:
             binaryData = file.read()
-            image = np.frombuffer(binaryData, dtype=np.uint16)
+            image = np.frombuffer(binaryData, dtype='<u2')
             print(f'Image Array:')
             image = image.reshape((height, width))
             bit_depth = int(np.ceil(np.log2(np.max(image) + 1)))
@@ -854,3 +858,73 @@ def rename_bin_files(directory: str | Path):
             file.rename(new_path)
             print(f'Renamed: {file.name} -> {new_name}')
 
+def overlay_images(image1, image2, mode='red-green', title='Image Overlay'):
+    """
+    Overlay two aligned grayscale images using RGB channels to visualize alignment.
+
+    Parameters:
+    - image1, image2: 2D NumPy arrays (grayscale images)
+    - mode: 'red-green' or 'red-blue' (channel assignment)
+    - title: Title for the plot
+    """
+    # Normalize both images to [0, 1]
+    def normalize(img):
+        img = img.astype(np.float32)
+        return (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
+
+    img1_norm = normalize(image1)
+    img2_norm = normalize(image2)
+
+    # Create RGB composite
+    rgb = np.zeros((*image1.shape, 3), dtype=np.float32)
+
+    if mode == 'red-green':
+        rgb[..., 0] = img1_norm  # Red
+        rgb[..., 1] = img2_norm  # Green
+    elif mode == 'red-blue':
+        rgb[..., 0] = img1_norm  # Red
+        rgb[..., 2] = img2_norm  # Blue
+    else:
+        raise ValueError("Mode must be 'red-green' or 'red-blue'.")
+
+    return(rgb)
+
+def plot_spectra_with_image(spectra_list, positions, image, all_wavelengths):
+    colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan']
+    labels = [f'({x}, {y})' for (x, y) in positions]
+
+    # Create a 2x2 grid: top row is spectra/image, bottom row is just for labels under the image
+    fig = plt.figure(figsize=(14, 7))
+    # Reduce image column width (2 instead of 3), reduce label row height (0.6)
+    gs = gridspec.GridSpec(1, 2, width_ratios=[6, 2], wspace=0.15)
+
+
+    ax_spectra = fig.add_subplot(gs[0, 0])
+    ax_image = fig.add_subplot(gs[0, 1])
+    ax_image.set_xticks([])
+    ax_image.set_yticks([])
+
+    # Plot each spectrum with labels
+    for spec, color, label in zip(spectra_list, colors, labels):
+        ax_spectra.plot(all_wavelengths, spec, color=color, label=label)
+
+    ax_spectra.set_xlabel("Wavelength (nm)")
+    ax_spectra.set_ylabel("Intensity (DN / bit depth)")
+    ax_spectra.set_title("Spectra from selected pixels", pad=10)
+
+    # Add inline legend inside the plot (bottom-left corner)
+    ax_spectra.legend(
+        loc='lower right',
+        fontsize=9,
+        frameon=False,
+        title="Pixel (x, y)",
+        title_fontsize=10
+    )
+
+    # Show image and plot markers
+    ax_image.imshow(image, cmap='gray' if image.ndim == 2 else None)
+    ax_image.set_title("Selected pixel locations", pad=10)
+    for (x, y), color in zip(positions, colors):
+        ax_image.plot(x, y, 'o', color=color, markersize=6)
+
+    return fig

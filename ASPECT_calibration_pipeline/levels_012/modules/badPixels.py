@@ -50,7 +50,8 @@ def remove_bad_pixels(fits_path: str | Path, output_dir: str | Path) -> str:
         HDUs.insert(0, primary_hdu)
 
         # Place holder mask array
-        mask = np.zeros((height, width), dtype=hdul[1].data.dtype)
+        mask = np.zeros((height, width))
+
 
         # Update the mask to remove the already corrected values
         updatingMask = mask.copy()
@@ -59,7 +60,7 @@ def remove_bad_pixels(fits_path: str | Path, output_dir: str | Path) -> str:
         onHold = []
 
         # To store the calibrated datacube
-        newDataCube = img_data.copy()
+        new_data_cube = img_data.astype(np.float64, copy=True)
 
         # Iterate over all 2D images inside the cube
         for im, image in enumerate(img_data):
@@ -107,10 +108,10 @@ def remove_bad_pixels(fits_path: str | Path, output_dir: str | Path) -> str:
                 else:
                     #This should not happen
                     print(f"WARNING: STILL No valid neighbors for data[{i}][{j}]")
-            newDataCube[im] = data
+            new_data_cube[im] = data
 
        
-        ImageHDU = fits.ImageHDU(data=newDataCube, header=img_header)
+        ImageHDU = fits.ImageHDU(data=new_data_cube, header=img_header)
         HDUs.append(ImageHDU)
         # Add all other extensions except for the original Image HDU
         for i in range(1, len(hdul)):
