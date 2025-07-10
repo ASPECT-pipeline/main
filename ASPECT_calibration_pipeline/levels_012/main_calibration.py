@@ -217,7 +217,7 @@ fits_output_dir_sim = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_
 fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
 
 
-pipeline_levels_01(acq_path, fits_output_dir, missphase='FLY_TEST', observph='104', object='DARK')
-# pipeline_level_02(fits_output_dir_, fits_output_dir_)
+# pipeline_levels_01(acq_path, fits_output_dir, missphase='FLY_TEST', observph='104', object='DARK')
+pipeline_level_02(fits_output_dir_, fits_output_dir_)
 
 # Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py

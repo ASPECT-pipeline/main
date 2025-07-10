@@ -11,14 +11,17 @@ import math
 from matplotlib.patches import Patch
 
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
-# acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
+acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
 decoded_binaries = os.path.join(acq_path, 'acq_000_decompressed')
 meta_folder = os.path.join(acq_path, 'meta')
 fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
 aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_1B.fits')
-aspect_fly_fits_nir1 = os.path.join(fits_output_dir, 'AS1_XXXXXX_200101T014800_1A.fits')
+aspect_fly_fits_nir1 = os.path.join(fits_output_dir, 'AS1_XXXXXX_200101T014800_1B.fits')
 aspect_fly_fits_nir2 = os.path.join(fits_output_dir, 'AS2_XXXXXX_200101T014800_1B.fits')
 aspect_fly_fits_swir = os.path.join(fits_output_dir, 'AS3_XXXXXX_200101T014411_1B.fits')
+aspect_fly_fits_nir1_nir2 = os.path.join(fits_output_dir, 'ASP_XXXXXX_200101T014800_2B.fits')
+
+decompressed = os.path.join(decoded_binaries , 'dc_1_exp_000.bin')
 
 autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809')
 autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding/dc_0_exp_001_diffEnc.bin.jp2')
@@ -72,27 +75,37 @@ def read_fits_file(path, visualise = True):
 
             h = hdu.header
             print(f'Header for HDU {i}')
-            # print(repr(h))
+            print(repr(h))
 
 
             if visualise:
                 if isinstance(hdu, fits.ImageHDU):
                     print("→ This is an ImageHDU")
                     print(f'data type: {type(hdu.data)}')
-                    for i, frame in enumerate(hdu.data):
-                        print(f'points from frame {i}')
-                        print(f'(250, 250): {frame[250][250]}')
-                        print(f'(10, 150): {frame[10][150]}')
-                        print(f'(300, 300): {frame[300][300]}')
-                        plt.imshow(frame, cmap='gray')
-                        plt.title(f'frame: {i}')
-                        plt.show()
+                    # for i, frame in enumerate(hdu.data):
+                    #     print(f'points from frame {i}')
+                    #     print(f'(250, 250): {frame[250][250]}')
+                    #     print(f'(10, 150): {frame[10][150]}')
+                    #     print(f'(300, 300): {frame[300][300]}')
+                    #     plt.imshow(frame, cmap='gray')
+                    #     plt.title(f'frame: {i}')
+                    #     plt.show()
                 elif isinstance(hdu, fits.BinTableHDU):
+                    if i == 1:
+                        print("→ This is a Binary Table HDU")
+                        print(f'data type: {type(hdu.data)}')
+                        print(f'SWIR data:')
+                        print(hdu.data)
 
-                    print("→ This is a Binary Table HDU")
-                    print(f'data type: {type(hdu.data)}')
-                    print(f'SWIR data:')
-                    # print(hdu.data)
+                    else:
+                        data = hdu.data
+                        # Iterate over each column
+                        for col_name in data.columns.names:
+                            print(f"Column: {col_name}") # The 2D frame of the data cube
+                            # Iterate over each row in the column (image)
+                            row0_array = data[col_name][0]
+                            print(f"Row 8 length: {len(row0_array)}")
+        
             
         print()
 
@@ -276,13 +289,14 @@ def visualise_fits(fitsPath, visualise:bool = True, spect:bool = False):
                     plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
 
                     plt.show()
+
 def readBinfile(filePath, channel):
     if channel == "VIS": 
         height = 1024
         width = 1024
     elif channel == "NIR":
-        height = 512
-        width = 640
+        height = 518
+        width = 648
     # print(f"height: {height} \nwidht: {width}")
 
     bytes_per_pixel, bit_depth = utilities.estimate_bit_depth(filePath, width, height)
@@ -297,17 +311,23 @@ def readBinfile(filePath, channel):
             binaryData = file.read()
             print(f"Read {len(binaryData)} bytes")
 
-            imageArray = np.frombuffer(binaryData, dtype='<u2')
+            imageArray = np.frombuffer(binaryData, dtype='>u2')
             imageArray = imageArray.reshape((height, width))
-            print(f'array type: {imageArray.dtype}')
-            print(f'values [500][500] - [510][510]')
-            print(imageArray[500:510, 500:510])
-            plt.figure(figsize=(8,5))
-            plt.imshow(imageArray, cmap='gray')
-            plt.title(f'channel {channel}')
-            plt.axis('off')
-            plt.tight_layout()
-            plt.show()
+            print(f'(0,0): {imageArray[0][0]}')
+            print(f'(3,150): {imageArray[3][150]}')
+            print(f'(8,1): {imageArray[8][1]}')
+            print(f'(346,647): {imageArray[346][647]}')
+            print(f'(4,100) - (4, 105): {imageArray[4][100:105]}')
+            print(f'(100,0) - (100, 4): {imageArray[100][:4]}')
+            # print(f'array type: {imageArray.dtype}')
+            # print(f'values [500][500] - [510][510]')
+            # print(imageArray[500:510, 500:510])
+            # plt.figure(figsize=(8,5))
+            # plt.imshow(imageArray, cmap='gray')
+            # plt.title(f'channel {channel}')
+            # plt.axis('off')
+            # plt.tight_layout()
+            # plt.show()
 
 
     except FileNotFoundError:
@@ -437,6 +457,19 @@ def test_decoding(input:str, output: str, compare: str):
         print(f"Error: {e}")
         return False
     
+def try_read_cds():
+    readBinfile(decompressed , 'NIR')
+
+    with fits.open(aspect_fly_fits_nir1) as hdul:
+        bintable = hdul[2].data
+        print()
+        print(utilities.read_cds(bintable['NIR1_0'][0], 0, 0 ,1))
+        print(utilities.read_cds(bintable['NIR1_0'][0], 3, 150 ,1))
+        print(utilities.read_cds(bintable['NIR1_0'][0], 8, 1 ,1))
+        print(utilities.read_cds(bintable['NIR1_0'][0], 346, 7 ,1))
+        print(utilities.read_cds(bintable['NIR1_0'][0], 4, 100 ,5))
+        print(utilities.read_cds(bintable['NIR1_0'][0], 100, 0 ,4))
+
  
 """
 Function calls after this
@@ -447,15 +480,16 @@ Function calls after this
 # test_convert_to_fits(output=fits_output_dir)
 # test_spice_metadata()
 
-read_fits_file(aspect_fly_fits_nir2, True)
+read_fits_file(aspect_fly_fits_nir1_nir2 , True)
 # visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_nir2, 0.02)
 # update_fits_wl(simulated_output_nir2)
-# readBinfile(simulated_vis, 'VIS')
+# readBinfile(decompressed , 'NIR')
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
 
 # utilities.rename_bin_files(simulated_dir)
 
+# try_read_cds()
 
 # Python3 ASPECT_calibration_pipeline/levels_012/test_level_012.py

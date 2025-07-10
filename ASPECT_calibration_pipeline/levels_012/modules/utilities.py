@@ -668,37 +668,58 @@ def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
     # Convert to 8-bit integer
     return normalized.astype(np.uint8)
 
-def extract_diagnostics(image: np.ndarray) -> Tuple[np.ndarray, List[List[int]]]:
+def extract_cds(image: np.ndarray) -> Tuple[np.ndarray, List[List[int]]]:
     # Define diagnostic pixel regions
     top = 5  # Five lines at the top
     bottom = 1  # One line at the bottom
     left = 4  # Four columns on the left
     right = 4  # Four columns on the right
-    # To store the extracted pixels
-    diagnosticPixels = []
 
-    # Step 1: Extract the first 5 rows
-    for row in image[:top]:
-        diagnosticPixels.append(row.tolist())
-    
-    # Step 2: For the remaining rows (except the last one), extract the first 4 and last 4 values
-    for row in image[top:-bottom]:
-        left_values = row[:left]
-        right_values = row[-right:]
-        combined_row = np.concatenate((left_values, right_values)).tolist()
-        diagnosticPixels.append(combined_row)
-    
-    # Step 3: Extract the last row as a separate list
-    diagnosticPixels.append(image[-1].tolist())
+    top_rows = image[:top, :]
+    middle_rows = image[top:-bottom, :]
+    left_cols = middle_rows[:, :left]
+    right_cols = middle_rows[:, -right:]
+    middle_sides = np.hstack((left_cols, right_cols))
+
+    bottom_row = image[-1:, :]
+
+    cds_pixels = np.concatenate([
+        top_rows.flatten(),
+        middle_sides.flatten(),
+        bottom_row.flatten()
+    ])
 
     # Remove diagnostic pixels to create the cleaned image
     cleanedImage = image[
         top:-bottom,  # Remove top and bottom rows
         left:-right  # Remove left and right columns
     ]
+    return (cleanedImage, cds_pixels)
 
-    return (cleanedImage, diagnosticPixels)
+def read_cds(column: np.ndarray, row_inx: int, col_inx: int, count: int ) -> np.ndarray:
+    """
+    Read CDS pixels from a given column (Frame) give nthe desired range.
+    If CDS pixels are desired from rows 5-516 the col_inx must be 0-7 such that 0-3 are the left side and 4-7 are the right side CDS.
 
+    Parameters:
+        column (np.ndarray): The column of the BintableHDU containing CDS pixels from the desired frame
+        row_inx (int): The row that the pixels are wanted from (0-517)
+        col_inx (int): The column that the range starts from (0-647) for rows 5-516 only 8 values!
+        count (int): Count of how many values are wanted from the starting location
+
+    Returns:
+        np.ndarray: Array containing the desired CDS pixels.
+    """
+    if row_inx < 5:
+        row_offset = row_inx*648
+        total_offset = row_offset + col_inx 
+        return column[total_offset : total_offset + count]
+    elif row_inx < 517:
+        row_offset = 5*648 + (row_inx - 5)* 8
+        total_offset = row_offset + col_inx 
+        return column[total_offset : total_offset + count]
+    else:
+        return column[-col_inx: col_inx + count]
 def laplacian(img: np.ndarray) -> np.ndarray:
 
     # Check if the image was loaded successfully

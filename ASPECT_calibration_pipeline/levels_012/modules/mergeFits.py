@@ -91,9 +91,8 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
                     swir_header = hdul[1].header.copy()
                     swir_data = hdul[1].data.copy()
                 if channel_name in ('NIR1', 'NIR2') and len(hdul) > 2:
-                    cds_header = hdul[2].header.copy()
-                    cds_data = hdul[2].copy()
-                    cds_dict[channel_name] = (cds_header, cds_data)
+                    cds_data = fits.BinTableHDU.from_columns(hdul[2].columns, header=hdul[2].header)
+                    cds_dict[channel_name] = cds_data
 
         except (IndexError, ValueError) as e:
             print(f"Error: {e}")
@@ -153,21 +152,14 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
 
     # Extract HDUs containing the binary tables
     if 'NIR1' in cds_dict and 'NIR2' in cds_dict:
-        nir1_cds_header, nir1_cds_data = cds_dict['NIR1']
-        nir2_cds_header, nir2_cds_data = cds_dict['NIR2'] 
+        nir1_hdu = cds_dict['NIR1']
+        nir2_hdu = cds_dict['NIR2'] 
 
-        # Extract columns from both tables
-        columns1 = fits.ColDefs(nir1_cds_data)
-        columns2 = fits.ColDefs(nir2_cds_data)
-        # Create a combined list of columns
-        new_columns = []
-        for i, col in enumerate(columns1 + columns2):  # First vlaHdu1, then vlaHdu2
-            new_col_name = f"Col_{i+1}"  # Renaming columns in increasing order
-            new_columns.append(fits.Column(name=new_col_name, format=col.format, array=col.array))
-
-        # Create a new binary table HDU with renamed columns
-        new_vlaHdu = fits.BinTableHDU.from_columns(new_columns)
-        HDUs.append(new_vlaHdu)
+        # Combine all columns from both tables
+        all_columns = nir1_hdu.columns + nir2_hdu.columns
+        combined_table = fits.BinTableHDU.from_columns(all_columns)
+        
+        HDUs.append(combined_table)
     hdu_list = fits.HDUList(HDUs)
     # File name for new fits
     file_path = Path(files[0])
