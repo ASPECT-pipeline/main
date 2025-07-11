@@ -4,7 +4,8 @@ from astropy.io import fits
 from pathlib import Path
 from typing import List, Tuple
 import modules.utilities as utilities
-from modules._constants import spice_mk
+from modules._constants import spice_mk, channel_map, software, missphase, observph, target, object
+import json
 
 import matplotlib.pyplot as plt # for testing
 
@@ -34,21 +35,17 @@ def convert_to_fits(
         dir_path: Path,
         output_dir: Path,
         channel: str,
-        channel_info: Tuple[str, List[str]], 
-        software: str = 'ASPECTCAL v1.0',
-        missphase: str = '',
-        observph: str = '',
-        target: str = 'DIDYMOS',
-        object: str = 'Didymos',
+        channel_info: Tuple[str, List[str]],
+        differential: str | Path | None = None, 
     ) -> List[Path]:
 
     """
     Parmeters:
         dir_path (Path):    Directory containing the acquisition files.
         output_dir (Path):  Directory where the Fits file(s) are stored.
-        software (str):     Pipeline software identification. 
-        target (str):       Taret in SPICE format
-        object (str):       Unique name for target
+        channel (str):      Instrument channel name
+        channel_info:       Tuple[channel name, List[file names of that channel]]
+        differential:       Either string, Path or None. used if the fiels are differnetial encoded
     
     Return:
         Path: Path to the directory containing the Fits file(s) (output_dir)
@@ -160,6 +157,24 @@ def convert_to_fits(
             image_data.append(array)
 
         data_cube = np.array(image_data) # Stack the images into a cube
+
+        # Differential decoding
+        if differential != None:
+            print(f'Diff decofing files')
+            differential = Path(differential)
+            diff_decoded_output_dir = Path(dir_path) / 'acq_000_diff_decoded'
+            with open(differential, 'r', encoding='utf-8') as f:
+                diff_data = json.load(f)
+            
+            diff_offsets = {} # Offsets as a dictionary
+            for ch_id_str, value_dict in diff_data.items():
+                ch_id = int(ch_id_str)
+                ch_name = channel_map.get(ch_id)
+                offsets = [value_dict[k] for k in sorted(value_dict, key=int)]
+                diff_offsets[ch_name] = offsets
+
+            data_cube = utilities.diff_decode(data_cube, diff_offsets.get(channel), diff_decoded_output_dir, channel)
+
         hdu = fits.ImageHDU(data_cube)
     # Add metadata to fits extension header
 

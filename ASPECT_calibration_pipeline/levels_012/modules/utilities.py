@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import json
 from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU
 import os
+import sys
 import re
 import modules.hera_spice as hera_spice
 from datetime import datetime, timezone
@@ -38,6 +39,7 @@ def verify_directory_path(p: str | Path) -> Path:
         raise ValueError(f'Path is not a directory: {path}')
 
     return path
+
 def verify_acquisition_directory(p: Path) -> Tuple[Path, Path, Path, Path]:
     """
     Verifies that the given acquisition directory contains:
@@ -403,9 +405,51 @@ def decompress_jp2(input_path: str | Path, output_dir: str | Path) -> Path:
     decompress_path = Path(script_dir) / "decompress"
 
     with open(input_path, "rb") as f_in, open(output_path, "wb") as f_out:
-        subprocess.run([str(decompress_path)], stdin=f_in, stdout=f_out, check=True)
+        subprocess.run([str(decompress_path)], stdin=f_in, stdout=f_out, stderr=subprocess.DEVNULL, check=True)
     
     return output_path
+
+def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, channel: str):
+    assert image_cube.ndim == 3, "Expected 3D array"
+    gaps, height, width = image_cube.shape
+
+    assert gaps == len(offsets), "Offset list must match number of frames"
+
+    # Prepare raw binary input
+    raw_bytes = image_cube.astype('<u2').tobytes() # Little-endian uint16
+    print("image_cube shape:", image_cube.shape)
+    print("raw_bytes size:", len(raw_bytes))
+    offset_str = ','.join(str(o) for o in offsets)
+
+    # Resolve absolute path to decompress binary (relative to this script's location)
+    script_dir = Path(__file__).resolve().parent
+    decoder_path = Path(script_dir) / "diff_bpp_decode"
+    
+    proc = subprocess.Popen(
+        [decoder_path, '-w', str(width), '-h', str(height), '-g', str(gaps), offset_str],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+
+    decoded_output, stderr = proc.communicate(input=raw_bytes)
+
+    if proc.returncode != 0:
+        print(stderr.decode(), file=sys.stderr)
+        raise RuntimeError("Differential decoder failed.")
+    
+    decoded_cube = np.frombuffer(decoded_output, dtype='<u2').reshape((gaps, height, width))
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    for i, frame in enumerate(decoded_cube):
+        out_path = output_dir / f'{channel}_decoded_{i:03}.bin'
+        print(f'Frame {i}, output path: {out_path.stem}')
+        with open(out_path, 'wb') as f:
+            f.write(frame.astype('<u2').tobytes())  # little-endian 16-bit
+
+    return decoded_cube
 
 def check_order(sp: float, channel: str) -> str:
     """

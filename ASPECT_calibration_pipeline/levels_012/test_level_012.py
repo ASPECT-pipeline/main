@@ -4,15 +4,23 @@ import modules.convertToFits as convertToFits
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 from pathlib import Path
 import re
 import cv2
 import math
 from matplotlib.patches import Patch
+from pprint import pprint
+from collections import defaultdict
 
+
+# ASPECT FLY images
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
 decoded_binaries = os.path.join(acq_path, 'acq_000_decompressed')
+decompressed = os.path.join(decoded_binaries , 'dc_1_exp_000.bin')
+
+# ASPECT FLY output
 meta_folder = os.path.join(acq_path, 'meta')
 fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
 aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_1B.fits')
@@ -21,13 +29,19 @@ aspect_fly_fits_nir2 = os.path.join(fits_output_dir, 'AS2_XXXXXX_200101T014800_1
 aspect_fly_fits_swir = os.path.join(fits_output_dir, 'AS3_XXXXXX_200101T014411_1B.fits')
 aspect_fly_fits_nir1_nir2 = os.path.join(fits_output_dir, 'ASP_XXXXXX_200101T014800_2B.fits')
 
-decompressed = os.path.join(decoded_binaries , 'dc_1_exp_000.bin')
+# ASPECT DIFF encoded images
+autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809') # FOLDER
+autoseq_505 = os.path.join(autoseq_dir, 'acqseq_505')
+autoseq_505_diff = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding')
+autoseq_505_out = os.path.join(autoseq_dir, 'pipeline_diff_decoded')
+autoseq_505_in = os.path.join(autoseq_dir, 'pipeline_jp2_decoded')
+autoseq_505_offsets = os.path.join(autoseq_dir, 'acqseq_505/acq_000/meta_diff_encoding/diff_encoding.json')
 
-autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809')
 autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding/dc_0_exp_001_diffEnc.bin.jp2')
 autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat02.img')
 autoseq_decoding_ouput = os.path.join(autoseq_dir, 'pipeline_diff_decoded/505')
 
+# SIMULATED ASPECT images
 simulated_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000')
 simulated_vis = os.path.join(simulated_dir, 'dc_0_exp_000.bin')
 simulated_nir1 = os.path.join(simulated_dir, 'dc_1_exp_000.bin')
@@ -63,8 +77,8 @@ def test_spice_metadata():
     utilities.collect_spice_metadata(telemetry_path, '', '')
 
 # Test the fits file conversion as a whole
-def test_convert_to_fits(output: str):
-    convertToFits.convert_to_fits(acq_path, output)
+def test_convert_to_fits(input: str, output: str):
+    convertToFits.convert_to_fits(acq_path, output, )
 
 def read_fits_file(path, visualise = True):
     with fits.open(path) as hdul:
@@ -457,6 +471,118 @@ def test_decoding(input:str, output: str, compare: str):
         print(f"Error: {e}")
         return False
     
+def compare_bin_images(
+    file_a: str | Path,
+    file_b: str | Path,
+    shape: tuple[int, int],
+    dtype: str = "<u2",          # little-endian uint16 by default
+    visualize: bool = True
+) -> bool:
+    file_a = Path(file_a)
+    file_b = Path(file_b)
+
+    arr_a = np.fromfile(file_a, dtype=dtype)
+    arr_b = np.fromfile(file_b, dtype=dtype)
+
+    if arr_a.size != arr_b.size:
+        raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
+                         f'but {file_b.name} has {arr_b.size}')
+    
+    arr_a = arr_a.reshape(shape)
+    arr_b = arr_b.reshape(shape)
+
+    identical = np.array_equal(arr_a, arr_b)
+    print(f"{'✔️  IDENTICAL' if identical else '❌  DIFFERENT'}"
+          f'f- {file_a.name} vd {file_b.name}')
+    
+    if identical and not visualize:
+        return True
+    
+    diff = arr_a.astype(np.int64) - arr_b.astype(np.int64)
+    abs_diff = np.abs(diff)
+
+    print(f'Max Δ: {abs_diff.max()} | Mean Δ: {abs_diff.mean():.3f}')
+
+    if visualize:
+        legend_elements = [
+            Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
+            Patch(facecolor='red', edgecolor='black', label='Only in vis image'),
+            Patch(facecolor='green', edgecolor='black', label='Only in nir image')
+        ]
+        overlay = utilities.overlay_images(arr_a, arr_b)
+        plt.figure()
+        plt.suptitle(f'{file_a.name} and {file_b.name} comparison', fontsize=16)
+        plt.imshow(overlay)
+        plt.axis('off')      
+        plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+        plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+
+        plt.show()
+
+def test_diff_decoding(input: str, output:str, diff:str, dtype: str = "<u2",):
+    print()
+    channel_map = {
+        0 : 'VIS',
+        1 : 'NIR1',
+        2 : 'NIR2'
+    }
+    shape_map = {
+        0 : (1024, 1024),
+        1 : (518, 648),
+        2 : (518, 648),
+    }
+
+    input = Path(input)
+    diff = Path(diff)
+
+    with open(diff, 'r', encoding='utf-8') as f:
+        diff_data = json.load(f)
+    diff_offsets = {}
+
+    for ch_id_str, value_dict in diff_data.items():
+        ch_id = int(ch_id_str)
+        ch_name = channel_map.get(ch_id)
+        
+        offsets = [value_dict[k] for k in sorted(value_dict, key=int)]
+        diff_offsets[ch_name] = offsets
+    
+    pprint(diff_offsets)
+
+    pattern = re.compile(r"dc_(\d)_exp_(\d{3})_diffEnc\.bin$")
+    # pattern = re.compile(r"^dc_(\d)_exp_(\d{3})")
+
+    files_by_channel: dict[int, list[tuple[int, Path]]] = defaultdict(list)
+    for file in input.iterdir():
+        if not file.suffix == '.bin':
+            continue
+        m = pattern.match(file.name)
+        if not m:
+            print(f'Skipping unmatched file:', file.name)
+        channel_id = int(m.group(1))
+        frame_id = int(m.group(2))
+        files_by_channel[channel_id].append((frame_id, file))
+
+    print('Forming cubes')
+    cubes: dict[str, list[np.ndarray]] = {}
+    for ch_id, paths in files_by_channel.items():
+        paths.sort(key=lambda t: t[0])
+        arrays = [
+            np.fromfile(path, dtype=dtype).reshape(shape_map[ch_id])
+            for _, path in paths
+        ]
+        channel_name = channel_map.get(ch_id)
+        cubes[channel_name] = np.stack(arrays, axis=0)
+
+    # stacked_cubes = {key: np.stack(array_list, axis=0) for key, array_list in cubes.items()}
+
+    for key, cube in cubes.items():
+        print(f'Decoding {key}')
+        print(f'shape of the cube: {cube.shape}')
+        decoded_cube = utilities.diff_decode(cube, diff_offsets.get(key), output, key)
+        print(f'decoded cube shape: {decoded_cube.shape}')
+
+    print(f'all files decoded')
+
 def try_read_cds():
     readBinfile(decompressed , 'NIR')
 
@@ -477,10 +603,13 @@ Function calls after this
 # test_acqseq()
 # test_channel_frames_names()
 # test_primary_metadata()
-# test_convert_to_fits(output=fits_output_dir)
+
+# test_convert_to_fits(input=autoseq_505, output=fits_output_dir)
+
+
 # test_spice_metadata()
 
-read_fits_file(aspect_fly_fits_nir1_nir2 , True)
+# read_fits_file(aspect_fly_fits_nir1_nir2 , True)
 # visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_nir2, 0.02)
 # update_fits_wl(simulated_output_nir2)
@@ -488,8 +617,34 @@ read_fits_file(aspect_fly_fits_nir1_nir2 , True)
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
 
+# test_diff_decoding(autoseq_505_in,autoseq_505_out,autoseq_505_offsets)
 # utilities.rename_bin_files(simulated_dir)
 
+compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat02.img'), os.path.join(autoseq_dir, 'acqseq_505/acq_000_diff_decoded/VIS_decoded_001.bin'),(1024, 1024),visualize=False)
 # try_read_cds()
 
 # Python3 ASPECT_calibration_pipeline/levels_012/test_level_012.py
+
+# file_a = Path(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/505/dc_0_decoded.dat02.img'))
+# file_b = Path(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF/505/AS0_XXXXXX_240813T145718_0A.fits'))
+
+# arr_a = np.fromfile(file_a, dtype='>u2')
+
+# with fits.open(file_b) as hdul:
+#     data = hdul[1].data
+
+# arr_b = data[1]
+
+# if arr_a.size != arr_b.size:
+#     raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
+#                         f'but {file_b.name} has {arr_b.size}')
+
+# arr_a = arr_a.reshape(1024, 1024)
+
+# print(f'values from files')
+# print(f'(0,0); a: {arr_a[0][0]} b: {arr_b[0][0]} ')
+# print(f'(500,500); a: {arr_a[500][500]} b: {arr_b[500][500]} ')
+
+# identical = np.array_equal(arr_a, arr_b)
+# print(f"{'✔️  IDENTICAL' if identical else '❌  DIFFERENT'}"
+#         f'f- {file_a.name} vd {file_b.name}')

@@ -10,7 +10,7 @@ import modules.flatField as flatField
 import modules.badPixels as badPixels
 import modules.radiometric as radiometric
 import modules.mergeFits as mergeFits
-
+from modules._constants import observph
 """
     The main program to execute the data processing pipeline.
 
@@ -47,11 +47,6 @@ def calibration_pipeline(
         output_dir: str | Path,
         channel: str,
         channel_info: Tuple[str, List[str]],
-        software: str = 'ASPECTCAL v1.0',
-        missphase: str = '',
-        observph: str = '',
-        target: str = 'DIDYMOS',
-        object: str = 'Didymos',
     ) -> str:
     """
     These functions perform the level 0 and 1 of the pipeline
@@ -59,18 +54,21 @@ def calibration_pipeline(
         path: Path to a folder containing data of an acquisition from a single sensor.
         output: Path to the folder where the fits files will be stored.
     """
-
+    acq_dir = Path(input_dir) / 'acq_000'
+    differential = None
+    for subdir in acq_dir.iterdir():
+        if subdir.is_dir():
+            candidate = subdir / 'diff_encoding.json'
+            if candidate.is_file():
+                differential = Path(candidate)
+    print(f'Differential: {differential}')
     # Convert the input directory into FITS file(s)
     fits_file = convertToFits.convert_to_fits(
             dir_path=input_dir, 
             output_dir=output_dir,
             channel=channel,
             channel_info=channel_info,
-            software=software,
-            missphase=missphase,
-            observph=observph, 
-            target=target, 
-            object=object 
+            differential= differential
         )
     
     print(f'New file saved: {fits_file}')
@@ -106,11 +104,6 @@ def calibration_pipeline(
 def pipeline_levels_01(
         input_dir: str | Path, 
         output_dir: str | Path,
-        software: str = 'ASPECTCAL v1.0',
-        missphase: str = '',
-        observph: str = '',
-        target: str = 'DIDYMOS',
-        object: str = 'Didymos',
     ) -> str:
     """
     Executes the calibration levels 0, 1, 2 of the ASPECT calibation pipeline. 
@@ -154,11 +147,7 @@ def pipeline_levels_01(
                                                     output_dir=output_dir, 
                                                     channel=channel,
                                                     channel_info=channel_info,
-                                                    software=software,
-                                                    missphase=missphase,
-                                                    observph=observph,
-                                                    target=target,
-                                                    object=object)
+                                                    )
 
         level_1B_files.append(calibrated_fits_file)
     print(f'Successfully calibrated all channels')
@@ -208,16 +197,21 @@ def pipeline_level_02(fits_dir: str | Path, output_dir: str | Path, instrument: 
 
     return combined_fits_file
 
+# ASPECT FLY
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
 fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
 fits_output_dir_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
 
+# ASPECT simulated
 acq_path_sim = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen')
 fits_output_dir_sim = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated')
 fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
 
+# ASPECT Diffetential encoded
+autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_505')
+autoseq_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF')
 
-# pipeline_levels_01(acq_path, fits_output_dir, missphase='FLY_TEST', observph='104', object='DARK')
-pipeline_level_02(fits_output_dir_, fits_output_dir_)
+pipeline_levels_01(autoseq_dir, autoseq_output_dir)
+# pipeline_level_02(fits_output_dir_, fits_output_dir_)
 
 # Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py
