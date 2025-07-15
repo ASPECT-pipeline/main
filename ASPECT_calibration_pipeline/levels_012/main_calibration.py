@@ -215,7 +215,7 @@ fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test
 autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_503')
 autoseq_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF')
 
-# pipeline_levels_01(acq_path_sim, fits_output_dir_sim_, False)
-pipeline_level_02(fits_output_dir_sim_, fits_output_dir_sim_)
+pipeline_levels_01(autoseq_dir, autoseq_output_dir, differential=True)
+# pipeline_level_02(fits_output_dir_sim_, fits_output_dir_sim_)
 
 # Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py
