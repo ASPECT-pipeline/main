@@ -20,8 +20,8 @@ telemetry_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_h
 config_path = "test_data/[July_test_package]2024-07-25_15-41-18_nir2_h_nir2_ho_600w_7500/meta/config.json" # Not used at the moment
 # spice_metakernel_path = "/home/sysa/HERA/SPICE/hera_v180/hera/kernels/mk/hera_plan.tm" # Add metakernel path, for example /home/sysa/HERA/SPICE/HERA/kernels/mk/hera_plan.tm
 spice_metakernel_path = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_plan.tm" 
-fits_path = "/home/sysa/HERA/github/main/test_data/levels_012_test/test_output/test_1/simulated_full_datacube.fits"
-output_path = "/home/sysa/HERA/github/main/test_data/test_outputs/test.fits"
+fits_path = "/home/sysa/HERA/github2/main/test_data/test_outputs/ASP_XXXXXX_270323T060000_2B_test.fits"
+output_path = "/home/sysa/Downloads/test.fits"
 
 image_target = "Didymos" # Didymos or Dimorphos
 
@@ -1048,9 +1048,6 @@ if test_main:
 
 if test_dynamic_metadata_retrieval:
     retrieve_dynamic_metadata(telemetry_path, config_path, spice_metakernel_path, test=True)
-
-# print_fits_metadata_with_summary('/home/sysa/Downloads/ASP_XXXXXX_270323T060000_2B.fits')
-# print_fits_metadata_with_summary('/home/sysa/HERA/github2/main/test_data/test_outputs/example-1-vis-nir1-nir2-hyperstacks_with_spice_info.fits')
 
 """
 Function to modify the mk/hera_plan.tm PATH_VALUES to point into the correct directory
