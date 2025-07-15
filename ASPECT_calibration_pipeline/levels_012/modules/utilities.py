@@ -412,7 +412,7 @@ def decompress_jp2(input_path: str | Path, output_dir: str | Path) -> Path:
     
     return output_path
 
-def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, channel: str):
+def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, channel: str, frame_numbers: list[str]):
     assert image_cube.ndim == 3, "Expected 3D array"
     gaps, height, width = image_cube.shape
 
@@ -447,7 +447,7 @@ def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, cha
     output_dir.mkdir(exist_ok=True, parents=True)
 
     for i, frame in enumerate(decoded_cube):
-        out_path = output_dir / f'{channel}_decoded_{i:03}.bin'
+        out_path = output_dir / f'{channel}_decoded_{frame_numbers[i]}.bin'
         print(f'Frame {i}, output path: {out_path.stem}')
         with open(out_path, 'wb') as f:
             f.write(frame.astype('<u2').tobytes())  # little-endian 16-bit

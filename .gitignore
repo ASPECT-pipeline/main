@@ -10,3 +10,5 @@ __pycache__/
 # OS files (optional, but common)
 .DS_Store
 
+# Folder for data that exceeds the git size limit
+test_data/levels_012_test/test_output/ASPECT_DIFF

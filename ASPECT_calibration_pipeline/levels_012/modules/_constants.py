@@ -1,8 +1,8 @@
 
 # Meta data
 software: str = 'ASPECTCAL v1.0'
-missphase: str = ''
-observph: str = '505'
+missphase: str = 'TEST'
+observph: str = ''
 target: str = 'DIDYMOS'
 object: str = 'Didymos'
 

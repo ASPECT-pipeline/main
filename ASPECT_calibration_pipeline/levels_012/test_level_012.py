@@ -46,8 +46,8 @@ simulated_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/202
 simulated_vis = os.path.join(simulated_dir, 'dc_0_exp_000.bin')
 simulated_nir1 = os.path.join(simulated_dir, 'dc_1_exp_000.bin')
 
-simulated_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00-McEwen')
-simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_0A.fits')
+simulated_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00')
+simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_1B.fits')
 simulated_output_nir1 = os.path.join(simulated_output_dir, 'AS1_XXXXXX_270323T060000_1B.fits')
 simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_XXXXXX_270323T060000_1B.fits')
 simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_XXXXXX_270323T060000_2B.fits')
@@ -96,14 +96,14 @@ def read_fits_file(path, visualise = True):
                 if isinstance(hdu, fits.ImageHDU):
                     print("→ This is an ImageHDU")
                     print(f'data type: {type(hdu.data)}')
-                    # for i, frame in enumerate(hdu.data):
-                    #     print(f'points from frame {i}')
-                    #     print(f'(250, 250): {frame[250][250]}')
-                    #     print(f'(10, 150): {frame[10][150]}')
-                    #     print(f'(300, 300): {frame[300][300]}')
-                    #     plt.imshow(frame, cmap='gray')
-                    #     plt.title(f'frame: {i}')
-                    #     plt.show()
+                    for i, frame in enumerate(hdu.data):
+                        print(f'points from frame {i}')
+                        print(f'(250, 250): {frame[250][250]}')
+                        print(f'(10, 150): {frame[10][150]}')
+                        print(f'(300, 300): {frame[300][300]}')
+                        plt.imshow(frame, cmap='gray')
+                        plt.title(f'frame: {i}')
+                        plt.show()
                 elif isinstance(hdu, fits.BinTableHDU):
                     if i == 1:
                         print("→ This is a Binary Table HDU")
@@ -548,8 +548,8 @@ def test_diff_decoding(input: str, output:str, diff:str, dtype: str = "<u2",):
     
     pprint(diff_offsets)
 
-    pattern = re.compile(r"dc_(\d)_exp_(\d{3})_diffEnc\.bin$")
-    # pattern = re.compile(r"^dc_(\d)_exp_(\d{3})")
+    # pattern = re.compile(r"dc_(\d)_exp_(\d{3})_diffEnc\.bin$")
+    pattern = re.compile(r"^dc_(\d)_exp_(\d{3})")
 
     files_by_channel: dict[int, list[tuple[int, Path]]] = defaultdict(list)
     for file in input.iterdir():
@@ -609,10 +609,10 @@ Function calls after this
 
 # test_spice_metadata()
 
-# read_fits_file(aspect_fly_fits_nir1_nir2 , True)
-# visualise_fits(simulated_output_ASP, visualise=True, spect=True)
-# update_fits_exposure(simulated_output_nir2, 0.02)
-# update_fits_wl(simulated_output_nir2)
+# read_fits_file(simulated_output_ASP , True)
+visualise_fits(simulated_output_ASP, visualise=True, spect=True)
+# update_fits_exposure(simulated_output_vis, 0.01)
+# update_fits_wl(simulated_output_vis)
 # readBinfile(decompressed , 'NIR')
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
@@ -620,15 +620,21 @@ Function calls after this
 # test_diff_decoding(autoseq_505_in,autoseq_505_out,autoseq_505_offsets)
 # utilities.rename_bin_files(simulated_dir)
 
-compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat02.img'), os.path.join(autoseq_dir, 'acqseq_505/acq_000_diff_decoded/VIS_decoded_001.bin'),(1024, 1024),visualize=False)
+# compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/505/dc_2_decoded.dat10.img'), os.path.join(autoseq_dir, 'acqseq_505/acq_000_diff_decoded/NIR2_decoded_009.bin'),(518, 648),visualize=False)
 # try_read_cds()
 
 # Python3 ASPECT_calibration_pipeline/levels_012/test_level_012.py
 
-# file_a = Path(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/505/dc_0_decoded.dat02.img'))
-# file_b = Path(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF/505/AS0_XXXXXX_240813T145718_0A.fits'))
 
-# arr_a = np.fromfile(file_a, dtype='>u2')
+
+
+
+
+
+# file_a = Path(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/503/dc_2_exp_001.bin'))
+# file_b = Path(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF/503/AS2_XXXXXX_240813T131257_0A.fits'))
+
+# arr_a = np.fromfile(file_a, dtype='<u2')
 
 # with fits.open(file_b) as hdul:
 #     data = hdul[1].data
@@ -639,7 +645,7 @@ compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat0
 #     raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
 #                         f'but {file_b.name} has {arr_b.size}')
 
-# arr_a = arr_a.reshape(1024, 1024)
+# arr_a = arr_a.reshape(518, 648)
 
 # print(f'values from files')
 # print(f'(0,0); a: {arr_a[0][0]} b: {arr_b[0][0]} ')

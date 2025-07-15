@@ -6,6 +6,7 @@ from typing import List, Tuple
 import modules.utilities as utilities
 from modules._constants import spice_mk, channel_map, software, missphase, observph, target, object
 import json
+import re
 
 import matplotlib.pyplot as plt # for testing
 
@@ -114,7 +115,13 @@ def convert_to_fits(
     if channel == 'SWIR':
         # BinaryTable HDU
         cols = []
+        frame_numbers = []
         for i, bin_file in enumerate(files):
+            match = re.search(r'exp_(\d{3})', bin_file)
+            if match:
+                frame_numbers.append(match.group(1))
+            else:
+                raise ValueError(f'Unknown frame number. The filename is expectected to contain the frame number after exp_.')
             file_path = Path(acq_dir) / bin_file
             try:
                 with file_path.open('rb') as f:
@@ -145,19 +152,24 @@ def convert_to_fits(
             raise ValueError(f"Unknown channel: {channel}. Expected one of: 'VIS', 'NIR1', 'NIR', 'SWIR'." )
         
         image_data = []
+        frame_numbers = []
         for i, bin_file in enumerate(files):
+            match = re.search(r'exp_(\d{3})', bin_file)
+            if match:
+                frame_numbers.append(match.group(1))
+            else:
+                raise ValueError(f'Unknown frame number. The filename is expectected to contain the frame number after exp_.')
             file_path = Path(acq_dir) / bin_file
             if bin_file.endswith(".jp2"):
                 decompressed_output_dir = Path(dir_path) / 'acq_000_decompressed'
                 decompressed_output = utilities.decompress_jp2(file_path, decompressed_output_dir)
-                array = np.fromfile(decompressed_output, dtype='>u2').reshape((height, width)) # big-endian 16-bit unsigned
+                array = np.fromfile(decompressed_output, dtype='<u2').reshape((height, width)) # big-endian 16-bit unsigned
             else:
                 array = np.fromfile(file_path, dtype='<u2').reshape((height, width)) # big-endian 16-bit unsigned
 
             image_data.append(array)
 
         data_cube = np.array(image_data) # Stack the images into a cube
-
         # Differential decoding
         if differential != None:
             print(f'Diff decofing files')
@@ -173,7 +185,7 @@ def convert_to_fits(
                 offsets = [value_dict[k] for k in sorted(value_dict, key=int)]
                 diff_offsets[ch_name] = offsets
 
-            data_cube = utilities.diff_decode(data_cube, diff_offsets.get(channel), diff_decoded_output_dir, channel)
+            data_cube = utilities.diff_decode(data_cube, diff_offsets.get(channel), diff_decoded_output_dir, channel, frame_numbers)
 
         hdu = fits.ImageHDU(data_cube)
     # Add metadata to fits extension header
@@ -183,6 +195,8 @@ def convert_to_fits(
     for key, (value, comment) in image_data.items():
         data_header.append((key, value, comment))
     
+    frame_number_list = ','.join(frame_numbers)
+    data_header.append(('FRAMES', frame_number_list, 'Acquisition frames'))
     HDUs.insert(0, primary_hdu) # insert the primary HDU to first
     HDUs.append(hdu) # append the data HDUx
     # Create a FITS file 
