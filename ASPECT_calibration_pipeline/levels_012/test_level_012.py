@@ -620,7 +620,7 @@ Function calls after this
 # test_diff_decoding(autoseq_505_in,autoseq_505_out,autoseq_505_offsets)
 # utilities.rename_bin_files(simulated_dir)
 
-compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/505/dc_2_decoded.dat10.img'), os.path.join(autoseq_dir, 'acqseq_505/acq_000_diff_decoded/NIR2_decoded_010.bin'),(518, 648),visualize=False)
+# compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/503/dc_0_exp_000.bin'), os.path.join(autoseq_dir, 'acqseq_503/acq_000_decompressed/dc_0_exp_000_diffEnc.bin'),(1024, 1024),visualize=False)
 # try_read_cds()
 
 # Python3 ASPECT_calibration_pipeline/levels_012/test_level_012.py
@@ -631,26 +631,26 @@ compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/505/dc_2_decoded.dat1
 
 
 
-# file_a = Path(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/505/dc_0_decoded.dat01.img'))
-# file_b = Path(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF/505/AS0_XXXXXX_240813T145718_0A.fits'))
+file_a = Path(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/505/dc_0_decoded.dat02.img'))
+file_b = Path(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF/505/AS0_XXXXXX_240813T145718_0A.fits'))
 
-# arr_a = np.fromfile(file_a, dtype='<u2')
+arr_a = np.fromfile(file_a, dtype='<u2')
 
-# with fits.open(file_b) as hdul:
-#     data = hdul[1].data
+with fits.open(file_b) as hdul:
+    data = hdul[1].data
 
-# arr_b = data[1]
+arr_b = data[1]
 
-# if arr_a.size != arr_b.size:
-#     raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
-#                         f'but {file_b.name} has {arr_b.size}')
+if arr_a.size != arr_b.size:
+    raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
+                        f'but {file_b.name} has {arr_b.size}')
 
-# arr_a = arr_a.reshape(1024, 1024)
+arr_a = arr_a.reshape(1024, 1024)
 
-# print(f'values from files')
-# print(f'(0,0); a: {arr_a[0][0]} b: {arr_b[0][0]} ')
-# print(f'(500,500); a: {arr_a[500][500]} b: {arr_b[500][500]} ')
+print(f'values from files')
+print(f'(0,0); a: {arr_a[0][0]} b: {arr_b[0][0]} ')
+print(f'(500,500); a: {arr_a[500][500]} b: {arr_b[500][500]} ')
 
-# identical = np.array_equal(arr_a, arr_b)
-# print(f"{'✔️  IDENTICAL' if identical else '❌  DIFFERENT'}"
-#         f'f- {file_a.name} vd {file_b.name}')
+identical = np.array_equal(arr_a, arr_b)
+print(f"{'✔️  IDENTICAL' if identical else '❌  DIFFERENT'}"
+        f'f- {file_a.name} vd {file_b.name}')

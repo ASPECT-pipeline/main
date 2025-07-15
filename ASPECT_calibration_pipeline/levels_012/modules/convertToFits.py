@@ -37,7 +37,7 @@ def convert_to_fits(
         output_dir: Path,
         channel: str,
         channel_info: Tuple[str, List[str]],
-        differential: str | Path | None = None, 
+        diff: str | Path | None = None, 
     ) -> List[Path]:
 
     """
@@ -46,7 +46,7 @@ def convert_to_fits(
         output_dir (Path):  Directory where the Fits file(s) are stored.
         channel (str):      Instrument channel name
         channel_info:       Tuple[channel name, List[file names of that channel]]
-        differential:       Either string, Path or None. used if the fiels are differnetial encoded
+        diff:               Either string, Path or None. Used if the fiels are differnetial encoded
     
     Return:
         Path: Path to the directory containing the Fits file(s) (output_dir)
@@ -171,11 +171,11 @@ def convert_to_fits(
 
         data_cube = np.array(image_data) # Stack the images into a cube
         # Differential decoding
-        if differential != None:
+        if diff != None:
             print(f'Diff decofing files')
-            differential = Path(differential)
+            differential = Path(diff)
             diff_decoded_output_dir = Path(dir_path) / 'acq_000_diff_decoded'
-            with open(differential, 'r', encoding='utf-8') as f:
+            with open(diff, 'r', encoding='utf-8') as f:
                 diff_data = json.load(f)
             
             diff_offsets = {} # Offsets as a dictionary

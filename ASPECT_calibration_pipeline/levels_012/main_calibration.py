@@ -62,15 +62,14 @@ def calibration_pipeline(
             if subdir.is_dir():
                 candidate = subdir / 'diff_encoding.json'
                 if candidate.is_file():
-                    differential = Path(candidate)
-        print(f'Differential: {differential}')
+                    diff= Path(candidate)
     # Convert the input directory into FITS file(s)
     fits_file = convertToFits.convert_to_fits(
             dir_path=input_dir, 
             output_dir=output_dir,
             channel=channel,
             channel_info=channel_info,
-            differential= diff
+            diff= diff
         )
     
     print(f'New file saved: {fits_file}')
@@ -116,13 +115,9 @@ def pipeline_levels_01(
     hyperspectral data cube.
     
     Parameters:
-        input_dir (str | Path):    Directory containing the acquisition files.
-        output_dir (str | Path):  Directory where a new directory containg all new files will be sotred.
-        software (str): Pipeline software identification.
-        missphase (str): Identification of the mission phase.
-        observph (str): Identification of the observation ID
-        target (str): Taret in SPICE format
-        object (str): Unique name for target
+        input_dir (str | Path):     Directory containing the acquisition files.
+        output_dir (str | Path):    Directory where a new directory containg all new files will be sotred.
+        differential (bool):        True if differnetial encoding is used for the input images.
     
     Return: Path to the single combined FITS file as the result of level 2B
     """
@@ -212,7 +207,7 @@ fits_output_dir_sim = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_
 fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00')
 
 # ASPECT Diffetential encoded
-autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_503')
+autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_505')
 autoseq_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF')
 
 pipeline_levels_01(autoseq_dir, autoseq_output_dir, differential=True)

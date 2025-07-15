@@ -2,7 +2,7 @@
 # Meta data
 software: str = 'ASPECTCAL v1.0'
 missphase: str = ''
-observph: str = '503'
+observph: str = '505'
 target: str = 'DIDYMOS'
 object: str = 'Didymos'
 
