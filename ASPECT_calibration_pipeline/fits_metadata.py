@@ -1049,6 +1049,8 @@ if test_main:
 if test_dynamic_metadata_retrieval:
     retrieve_dynamic_metadata(telemetry_path, config_path, spice_metakernel_path, test=True)
 
+# print_fits_metadata_with_summary('/home/sysa/Downloads/ASP_XXXXXX_270323T060000_2B.fits')
+# print_fits_metadata_with_summary('/home/sysa/HERA/github2/main/test_data/test_outputs/example-1-vis-nir1-nir2-hyperstacks_with_spice_info.fits')
 
 """
 Function to modify the mk/hera_plan.tm PATH_VALUES to point into the correct directory

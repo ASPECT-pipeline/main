@@ -4,6 +4,7 @@ from typing import Tuple
 import os
 from pathlib import Path
 from modules._constants import spice_mk_ops, spice_mk_plan
+from scipy.spatial.transform import Rotation as R
 
 """
 This is a Python file for using HERA SPICE kernels.
@@ -71,6 +72,21 @@ def query_mk_identifier() -> str:
 
         if len(mk_id) > 0:
             return mk_id[0]
+        else:
+            return 'UNK'
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return "UNK"
+    
+def query_spice_version() -> str:
+    """
+    Query 'SKD_VERSION' from the kernel pool.
+    """
+    try:
+        version = spice.gcpool("SKD_VERSION", 0, 1)
+
+        if len(version[0]) > 0:
+            return version[0]
         else:
             return 'UNK'
     except Exception as e:
@@ -160,13 +176,29 @@ def query_spacecraft_quaternions(
     Returns: Numpy Array containing the 4 quaternions. 
 
     """
+    # Old implementation
+    # inst_id = get_sc_id(frame_name=frame_name)
+    # print(f'inst_id: {inst_id}')
+    # cmat, av, clkout = spice.ckgpav(-9102001, et, tol, ref)
+    # quat = spice.m2q(cmat)
 
-    inst_id = get_sc_id(frame_name=frame_name)
-    print(f'inst_id: {inst_id}')
-    cmat, av, clkout = spice.ckgpav(-9102001, et, tol, ref)
-    quat = spice.m2q(cmat)
+    # return(quat)
 
-    return(quat)
+    rot_matrix = spice.pxform(ref, frame_name, et)
+
+    X = (1, 0, 0)
+    Y = (0, 1, 0)
+    Z = (0, 0, 1)
+
+    rotated_X = np.dot(X, rot_matrix)
+    rotated_Y = np.dot(Y, rot_matrix)
+    rotated_Z = np.dot(Z, rot_matrix)
+
+    rotation_matrix = np.column_stack((rotated_X, rotated_Y, rotated_Z))
+    r = R.from_matrix(rotation_matrix)
+    quaternion = r.as_quat() # returns (x, y, z, w) format
+
+    return quaternion
 
 def get_boresight_vector(inst_id: int) -> np.ndarray:
     """

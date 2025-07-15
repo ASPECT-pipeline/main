@@ -300,7 +300,7 @@ def collect_spice_metadata(
 
     utc_ob = telemetry_data['ACQ_DATE']
     if test:
-        utc_ob = '2025-06-15T05:40:46.6666' # Testing
+        utc_ob = '2027-03-23T06:00:00.000' # Testing # Old '2025-06-15T05:40:46.6666'
 
     spice_metadata = {}
 
@@ -311,7 +311,10 @@ def collect_spice_metadata(
     camera_frame = 'MILANI_NAVCAM'
 
     mk_id = hera_spice.query_mk_identifier() # Meta kernel version
-    spice_metadata['SPICE_MK'] = (mk_id, 'SPICE meta kernel version')
+    spice_metadata['SPICE_MK'] = (mk_id, 'SPICE metakernel')
+
+    spice_version = hera_spice.query_spice_version() # SPICE dataset version
+    spice_metadata['SPICEVER'] = (spice_version, 'SPICE dataset version')
 
     sclk = hera_spice.get_sclk(et, milani_frame) # SC clock in spice format
     spice_metadata['SPICECLK'] = (sclk, 'SC clock SPICE format')
@@ -342,11 +345,11 @@ def collect_spice_metadata(
 
     
     # Spacecraft quaternions
-    quaternions = hera_spice.query_spacecraft_quaternions(frame_name=milani_frame, et=et, tol=1, ref='J2000' )
-    spice_metadata['SC_QUAT0'] = (quaternions[0], 'Spacecraft quaternion 0')
-    spice_metadata['SC_QUAT1'] = (quaternions[1], 'Spacecraft quaternion 1')
-    spice_metadata['SC_QUAT2'] = (quaternions[2], 'Spacecraft quaternion 2')
-    spice_metadata['SC_QUAT3'] = (quaternions[3], 'Spacecraft quaternion 3')
+    quaternions = hera_spice.query_spacecraft_quaternions(frame_name=milani_frame, et=et, tol=1, ref='J2000' ) # Quaternions are returned in format (X, Y, Z, W)
+    spice_metadata['SC_QUATW'] = (quaternions[3], 'Spacecraft quaternion (W)')
+    spice_metadata['SC_QUATX'] = (quaternions[0], 'Spacecraft quaternion (X)')
+    spice_metadata['SC_QUATY'] = (quaternions[1], 'Spacecraft quaternion (Y)')
+    spice_metadata['SC_QUATZ'] = (quaternions[2], 'Spacecraft quaternion (Z)')
 
     # Camera attitude
     ra_deg, dec_deg, naz_deg = hera_spice.query_camera_pointing_info(camera_frame=camera_frame, et=et, inertial_frame='J2000', target_frame='DIDYMOS_FIXED')
