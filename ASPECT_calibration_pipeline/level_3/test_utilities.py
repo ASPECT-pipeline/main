@@ -4,7 +4,7 @@ from astropy.io import fits
 import math
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-from level_3_utilities import nir2_offset_correction, remove_outliers, denoise_spectra
+from level_3.level_3_utilities import nir2_offset_correction, remove_outliers, denoise_spectra
 
 coefficient_folder = os.path.join(os.getcwd(), 'test_data/matlab_coefficients')
 vis_coef_path = os.path.join(coefficient_folder, 'vis-conversion.dat')

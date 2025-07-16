@@ -8,13 +8,13 @@ from sklearn.metrics import f1_score as f1_sklearn
 from typing import Callable
 from collections import Counter
 
-from modules.utilities_spectra import gimme_indices
-from modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts
+from level_3.modules.utilities_spectra import gimme_indices
+from level_3.modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts
 
-from modules._constants import _wp
+from level_3.modules._constants import _wp
 
 # defaults only
-from modules.NN_config_composition import minerals_used, endmembers_used
+from level_3.modules.NN_config_composition import minerals_used, endmembers_used
 
 
 def gimme_penalisation_setup(penalised_mineral: str, used_minerals: np.ndarray | None = None,

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import cv2
 from astropy.io import fits
-import modules.utilities as utilities
+import levels_012.modules.utilities as utilities
 from pathlib import Path
 import matplotlib.pyplot as plt
 from typing import List
@@ -124,14 +124,12 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
         nir_image = nir1_data[0]
 
         transforamtion_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
-        print('image types')
-        print(vis_image.dtype, nir_image.dtype)
         for frame in vis_data:
             # Convert to little-endian float32 for OpenCV
             little_endian = np.ascontiguousarray(frame.astype('<f4'))
             wraped = cv2.warpPerspective(little_endian, transforamtion_matrix, (640, 512), flags=cv2.INTER_CUBIC )
-            # Convert back to big_endian float64
-            big_endian = np.ascontiguousarray(wraped.astype('>f8'))
+            # Convert back to big_endian float32
+            big_endian = np.ascontiguousarray(wraped.astype('>f4'))
             new_image_data.append(big_endian)
 
     for frame in nir1_data:
@@ -139,6 +137,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
         
     for frame in nir2_data:
         new_image_data.append(frame)
+
 
     data_cube = np.stack(new_image_data, axis=0)
 

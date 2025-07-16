@@ -10,16 +10,16 @@ from functools import partial
 # import pandas as pd
 # import warnings
 
-from modules.mixing_models import hapke, linear_in_absorption_coef
-from modules.utilities_spectra import denoise_and_norm, save_data, load_xlsx
-from modules.utilities import my_mv, stack, normalise_array, safe_arange
-from modules.decorators import timing
+from level_3.modules.mixing_models import hapke, linear_in_absorption_coef
+from level_3.modules.utilities_spectra import denoise_and_norm, save_data, load_xlsx
+from level_3.modules.utilities import my_mv, stack, normalise_array, safe_arange
+from level_3.modules.decorators import timing
 
-from modules.NN_data import load_composition_data as load_data
-from modules._constants import _sep_in, _sep_out, _wp
+from level_3.modules.NN_data import load_composition_data as load_data
+from level_3.modules._constants import _sep_in, _sep_out, _wp
 
 # defaults only
-from modules.CD_parameters import normalise, wvl_norm
+from level_3.modules.CD_parameters import normalise, wvl_norm
 
 
 @timing

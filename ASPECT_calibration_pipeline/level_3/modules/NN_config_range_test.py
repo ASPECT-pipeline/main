@@ -3,17 +3,17 @@ from os import path
 from typing import Literal
 from functools import reduce
 
-from modules.NN_data_grids import normalise_spectrum_at_wvl
-from modules.utilities import stack, find_nearest, safe_arange
-from modules._constants import _sep_in, _sep_out
+from level_3.modules.NN_data_grids import normalise_spectrum_at_wvl
+from level_3.modules.utilities import stack, find_nearest, safe_arange
+from level_3.modules._constants import _sep_in, _sep_out
 
 # it taxonomy = True, you must modify "NN_classes.py" and force it to return the same classes (including the bin_to_cls)
 taxonomy = True
 
 if taxonomy:
-    from modules.NN_config_taxonomy import p, bin_code
+    from level_3.modules.NN_config_taxonomy import p, bin_code
 else:
-    from modules.NN_config_composition import p, bin_code
+    from level_3.modules.NN_config_composition import p, bin_code
 
 model_basedir = path.join("range_test", "taxonomy") if taxonomy else path.join("range_test", "composition")
 

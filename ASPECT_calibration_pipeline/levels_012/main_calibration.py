@@ -1,16 +1,17 @@
 import os
 from pathlib import Path
+from astropy.io import fits
 from typing import Tuple, List
-import modules.convertToFits as convertToFits
-import modules.utilities as utilities
-import modules.calibrateHeader as calibrateHeader
-import modules.extractCDS as extractCDS
-import modules.darkSubtraction as darkSubtraction
-import modules.flatField as flatField
-import modules.badPixels as badPixels
-import modules.radiometric as radiometric
-import modules.mergeFits as mergeFits
-from modules._constants import observph
+import levels_012.modules.convertToFits as convertToFits
+import levels_012.modules.utilities as utilities
+import levels_012.modules.calibrateHeader as calibrateHeader
+import levels_012.modules.extractCDS as extractCDS
+import levels_012.modules.darkSubtraction as darkSubtraction
+import levels_012.modules.flatField as flatField
+import levels_012.modules.badPixels as badPixels
+import levels_012.modules.radiometric as radiometric
+import levels_012.modules.mergeFits as mergeFits
+from config import observph, missphase
 """
     The main program to execute the data processing pipeline.
 
@@ -49,13 +50,16 @@ def calibration_pipeline(
         channel_info: Tuple[str, List[str]],
         differential: bool
     ) -> str:
+
     """
     These functions perform the level 0 and 1 of the pipeline
     Parmeters:
         path: Path to a folder containing data of an acquisition from a single sensor.
         output: Path to the folder where the fits files will be stored.
     """
+
     diff = None
+    # Search for the differential encoding offsets, if not found the differential decoding is not executed
     if differential:
         acq_dir = Path(input_dir) / 'acq_000'
         for subdir in acq_dir.iterdir():
@@ -72,32 +76,57 @@ def calibration_pipeline(
             diff= diff
         )
     
-    print(f'New file saved: {fits_file}')
+    print(f'New fits file created: {fits_file}')
 
     # Process the calibration steps
 
     fits_file = calibrateHeader.calibrate_header(fits_file, output_dir)
-    print(f'New file created: {fits_file}')
+    print(f'New fits file created: {fits_file}')
 
-    # Extract diagnostic pixels from NIR2 and NIR2. Convert the values to float64
-    fits_file = extractCDS.extract_cds_pixels(fits_file, output_dir)
-    print(f'New file created: {fits_file}')
+    fits_file = Path(fits_file)
 
-    # Use darSubstraction to substract the dark frame from fits file and
-    fits_file = darkSubtraction.dark_subtraction(fits_file, output_dir)
-    print(f'New file created: {fits_file}')
+    with fits.open(fits_file, memmap=False) as hdul:
 
-    # Correct the flatfield image 
-    fits_file = flatField.flat_field_calibration(fits_file, output_dir)
-    print(f'New file created: {fits_file}')
 
-    # Change the value of bad pixels to the mean of the neighbours
-    fits_file = badPixels.remove_bad_pixels(fits_file, output_dir)
-    print(f'New file created: {fits_file}')
+        # Convert the data to float64 for calibration
+        hdul = utilities.convert_to_float64(hdul)
 
-    # Apply radiometric calibration
-    fits_file = radiometric.radiometric_calibration(fits_file, output_dir)
-    print(f'New file created: {fits_file}')
+        # Extract diagnostic pixels from NIR2 and NIR2. Convert the values to float64
+        hdul = extractCDS.extract_cds_pixels(hdul)
+        print(f'CDS extracted')
+
+        # Subtrack the dark frame from each image
+        hdul = darkSubtraction.dark_subtraction(hdul)
+        print(f'Dark frame subtracted')
+
+        # Apply flatfield correction
+        hdul = flatField.flat_field_calibration(hdul)
+        print(f'Flat field calibrated')
+
+
+        # Replace bad pixels with neigbours
+        hdul = badPixels.replace_bad_pixels(hdul)
+        print(f'Bad pixels replaced')
+
+
+        # Apply radiometric calibration
+        hdul = radiometric.radiometric_calibration(hdul)
+        print(f'Radiometric calibrated')
+
+        stem = fits_file.stem
+        suffix = fits_file.suffix
+        new_calibration_level = '1B'
+        file_name = stem[:25] + new_calibration_level + suffix
+        primary_header = hdul[0].header
+        primary_header['FILENAME'] = file_name
+        primary_header['PROCLEVL'] = new_calibration_level
+
+        hdul = utilities.convert_to_float32(hdul)
+
+    # create the new fits file with dark-subtracted images
+    fits_file = Path(output_dir) / file_name
+    hdul.writeto(fits_file, overwrite=True)
+    print(f'New fits file created: {fits_file}')
 
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
@@ -125,9 +154,6 @@ def pipeline_levels_01(
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
 
-    output_dir = Path(output_dir) / observph # output directory for this acquisition
-    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
-
     # Verify the existance of directory paths and convert them into Path objects
     input_dir = utilities.verify_directory_path(input_dir)
     output_dir = utilities.verify_directory_path(output_dir)
@@ -137,24 +163,25 @@ def pipeline_levels_01(
     channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]
     channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
 
-    level_1B_files = []
     for channel in channel_names:
+        print(f'Calibrating channel: {channel}')
         channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames_belongs_this_channels]]
-
         calibrated_fits_file = calibration_pipeline(input_dir=input_dir, 
                                                     output_dir=output_dir, 
                                                     channel=channel,
                                                     channel_info=channel_info,
                                                     differential=differential
                                                     )
+        if missphase == 'SIMULATE':
+            utilities.update_fits_exposure(calibrated_fits_file, None)
+            utilities.update_fits_wl(calibrated_fits_file, None)
 
-        level_1B_files.append(calibrated_fits_file)
     print(f'Successfully calibrated all channels')
 
-    return (output_dir, level_1B_files)
+    return (output_dir)
 
 
-def pipeline_level_02(fits_dir: str | Path, output_dir: str | Path, instrument: str = 'vis-nir1-nir2') -> str:
+def pipeline_level_02(input_dir: str | Path, output_dir: str | Path, instrument: str = 'vis-nir1-nir2') -> str:
     """
     Combines fits files into one single fits file.
 
@@ -166,7 +193,7 @@ def pipeline_level_02(fits_dir: str | Path, output_dir: str | Path, instrument: 
     Returns 
         (str): path to the created FITS file
     """
-    fits_dir = Path(fits_dir)
+    fits_dir = Path(input_dir)
 
     channel_map = {
         'vis' : 0,
@@ -192,7 +219,6 @@ def pipeline_level_02(fits_dir: str | Path, output_dir: str | Path, instrument: 
             print(f'Skipping malformed filename: {file.name}')
 
     combined_fits_file = mergeFits.merge_fits_files(files=files_to_be_combined, output_dir=output_dir)
-    print(f'Fits files combined. New file: {combined_fits_file}')
 
     return combined_fits_file
 
@@ -210,7 +236,7 @@ fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test
 autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_505')
 autoseq_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF')
 
-pipeline_levels_01(autoseq_dir, autoseq_output_dir, differential=True)
+# pipeline_levels_01(autoseq_dir, autoseq_output_dir, differential=True)
 # pipeline_level_02(fits_output_dir_sim_, fits_output_dir_sim_)
 
 # Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py

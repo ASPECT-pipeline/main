@@ -1,14 +1,42 @@
 import numpy as np
 import cv2
-from typing import List, Tuple, Literal
+from typing import List, Tuple, Literal, Dict
 from numpy.lib.stride_tricks import sliding_window_view
+from astropy.io.fits import Header
 import inspect
 from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import trapezoid
 from scipy.interpolate import interp1d
-from modules.utilities import return_ddof, find_outliers, normalise_in_columns
+from level_3.modules.utilities import return_ddof, find_outliers, normalise_in_columns
 from scipy.stats import norm
-from modules._constants import _num_eps
+from level_3.modules._constants import _num_eps
+
+def get_wavelengths(header: Header) -> Dict[str, List[int]]:
+    channel_keys = {
+        'VIS': 'VIS_WL',
+        'NIR1': 'NIR1_WL',
+        'NIR2': 'NIR2_WL',
+        'SWIR': 'SWIR_WL'
+    }
+
+    wavelengths = {}
+
+    for channel, key in channel_keys.items():
+        raw_value = header.get(key)
+        if raw_value:
+            try:
+                wl = np.array([int(x.strip()) for x in raw_value.split(',') if x.strip()], dtype=int)
+                wavelengths[channel] = wl
+            except ValueError as e:
+                raise ValueError(f'Could not parse wavelengths for {channel} from header key {key}: {raw_value}')
+    return wavelengths
+
+def validate_wl(wl: Dict[str, List[int]], instrument: str) -> bool:
+    channels = [str(c).upper() for c in instrument.split('-')]
+    for ch in channels:
+        if ch not in wl:
+            raise KeyError(f"Missing wavelengths for '{ch}' in Image HDU header. Required by istrument setting: '{instrument}'")
+    return True
 
 def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
     # Compute min and max values in the image

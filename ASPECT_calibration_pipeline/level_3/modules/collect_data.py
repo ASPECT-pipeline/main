@@ -1,25 +1,25 @@
-from modules.asteroid_spectra_averaging import dlat, dlon
-from modules.NN_data_grids import data_grids
+from level_3.modules.asteroid_spectra_averaging import dlat, dlon
+from level_3.modules.NN_data_grids import data_grids
 
-from modules.utilities_spectra import denoise_and_norm, save_data, combine_files, used_indices, unique_indices
-from modules.utilities_spectra import join_data, load_npz, load_xlsx, load_txt, load_h5, normalise_spectra
-from modules.utilities_spectra import collect_all_models, remove_jumps_in_spectra, match_spectra
-from modules.utilities import flatten_list, stack, my_mv, check_dir, safe_arange, normalise_in_rows, find_all
-from modules.utilities import is_empty, remove_outliers, find_outliers, gimme_kind, safe_extrap1d, my_argmax
+from level_3.modules.utilities_spectra import denoise_and_norm, save_data, combine_files, used_indices, unique_indices
+from level_3.modules.utilities_spectra import join_data, load_npz, load_xlsx, load_txt, load_h5, normalise_spectra
+from level_3.modules.utilities_spectra import collect_all_models, remove_jumps_in_spectra, match_spectra
+from level_3.modules.utilities import flatten_list, stack, my_mv, check_dir, safe_arange, normalise_in_rows, find_all
+from level_3.modules.utilities import is_empty, remove_outliers, find_outliers, gimme_kind, safe_extrap1d, my_argmax
 
-from modules.NN_config_composition import mineral_names, endmember_names, mineral_names_short
+from level_3.modules.NN_config_composition import mineral_names, endmember_names, mineral_names_short
 
-from modules.CD_parameters import lambda_max, lambda_min, resolution_max, resolution_final, usecols
-from modules.CD_parameters import num_labels_CD, num_minerals_CD, minerals_CD, endmembers_CD
-from modules.CD_parameters import denoise, denoising_sigma, normalise, wvl_norm
+from level_3.modules.CD_parameters import lambda_max, lambda_min, resolution_max, resolution_final, usecols
+from level_3.modules.CD_parameters import num_labels_CD, num_minerals_CD, minerals_CD, endmembers_CD
+from level_3.modules.CD_parameters import denoise, denoising_sigma, normalise, wvl_norm
 
-from modules._constants import _path_data, _path_relab_spectra, _relab_web_page
-from modules._constants import _spectra_name, _wavelengths_name, _label_name, _coordinates_name, _sep_in, _sep_out
+from level_3.modules._constants import _path_data, _path_relab_spectra, _relab_web_page
+from level_3.modules._constants import _spectra_name, _wavelengths_name, _label_name, _coordinates_name, _sep_in, _sep_out
 
 # defaults only
-from modules.NN_config_composition import minerals_used, endmembers_used, comp_model_setup
-from modules.NN_config_taxonomy import classes
-from modules._constants import _num_eps
+from level_3.modules.NN_config_composition import minerals_used, endmembers_used, comp_model_setup
+from level_3.modules.NN_config_taxonomy import classes
+from level_3.modules._constants import _num_eps
 
 from urllib.request import urlopen
 from os import path

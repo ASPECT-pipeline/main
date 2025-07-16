@@ -6,23 +6,23 @@ import numpy as np
 from functools import partial
 from tqdm import tqdm
 
-from modules.utilities import is_constant, stack
-from modules.utilities_spectra import print_header, print_info, load_npz
+from level_3.modules.utilities import is_constant, stack
+from level_3.modules.utilities_spectra import print_header, print_info, load_npz
 
-from modules.NN_data import labels_to_categories, load_composition_data, load_taxonomy_data
-from modules.NN_train import train
-from modules.NN_evaluate import evaluate_test_data
+from level_3.modules.NN_data import labels_to_categories, load_composition_data, load_taxonomy_data
+from level_3.modules.NN_train import train
+from level_3.modules.NN_evaluate import evaluate_test_data
 
-from modules.NN_accuracy_test import split_data_for_testing, gimme_info, save_results, gimme_method, shuffle_data
+from level_3.modules.NN_accuracy_test import split_data_for_testing, gimme_info, save_results, gimme_method, shuffle_data
 
-from modules._constants import _metadata_key_name, _label_key_name, _sep_out, _sep_in, _wp
+from level_3.modules._constants import _metadata_key_name, _label_key_name, _sep_out, _sep_in, _wp
 
-from modules.NN_config_range_test import model_subdirs, model_names, range_grids, taxonomy
+from level_3.modules.NN_config_range_test import model_subdirs, model_names, range_grids, taxonomy
 
 # defaults only
-from modules.NN_config_composition import comp_output_setup, comp_model_setup, comp_filtering_setup
-from modules.NN_config_composition import minerals_used, endmembers_used
-from modules.NN_config_taxonomy import tax_filtering_setup, tax_output_setup, tax_model_setup, classes
+from level_3.modules.NN_config_composition import comp_output_setup, comp_model_setup, comp_filtering_setup
+from level_3.modules.NN_config_composition import minerals_used, endmembers_used
+from level_3.modules.NN_config_taxonomy import tax_filtering_setup, tax_output_setup, tax_model_setup, classes
 
 if __name__ == "__main__":
     max_splits = 20

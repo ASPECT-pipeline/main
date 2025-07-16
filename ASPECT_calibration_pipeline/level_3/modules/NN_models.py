@@ -7,15 +7,15 @@ from tensorflow.keras.constraints import MaxNorm
 from keras_tuner import HyperModel
 import numpy as np
 
-from modules.utilities import to_list
-from modules.NN_losses_metrics_activations import (gimme_metrics, create_custom_objects, gimme_composition_loss,
+from level_3.modules.utilities import to_list
+from level_3.modules.NN_losses_metrics_activations import (gimme_metrics, create_custom_objects, gimme_composition_loss,
                                                    gimme_taxonomy_loss)
-from modules.NN_config_parse import gimme_endmember_counts, gimme_num_minerals, gimme_num_labels
-from modules.NN_config_parse import bin_to_used, bin_to_cls
+from level_3.modules.NN_config_parse import gimme_endmember_counts, gimme_num_minerals, gimme_num_labels
+from level_3.modules.NN_config_parse import bin_to_used, bin_to_cls
 
 # defaults only
-from modules.NN_config_composition import comp_model_setup, comp_output_setup
-from modules.NN_config_taxonomy import tax_model_setup, tax_output_setup
+from level_3.modules.NN_config_composition import comp_model_setup, comp_output_setup
+from level_3.modules.NN_config_taxonomy import tax_model_setup, tax_output_setup
 
 
 class MyHyperModel(HyperModel):

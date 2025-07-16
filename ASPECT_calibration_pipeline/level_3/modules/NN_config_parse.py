@@ -1,9 +1,9 @@
-from modules.utilities import safe_arange, flatten_list
-from modules.NN_data_grids import data_grids, check_grid, normalise_spectrum_at_wvl
-from modules.NN_classes import gimme_list_of_classes
+from level_3.modules.utilities import safe_arange, flatten_list
+from level_3.modules.NN_data_grids import data_grids, check_grid, normalise_spectrum_at_wvl
+from level_3.modules.NN_classes import gimme_list_of_classes
 # from modules.NN_data import load_transmission
 
-from modules._constants import _wp, _sep_in
+from level_3.modules._constants import _wp, _sep_in
 
 import numpy as np
 from warnings import warn

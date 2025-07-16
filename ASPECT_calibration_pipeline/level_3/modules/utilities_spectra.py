@@ -13,25 +13,25 @@ from scipy.spatial import ConvexHull
 from glob import glob
 import h5py
 
-from modules.utilities import (check_dir, flatten_list, normalise_in_rows, denoise_array, safe_arange, is_empty, stack,
+from level_3.modules.utilities import (check_dir, flatten_list, normalise_in_rows, denoise_array, safe_arange, is_empty, stack,
                                split_path, argnearest, my_argmax, return_mean_std, my_polyfit, check_file, gimme_kind)
 
-from modules.NN_classes import gimme_list_of_classes
+from level_3.modules.NN_classes import gimme_list_of_classes
 
-from modules.NN_config_parse import (gimme_minerals_all, gimme_num_minerals, gimme_endmember_counts, bin_to_used,
+from level_3.modules.NN_config_parse import (gimme_minerals_all, gimme_num_minerals, gimme_endmember_counts, bin_to_used,
                                      bin_to_cls)
 
-from modules._constants import (_path_data, _path_model, _model_suffix, _spectra_name, _wavelengths_name, _wp,
+from level_3.modules._constants import (_path_data, _path_model, _model_suffix, _spectra_name, _wavelengths_name, _wp,
                                 _metadata_name, _metadata_key_name, _label_name, _label_key_name, _path_catalogues,
                                 _sep_out, _sep_in)
 
-from modules.NN_config_composition import mineral_names, mineral_names_short, endmember_names
+from level_3.modules.NN_config_composition import mineral_names, mineral_names_short, endmember_names
 
 # defaults only
-from modules.CD_parameters import denoise, normalise
-from modules.NN_config_composition import (minerals_used, endmembers_used, comp_grid, comp_filtering_setup,
+from level_3.modules.CD_parameters import denoise, normalise
+from level_3.modules.NN_config_composition import (minerals_used, endmembers_used, comp_grid, comp_filtering_setup,
                                            comp_model_setup, comp_output_setup)
-from modules.NN_config_taxonomy import classes, tax_output_setup
+from level_3.modules.NN_config_taxonomy import classes, tax_output_setup
 
 
 def save_data(final_name: str, spectra: np.ndarray, wavelengths: np.ndarray, metadata: np.ndarray,

@@ -4,22 +4,22 @@ from os import path
 from sklearn.metrics import classification_report
 from tensorflow_addons.metrics import CohenKappa
 
-from modules.NN_evaluate import spectrum_error_transfer
+from level_3.modules.NN_evaluate import spectrum_error_transfer
 
-from modules.utilities import round_data_with_errors, normalise_array, flatten_list, stack, return_mean_std, safe_arange
-from modules.utilities_spectra import find_outliers, return_mineral_position, unique_indices, used_indices, join_data
-from modules.utilities_spectra import load_npz, gimme_predicted_class, compute_mean_predictions, is_taxonomical
-from modules.utilities_spectra import compute_within, compute_metrics, compute_one_sigma, gimme_bin_code_from_name
+from level_3.modules.utilities import round_data_with_errors, normalise_array, flatten_list, stack, return_mean_std, safe_arange
+from level_3.modules.utilities_spectra import find_outliers, return_mineral_position, unique_indices, used_indices, join_data
+from level_3.modules.utilities_spectra import load_npz, gimme_predicted_class, compute_mean_predictions, is_taxonomical
+from level_3.modules.utilities_spectra import compute_within, compute_metrics, compute_one_sigma, gimme_bin_code_from_name
 
-from modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts, bin_to_used
+from level_3.modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts, bin_to_used
 
-from modules.NN_config_composition import mineral_names_short, endmember_names, mineral_names
+from level_3.modules.NN_config_composition import mineral_names_short, endmember_names, mineral_names
 
-from modules._constants import _label_name, _sep_out, _sep_in, _path_accuracy_tests, _path_model
+from level_3.modules._constants import _label_name, _sep_out, _sep_in, _path_accuracy_tests, _path_model
 
 # defaults only
-from modules.NN_config_composition import minerals_used, endmembers_used, comp_filtering_setup, comp_data_split_setup
-from modules.NN_config_taxonomy import classes
+from level_3.modules.NN_config_composition import minerals_used, endmembers_used, comp_filtering_setup, comp_data_split_setup
+from level_3.modules.NN_config_taxonomy import classes
 
 
 def how_many_data(y_data: np.ndarray, used_minerals: np.ndarray | None = None) -> None:

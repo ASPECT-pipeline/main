@@ -1,4 +1,4 @@
-from modules._constants import _sep_in
+from level_3.modules._constants import _sep_in
 
 def gimme_list_of_classes(grid_option: str) -> list[str]:
     if f"450{_sep_in}2450" in grid_option or f"650{_sep_in}2450" in grid_option or grid_option == "15":

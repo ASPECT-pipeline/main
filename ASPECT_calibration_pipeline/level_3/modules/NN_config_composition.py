@@ -1,8 +1,8 @@
 # This file contains global parameters defining the neural network
-from modules.utilities import safe_arange
-from modules.NN_HP import gimme_hyperparameters
-from modules.NN_config_parse import gimme_model_grid, gimme_used_quantities, config_check, used_to_bin, gimme_num_labels
-from modules._constants import _sep_out
+from level_3.modules.utilities import safe_arange
+from level_3.modules.NN_HP import gimme_hyperparameters
+from level_3.modules.NN_config_parse import gimme_model_grid, gimme_used_quantities, config_check, used_to_bin, gimme_num_labels
+from level_3.modules._constants import _sep_out
 
 import numpy as np
 from os import path

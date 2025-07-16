@@ -3,7 +3,7 @@ import numpy as np
 from typing import Tuple
 import os
 from pathlib import Path
-from modules._constants import spice_mk_ops, spice_mk_plan
+from config import spice_mk_ops, spice_mk_plan
 from scipy.spatial.transform import Rotation as R
 
 """

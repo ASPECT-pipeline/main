@@ -1,6 +1,6 @@
 from typing import Callable, Literal
 from warnings import warn
-from modules._constants import _sep_in
+from level_3.modules._constants import _sep_in
 
 
 def gimme_hyperparameters(for_tuning: bool = False) -> Callable:

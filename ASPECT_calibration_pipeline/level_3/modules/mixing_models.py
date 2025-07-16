@@ -4,7 +4,7 @@ import numpy as np
 from scipy.optimize import brentq
 
 # defaults only
-from modules._constants import _num_eps
+from level_3.modules._constants import _num_eps
 
 
 incoming_angle = 0.0  # deg

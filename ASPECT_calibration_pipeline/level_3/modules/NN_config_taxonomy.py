@@ -1,8 +1,8 @@
 from os import path
-from modules.NN_HP import gimme_hyperparameters
-from modules.NN_config_parse import gimme_model_grid, gimme_classes, config_check, cls_to_bin
-from modules.utilities import safe_arange
-from modules._constants import _sep_out
+from level_3.modules.NN_HP import gimme_hyperparameters
+from level_3.modules.NN_config_parse import gimme_model_grid, gimme_classes, config_check, cls_to_bin
+from level_3.modules.utilities import safe_arange
+from level_3.modules._constants import _sep_out
 
 tax_output_setup = {
     "use_unknown_class": False  # Add extra "unknown" class for weird spectra

@@ -4,16 +4,17 @@ from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 import json
-from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU
+from astropy.io import fits
+from astropy.io.fits import Header, PrimaryHDU, ImageHDU, BinTableHDU, HDUList
 import os
 import sys
 import re
-import modules.hera_spice as hera_spice
+import levels_012.modules.hera_spice as hera_spice
 from datetime import datetime, timezone
 import subprocess
 from pathlib import Path
 import warnings
-from modules._constants import kelvin
+from config import kelvin
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
@@ -420,8 +421,6 @@ def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, cha
 
     # Prepare raw binary input
     raw_bytes = image_cube.astype('<u2').tobytes() # Little-endian uint16
-    print("image_cube shape:", image_cube.shape)
-    print("raw_bytes size:", len(raw_bytes))
     offset_str = ','.join(str(o) for o in offsets)
 
     # Resolve absolute path to decompress binary (relative to this script's location)
@@ -448,7 +447,6 @@ def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, cha
 
     for i, frame in enumerate(decoded_cube):
         out_path = output_dir / f'{channel}_decoded_{frame_numbers[i]}.bin'
-        print(f'Frame {i}, output path: {out_path.stem}')
         with open(out_path, 'wb') as f:
             f.write(frame.astype('<u2').tobytes())  # little-endian 16-bit
 
@@ -715,6 +713,30 @@ def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
     # Convert to 8-bit integer
     return normalized.astype(np.uint8)
 
+def convert_to_float64(hdul: HDUList) -> HDUList:
+    # Replace the .data with a float64
+    for i, hdu in enumerate(hdul):
+        if hdu.data is not None and np.issubdtype(hdu.data.dtype, np.number):
+            hdu.data = hdu.data.astype(np.float64)
+            if 'BITPIX' in hdu.header:
+                hdu.header['BITPIX'] = -64
+            print(f'HDU[{i}] data converted to float64')
+        else:
+            print(f'HDU[{i}] skipped float64 conversion')
+    return hdul
+
+def convert_to_float32(hdul: HDUList) -> HDUList:
+    # Replace the data with a float32 
+    for i, hdu in enumerate(hdul):
+        if hdu.data is not None and np.issubdtype(hdu.data.dtype, np.number):
+            hdu.data = hdu.data.astype(np.float32)
+            if 'BITPIX' in hdu.header:
+                hdu.header['BITPIX'] = -32
+            print(f'HDU[{i}] data converted to float32')
+        else:
+            print(f'HDU[{i}] skipped float32 conversion')
+    return hdul
+
 def extract_cds(image: np.ndarray) -> Tuple[np.ndarray, List[List[int]]]:
     # Define diagnostic pixel regions
     top = 5  # Five lines at the top
@@ -767,6 +789,8 @@ def read_cds(column: np.ndarray, row_inx: int, col_inx: int, count: int ) -> np.
         return column[total_offset : total_offset + count]
     else:
         return column[-col_inx: col_inx + count]
+    
+
 def laplacian(img: np.ndarray) -> np.ndarray:
 
     # Check if the image was loaded successfully
@@ -996,3 +1020,45 @@ def plot_spectra_with_image(spectra_list, positions, image, all_wavelengths):
         ax_image.plot(x, y, 'o', color=color, markersize=6)
 
     return fig
+
+def update_fits_exposure(path, save_as=None):
+    exposure_map = {
+        'VIS' : 0.01,
+        'NIR1': 0.02,
+        'NIR2': 0.02,
+        'SWIR': 0.02
+    }
+    with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
+        channel = hdul[1].header.get('CHANNEL')
+        for hdu in hdul:
+            if 'EXPOSURE' in hdu.header:
+                print(f"Old EXPOSURE: {hdu.header['EXPOSURE']}")
+                hdu.header['EXPOSURE'] = exposure_map[channel]
+                print(f"New EXPOSURE: {hdu.header['EXPOSURE']}")
+
+        if save_as:
+            hdul.writeto(save_as, overwrite=True)
+            print(f"Saved updated file to {save_as}")
+        else:
+            print(f"Updated in place: {path}")
+
+def update_fits_wl(path, save_as=None):
+    wl_map = {
+        'VIS' : '675,690,705,720,735,750,765,780,795,810,825',
+        'NIR1': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
+        'NIR2': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
+        'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
+    }
+    with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
+        channel = hdul[1].header.get('CHANNEL')
+        for hdu in hdul:
+            if 'WAVELEN' in hdu.header:
+                print(f"Old WL: {hdu.header['WAVELEN']}")
+                hdu.header['WAVELEN'] = wl_map[channel]
+                print(f"New WL: {hdu.header['WAVELEN']}")
+
+        if save_as:
+            hdul.writeto(save_as, overwrite=True)
+            print(f"Saved updated file to {save_as}")
+        else:
+            print(f"Updated in place: {path}")

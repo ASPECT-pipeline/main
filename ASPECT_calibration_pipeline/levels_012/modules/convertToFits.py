@@ -3,8 +3,8 @@ import numpy as np
 from astropy.io import fits
 from pathlib import Path
 from typing import List, Tuple
-import modules.utilities as utilities
-from modules._constants import spice_mk, channel_map, software, missphase, observph, target, object
+import levels_012.modules.utilities as utilities
+from config import spice_mk, channel_map, software, missphase, observph, target, object
 import json
 import re
 
@@ -145,7 +145,7 @@ def convert_to_fits(
         elif channel == 'NIR1' or channel == 'NIR2':
             height = 518
             width = 648
-            if missphase == 'TEST':
+            if missphase == 'SIMULATE':
                 height = 512
                 width = 640
         else: 
@@ -172,8 +172,7 @@ def convert_to_fits(
         data_cube = np.array(image_data) # Stack the images into a cube
         # Differential decoding
         if diff != None:
-            print(f'Diff decofing files')
-            differential = Path(diff)
+            print(f'Diff decoding files')
             diff_decoded_output_dir = Path(dir_path) / 'acq_000_diff_decoded'
             with open(diff, 'r', encoding='utf-8') as f:
                 diff_data = json.load(f)

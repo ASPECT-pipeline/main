@@ -8,10 +8,10 @@ from typing import Literal
 import json
 from tqdm import tqdm
 
-from modules.decorators import timing
-from modules.utilities_spectra import load_h5
-from modules.utilities import stack, safe_arange, normalise_array, is_sorted
-from modules._constants import _path_data, _spectra_name, _wavelengths_name, _coordinates_name, _sep_out, _wp
+from level_3.modules.decorators import timing
+from level_3.modules.utilities_spectra import load_h5
+from level_3.modules.utilities import stack, safe_arange, normalise_array, is_sorted
+from level_3.modules._constants import _path_data, _spectra_name, _wavelengths_name, _coordinates_name, _sep_out, _wp
 
 # ------------------------------------------------------------------------------------------------------------------------
 what_to_run = "averaging"  # can be either "indices", "averaging", or "both"

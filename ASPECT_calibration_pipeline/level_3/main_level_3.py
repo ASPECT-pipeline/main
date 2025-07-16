@@ -1,9 +1,9 @@
 from astropy.io import fits
 import numpy as np
-from modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
-from level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers,)
-from modules.NN_evaluate import evaluate
-from test_utilities import get_reflectances, plot_4_spectra
+from level_3.modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
+from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, get_wavelengths, validate_wl)
+from level_3.modules.NN_evaluate import evaluate
+from level_3.test_utilities import get_reflectances, plot_4_spectra
 import matplotlib
 matplotlib.use('MacOSX')
 
@@ -17,10 +17,10 @@ The level 3 of the ASPECT data processing pipeline consist of 3 sublevels:
 
 Parameters:
     instrument:int
-        1 = ASPECT vis nir1 nir2
-        2 = ASPECT vis nir1 nir2 swir
-        3 = ASPECT nir1 nir2
-        4 = ASPECT nir1 nir2 swir
+        'vis-nir1-nir2' = ASPECT vis nir1 nir2
+        'vis-nir1-nir2'-swir = ASPECT vis nir1 nir2 swir
+        'nir1-nir2' = ASPECT nir1 nir2
+        'nir1-nir2-swir' = ASPECT nir1 nir2 swir
     
     models:str
         C = composition
@@ -35,7 +35,7 @@ Parameters:
 
 """
 
-def level3( fits_file:str, instrument:int = 1, data_filtering:bool = True, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, test_with_simulated:bool = False):
+def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool = True, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, test_with_simulated:bool = False):
 
     """
     Execute the steps 3A, 3B, 3C
@@ -44,9 +44,19 @@ def level3( fits_file:str, instrument:int = 1, data_filtering:bool = True, model
 
     # Extract relevant metadata
     with fits.open(fits_file) as hdul:
+        primary_hdu = hdul[0]
         img_HDU = hdul[1]
         img_header = img_HDU.header
         img_cube = img_HDU.data
+
+        print(repr(primary_hdu.header))
+        print(repr(img_header))
+
+
+        # Get wavelengths
+        wavelengths = get_wavelengths(img_header)
+        validate_wl
+
 
         # Number of frames
         vis_num = img_header.get('V_NUM')
@@ -62,28 +72,28 @@ def level3( fits_file:str, instrument:int = 1, data_filtering:bool = True, model
         all_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl, swir_wl])
 
     match instrument:
-        case 1: 
-            instrument_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl])
+        case 'vis-nir1-nir2': 
+            instrument_wl = np.concatenate([wavelengths['VIS'], wavelengths['NIR1'], wavelengths['NIR2']])
             start_idx = 0
             end_idx = vis_num + nir1_num + nir2_num
             first_nir = vis_num
             norm_wl = 1539
             stem = 'ASPECT-vis-nir1-nir2-1539'
-        case 2:
+        case 'vis-nir1-nir2-swir':
             instrument_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl, swir_wl])
             start_idx = 0
             end_idx = None
             first_nir = vis_num
             norm_wl = 2348
             stem = 'ASPECT-vis-nir1-nir2-swir-2348'
-        case 3: 
+        case 'nir1-nir2-swir': 
             instrument_wl = np.concatenate([nir1_wl, nir2_wl])
             start_idx = vis_num
             end_idx = vis_num + nir1_num + nir2_num
             first_nir = 0
             norm_wl = 1539
             stem = 'ASPECT-nir1-nir2-1539'
-        case 4:
+        case 'nir1-nir2-swir':
             instrument_wl = np.concatenate([nir1_wl, nir2_wl, swir_wl])
             start_idx = vis_num
             end_idx = None
@@ -91,6 +101,8 @@ def level3( fits_file:str, instrument:int = 1, data_filtering:bool = True, model
             norm_wl = 2348
             stem = 'ASPECT-nir1-nir2-swir-2348'
 
+    print(f'Instrument wl: {instrument_wl}')
+    print(f'stem: {stem}')
 
     combined = extract_asteroid(img_cube, mask_index=0, start_idx=start_idx, end_idx=end_idx)
     
@@ -158,6 +170,6 @@ def level3( fits_file:str, instrument:int = 1, data_filtering:bool = True, model
         taxonomy = evaluate(model_names, spectra_normalized)
 
 
-level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'), test_with_simulated=True)
+# level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'), test_with_simulated=True)
 
 # python3 ASPECT_calibration_pipeline/level_3/main_level_3.py

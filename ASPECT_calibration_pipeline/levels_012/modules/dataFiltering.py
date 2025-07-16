@@ -1,6 +1,6 @@
 import numpy as np
 from astropy.io import fits
-import utilities
+import levels_012.modules.utilities
 
 """
 Function for extracting the asteroid spectra from the aligned and resampled asteroid images.

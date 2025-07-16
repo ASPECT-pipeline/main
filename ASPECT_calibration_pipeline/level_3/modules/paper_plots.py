@@ -1,19 +1,19 @@
-from modules.control_plots import *
+from level_3.modules.control_plots import *
 
-from modules.BAR_BC_method import calc_BAR_BC, calc_composition, filter_data_mask
+from level_3.modules.BAR_BC_method import calc_BAR_BC, calc_composition, filter_data_mask
 
-from modules.NN_data import numbers_to_classes
+from level_3.modules.NN_data import numbers_to_classes
 
-from modules.utilities import check_dir, best_blk, distance, stack, normalise_array, is_empty, find_all, gimme_kind
-from modules.utilities_spectra import (error_estimation_bin_like, cut_error_bars, find_outliers, collect_all_models,
+from level_3.modules.utilities import check_dir, best_blk, distance, stack, normalise_array, is_empty, find_all, gimme_kind
+from level_3.modules.utilities_spectra import (error_estimation_bin_like, cut_error_bars, find_outliers, collect_all_models,
                                        unique_indices, join_data, load_npz, load_txt, normalise_spectra, used_indices)
-from modules.tables import print_grid_test_stats_range
+from level_3.modules.tables import print_grid_test_stats_range
 
-from modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts
+from level_3.modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts
 
-from modules._constants import _path_data, _path_asteroid_images, _sep_out, _sep_in, _label_true_name, _label_pred_name
-from modules._constants import _spectra_name, _wavelengths_name, _label_name, _config_name, _path_model
-from modules._constants import _path_accuracy_tests
+from level_3.modules._constants import _path_data, _path_asteroid_images, _sep_out, _sep_in, _label_true_name, _label_pred_name
+from level_3.modules._constants import _spectra_name, _wavelengths_name, _label_name, _config_name, _path_model
+from level_3.modules._constants import _path_accuracy_tests
 
 from typing import Literal
 import numpy as np

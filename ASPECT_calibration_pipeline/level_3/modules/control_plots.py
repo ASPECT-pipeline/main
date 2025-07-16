@@ -15,26 +15,26 @@ from sklearn.metrics import confusion_matrix
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tensorflow.keras.models import Model
 
-from modules.NN_losses_metrics_activations import my_quantile
+from level_3.modules.NN_losses_metrics_activations import my_quantile
 
-from modules.utilities_spectra import error_estimation_bin_like, error_estimation_overall, unique_indices, used_indices
-from modules.utilities_spectra import load_npz, load_keras_model, gimme_predicted_class, compute_metrics, is_taxonomical
-from modules.utilities_spectra import gimme_model_grid_from_name, gimme_bin_code_from_name
+from level_3.modules.utilities_spectra import error_estimation_bin_like, error_estimation_overall, unique_indices, used_indices
+from level_3.modules.utilities_spectra import load_npz, load_keras_model, gimme_predicted_class, compute_metrics, is_taxonomical
+from level_3.modules.utilities_spectra import gimme_model_grid_from_name, gimme_bin_code_from_name
 
-from modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts, bin_to_cls, bin_to_used
+from level_3.modules.NN_config_parse import gimme_num_minerals, gimme_endmember_counts, bin_to_cls, bin_to_used
 
-from modules.utilities import check_dir, get_weights_from_model, best_blk, flatten_list, normalise_in_rows, is_constant
-from modules.utilities import kernel_density_estimation_1d, kernel_density_estimation_2d, safe_arange
-from modules.utilities import split_path, my_polyfit, denoise_array
+from level_3.modules.utilities import check_dir, get_weights_from_model, best_blk, flatten_list, normalise_in_rows, is_constant
+from level_3.modules.utilities import kernel_density_estimation_1d, kernel_density_estimation_2d, safe_arange
+from level_3.modules.utilities import split_path, my_polyfit, denoise_array
 
-from modules.NN_config_composition import mineral_names, endmember_names, mineral_names_short
+from level_3.modules.NN_config_composition import mineral_names, endmember_names, mineral_names_short
 
-from modules._constants import _path_figures, _path_model, _path_accuracy_tests
-from modules._constants import _label_true_name, _label_pred_name, _config_name
+from level_3.modules._constants import _path_figures, _path_model, _path_accuracy_tests
+from level_3.modules._constants import _label_true_name, _label_pred_name, _config_name
 
 # as defaults only
-from modules.NN_config_composition import minerals_used, endmembers_used
-from modules.NN_config_taxonomy import classes
+from level_3.modules.NN_config_composition import minerals_used, endmembers_used
+from level_3.modules.NN_config_taxonomy import classes
 
 TEXT_SIZE = 12
 SMALL_SIZE = 16

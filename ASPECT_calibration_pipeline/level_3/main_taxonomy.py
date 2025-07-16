@@ -25,19 +25,19 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-from modules.NN_data import load_taxonomy_data as load_data
-from modules.NN_data import split_taxonomy_data_proportional as split_data_proportional
-from modules.NN_data import labels_to_categories
-from modules.NN_train import train, hp_tuner
-from modules.NN_evaluate import evaluate_test_data, evaluate
+from level_3.modules.NN_data import load_taxonomy_data as load_data
+from level_3.modules.NN_data import split_taxonomy_data_proportional as split_data_proportional
+from level_3.modules.NN_data import labels_to_categories
+from level_3.modules.NN_train import train, hp_tuner
+from level_3.modules.NN_evaluate import evaluate_test_data, evaluate
 import numpy as np
 from tqdm import tqdm
 
-from modules.utilities_spectra import collect_all_models
-from modules.utilities import find_nearest
-from modules.NN_config_taxonomy import (tax_model_setup, num_labels_in_file, classes, tax_grid, tax_filtering_setup,
+from level_3.modules.utilities_spectra import collect_all_models
+from level_3.modules.utilities import find_nearest
+from level_3.modules.NN_config_taxonomy import (tax_model_setup, num_labels_in_file, classes, tax_grid, tax_filtering_setup,
                                         tax_data_split_setup)
-from modules._constants import _sep_in, _sep_out
+from level_3.modules._constants import _sep_in, _sep_out
 
 train_new_model = True  # If you have a trained model, just run evaluate(model_names, filename_data_or_data)
 tune_hyperparameters = False  # if you just want to tune hp

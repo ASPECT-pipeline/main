@@ -5,7 +5,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.integrate import trapezoid
 
-from modules.utilities import my_argmin, my_argmax, argnearest, gimme_kind
+from level_3.modules.utilities import my_argmin, my_argmax, argnearest, gimme_kind
 
 
 def calc_BAR_BC(wavelength: np.ndarray, reflectance: np.ndarray) -> tuple[np.ndarray, ...]:

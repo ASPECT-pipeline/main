@@ -23,11 +23,11 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import tracemalloc
 from linecache import getline
 
-from modules.decorators import reduce_like
-from modules._constants import _sep_out, _sep_in
+from level_3.modules.decorators import reduce_like
+from level_3.modules._constants import _sep_out, _sep_in
 
 # defaults only
-from modules._constants import _num_eps, _rnd_seed
+from level_3.modules._constants import _num_eps, _rnd_seed
 
 
 def check_dir(dir_or_file_path: str) -> None:

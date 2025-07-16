@@ -4,35 +4,35 @@ environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import numpy as np
 import pandas as pd
 
-from modules.NN_data import load_composition_data as load_data
-from modules.NN_data import split_composition_data_proportional as split_data_proportional
-from modules.NN_evaluate import evaluate_test_data, evaluate
+from level_3.modules.NN_data import load_composition_data as load_data
+from level_3.modules.NN_data import split_composition_data_proportional as split_data_proportional
+from level_3.modules.NN_evaluate import evaluate_test_data, evaluate
 
-from modules.tables import mean_asteroid_type, accuracy_table, quantile_table, mean_S_asteroid_type
-from modules.tables import taxonomy_metrics, taxonomy_class_of_mineral_types, chelyabinsk_sw, kachr_sw, kachr_sw_laser
-from modules.tables import print_grid_test_stats_norm_window, print_grid_test_stats_step, print_grid_test_stats_range
-from modules.tables import print_grid_test_stats_table, print_model_to_model_variations, ASPECT_metrics_variations
-from modules.tables import print_range_test_table, print_grid_test_significance_table
+from level_3.modules.tables import mean_asteroid_type, accuracy_table, quantile_table, mean_S_asteroid_type
+from level_3.modules.tables import taxonomy_metrics, taxonomy_class_of_mineral_types, chelyabinsk_sw, kachr_sw, kachr_sw_laser
+from level_3.modules.tables import print_grid_test_stats_norm_window, print_grid_test_stats_step, print_grid_test_stats_range
+from level_3.modules.tables import print_grid_test_stats_table, print_model_to_model_variations, ASPECT_metrics_variations
+from level_3.modules.tables import print_range_test_table, print_grid_test_significance_table
 
-from modules.control_plots import plot_corr_matrix, plot_error_density_plots, result_plots
+from level_3.modules.control_plots import plot_corr_matrix, plot_error_density_plots, result_plots
 
-from modules.paper_plots import plot_PC1_PC2_NN, plot_Fa_vs_Fs_ast_only, plot_EI_type_hist
-from modules.paper_plots import plot_PC1_PC2_BAR, plot_scatter_NN_BC, plot_ast_type_histogram, plot_Sq_histogram
+from level_3.modules.paper_plots import plot_PC1_PC2_NN, plot_Fa_vs_Fs_ast_only, plot_EI_type_hist
+from level_3.modules.paper_plots import plot_PC1_PC2_BAR, plot_scatter_NN_BC, plot_ast_type_histogram, plot_Sq_histogram
 
-from modules.paper_plots import plot_surface_spectra, plot_surface_spectra_shapeViewer, plot_Fa_vs_Fs
-from modules.paper_plots import plot_test_step, plot_test_range, plot_test_window, plot_test_normalisation
-from modules.collect_data import resave_data_for_shapeViewer
+from level_3.modules.paper_plots import plot_surface_spectra, plot_surface_spectra_shapeViewer, plot_Fa_vs_Fs
+from level_3.modules.paper_plots import plot_test_step, plot_test_range, plot_test_window, plot_test_normalisation
+from level_3.modules.collect_data import resave_data_for_shapeViewer
 
-from modules.utilities_spectra import collect_all_models, combine_composition_and_taxonomy_predictions
-from modules.utilities_spectra import used_indices, compute_mean_predictions, join_data, load_npz
-from modules.utilities_spectra import gimme_bin_code_from_name, gimme_grid_setup_from_name
-from modules.utilities import flatten_list, stack
+from level_3.modules.utilities_spectra import collect_all_models, combine_composition_and_taxonomy_predictions
+from level_3.modules.utilities_spectra import used_indices, compute_mean_predictions, join_data, load_npz
+from level_3.modules.utilities_spectra import gimme_bin_code_from_name, gimme_grid_setup_from_name
+from level_3.modules.utilities import flatten_list, stack
 
-from modules.NN_config_parse import bin_to_used
+from level_3.modules.NN_config_parse import bin_to_used
 
-from modules.NN_config_composition import mineral_names_short, endmember_names
+from level_3.modules.NN_config_composition import mineral_names_short, endmember_names
 
-from modules._constants import _path_accuracy_tests, _sep_out, _sep_in
+from level_3.modules._constants import _path_accuracy_tests, _sep_out, _sep_in
 
 
 def paper_1(what_model: str = "final") -> None:

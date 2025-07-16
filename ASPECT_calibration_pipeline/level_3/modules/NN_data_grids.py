@@ -2,10 +2,10 @@ import numpy as np
 from math import isclose
 import warnings
 
-from modules.utilities import find_nearest
+from level_3.modules.utilities import find_nearest
 
 # defaults only
-from modules._constants import _num_eps
+from level_3.modules._constants import _num_eps
 
 
 def check_grid(grid: np.ndarray, num_eps: float = _num_eps) -> None:

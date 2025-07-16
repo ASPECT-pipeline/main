@@ -5,27 +5,27 @@ from copy import deepcopy
 from scipy.stats import trim_mean
 from tqdm import tqdm
 
-from modules.utilities_spectra import (gimme_indices, load_npz, load_keras_model, load_txt, gimme_keys_from_name,
+from level_3.modules.utilities_spectra import (gimme_indices, load_npz, load_keras_model, load_txt, gimme_keys_from_name,
                                        denoise_and_norm, compute_within, compute_metrics, is_taxonomical,
                                        gimme_model_specification, gimme_bin_code_from_name, print_header, print_info,
                                        gimme_custom_objects, normalise_spectra, gimme_grid_setup_from_name)
 
-from modules.NN_data_grids import normalise_spectrum_at_wvl
+from level_3.modules.NN_data_grids import normalise_spectrum_at_wvl
 
-from modules.control_plots import result_plots
+from level_3.modules.control_plots import result_plots
 
-from modules.utilities import normalise_in_rows, is_empty, return_mean_std, to_list, stack
+from level_3.modules.utilities import normalise_in_rows, is_empty, return_mean_std, to_list, stack
 
-from modules.NN_data import load_composition_data as load_data
-from modules.NN_data import split_composition_data_proportional as split_data_proportional
+from level_3.modules.NN_data import load_composition_data as load_data
+from level_3.modules.NN_data import split_composition_data_proportional as split_data_proportional
 
-from modules.NN_config_parse import bin_to_used
+from level_3.modules.NN_config_parse import bin_to_used
 
-from modules._constants import _wp, _spectra_name, _sep_in, _quiet, _show_control_plot, _show_result_plot
+from level_3.modules._constants import _wp, _spectra_name, _sep_in, _quiet, _show_control_plot, _show_result_plot
 
 # defaults only
-from modules.NN_config_composition import comp_model_setup, comp_filtering_setup, comp_data_split_setup
-from modules.NN_config_taxonomy import tax_model_setup
+from level_3.modules.NN_config_composition import comp_model_setup, comp_filtering_setup, comp_data_split_setup
+from level_3.modules.NN_config_taxonomy import tax_model_setup
 
 
 def average_and_normalise(predictions: np.ndarray, bin_code: str, proportiontocut: float) -> np.ndarray:

@@ -1,13 +1,13 @@
-from modules.NN_models import MyHyperModel
+from level_3.modules.NN_models import MyHyperModel
 
-from modules.control_plots import plot_model_history, plot_corr_matrix, plot_model_layer
-from modules.utilities_spectra import gimme_model_specification, print_header, print_info, gimme_bin_code_from_name, \
+from level_3.modules.control_plots import plot_model_history, plot_corr_matrix, plot_model_layer
+from level_3.modules.utilities_spectra import gimme_model_specification, print_header, print_info, gimme_bin_code_from_name, \
     load_txt
-from modules.utilities import check_dir, is_empty, sort_df_with_keys
+from level_3.modules.utilities import check_dir, is_empty, sort_df_with_keys
 
-from modules.NN_HP import gimme_hyperparameters
+from level_3.modules.NN_HP import gimme_hyperparameters
 
-from modules._constants import (_path_model, _path_hp_tuning, _model_suffix, _sep_out, _sep_in, _quiet, _verbose,
+from level_3.modules._constants import (_path_model, _path_hp_tuning, _model_suffix, _sep_out, _sep_in, _quiet, _verbose,
                                 _show_control_plot)
 
 # defaults only
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from tensorflow.keras.callbacks import TerminateOnNaN, ReduceLROnPlateau, ModelCheckpoint
-from modules.NN_callbacks import ReturnBestEarlyStopping
+from level_3.modules.NN_callbacks import ReturnBestEarlyStopping
 from pprint import pprint
 import json
 import h5py

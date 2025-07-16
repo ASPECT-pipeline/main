@@ -1,21 +1,21 @@
-from modules.utilities import normalise_in_rows, normalise_array, stack, safe_arange, my_polyfit, is_empty, gimme_kind
+from level_3.modules.utilities import normalise_in_rows, normalise_array, stack, safe_arange, my_polyfit, is_empty, gimme_kind
 
-from modules.utilities_spectra import gimme_indices, used_indices, normalise_spectra, if_no_test_data
-from modules.utilities_spectra import join_data, load_npz, apply_transmission #,apply_transmission_OLD
+from level_3.modules.utilities_spectra import gimme_indices, used_indices, normalise_spectra, if_no_test_data
+from level_3.modules.utilities_spectra import join_data, load_npz, apply_transmission #,apply_transmission_OLD
 
-from modules.NN_data_grids import normalise_spectrum_at_wvl
+from level_3.modules.NN_data_grids import normalise_spectrum_at_wvl
 
-from modules.NN_config_parse import gimme_minerals_all, gimme_num_minerals
+from level_3.modules.NN_config_parse import gimme_minerals_all, gimme_num_minerals
 
-from modules.NN_config_composition import mineral_names_short
+from level_3.modules.NN_config_composition import mineral_names_short
 
-from modules._constants import _wp, _spectra_name, _wavelengths_name, _label_name
-from modules._constants import _sep_in, _sep_out, _rnd_seed, _quiet
+from level_3.modules._constants import _wp, _spectra_name, _wavelengths_name, _label_name
+from level_3.modules._constants import _sep_in, _sep_out, _rnd_seed, _quiet
 
 # defaults only
-from modules.NN_config_composition import comp_grid, comp_filtering_setup, comp_data_split_setup
-from modules.NN_config_composition import minerals_used, endmembers_used
-from modules.NN_config_taxonomy import tax_grid, tax_data_split_setup, tax_filtering_setup, classes
+from level_3.modules.NN_config_composition import comp_grid, comp_filtering_setup, comp_data_split_setup
+from level_3.modules.NN_config_composition import minerals_used, endmembers_used
+from level_3.modules.NN_config_taxonomy import tax_grid, tax_data_split_setup, tax_filtering_setup, classes
 
 import numpy as np
 from copy import deepcopy
