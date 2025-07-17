@@ -10,8 +10,20 @@ from scipy.interpolate import interp1d
 from level_3.modules.utilities import return_ddof, find_outliers, normalise_in_columns
 from scipy.stats import norm
 from level_3.modules._constants import _num_eps
+from sklearn.decomposition import PCA
+
+import matplotlib.pyplot as plt
 
 def get_wavelengths(header: Header) -> Dict[str, List[int]]:
+    """
+    Extract channel specific wavelengths fro mthe FITS header
+
+    Parameters:
+        header (Header): FITS ImageHDU header
+
+    Returns:
+        Dict[channel, List[wavelengths]]
+    """
     channel_keys = {
         'VIS': 'VIS_WL',
         'NIR1': 'NIR1_WL',
@@ -31,7 +43,32 @@ def get_wavelengths(header: Header) -> Dict[str, List[int]]:
                 raise ValueError(f'Could not parse wavelengths for {channel} from header key {key}: {raw_value}')
     return wavelengths
 
+def validate_instrument(instrument: str) -> bool:
+    """
+    Validates if the instrument is one of the 4 options.
+
+    Parameters:
+        istrument (str): instrument as a string
+    
+    Returns:
+        True if instrument syntax is correct, else raises a ValueError
+    """
+    if instrument.lower() in ['vis-nir1-nir2', 'vis-nir1-nir2-swir', 'nir1-nir2', 'nir1-nir2-swir']:
+        return True
+    else:
+        raise ValueError(f"The defined instrument doesn't match any of expected values: {instrument}")
+
 def validate_wl(wl: Dict[str, List[int]], instrument: str) -> bool:
+    """
+    Validates that all necessary wavelenghts or channels determined by the isntrument are found.
+
+    Parameterss:
+        wl: wavelenghts dictionary returned by get_wavelengths
+        instrument: instrument as a string
+
+    Returns:
+        True if all channels are found, else raises a ValueError
+    """
     channels = [str(c).upper() for c in instrument.split('-')]
     for ch in channels:
         if ch not in wl:
@@ -59,44 +96,78 @@ def laplacian(img: np.ndarray) -> np.ndarray:
     if img is None:
         print("Error: Image not found or unable to open")
     
-    # Normalize the image to 8 bit integers
-    img = normalize_to_8bit(img)
+    # Ensure image is float32 and native-endian
+    img = img.astype(np.float32, copy=False)
+    # # Normalize the image to 8 bit integers
+    # img = normalize_to_8bit(img)
 
     # Apply gaussian blur
-    img = cv2.GaussianBlur(img, (3, 3), sigmaX=0, sigmaY=0)
+    img = cv2.GaussianBlur(img, (5, 5), sigmaX=1.0, sigmaY=1.0)
 
     # Apply Laplacian operator
-    laplacian = cv2.Laplacian(img, cv2.CV_8U, ksize=3)
+    laplacian = cv2.Laplacian(img, cv2.CV_32F, ksize=3)
 
     return laplacian
 
-def asteroid_mask(image: np.ndarray) -> np.ndarray:
+def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
+    """
+    Creates a mask the asteroid. 
+    """
+    original = image.copy()
+    image = image.astype(np.float32, copy=False) # Ensure data is float32
     edges = laplacian(image) # Detect asteroid edges
 
-    _, binary_mask = cv2.threshold(edges, 10, 255, cv2.THRESH_BINARY) # convert to binary mask
+    edges_uint8 = cv2.normalize(edges, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    _, binary_mask = cv2.threshold(edges_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU) # convert to binary mask
 
     kernel = np.ones((5,5), np.uint8)
     closed_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel) # Apply morphological closing
 
     contours, _ = cv2.findContours(closed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # Find the outermost contours
 
-    asteroid_mask = np.zeros_like(image, dtype=np.uint16)
+    asteroid_mask = np.zeros_like(image, dtype=np.uint8)
+    cv2.drawContours(asteroid_mask, contours, -1, 255, thickness=cv2.FILLED) # Draw the asteroid mask
 
-    cv2.drawContours(asteroid_mask, contours, -1, 65535, thickness=cv2.FILLED) # Draw the asteroid mask
-
+    if visualise:
+        fig, axs = plt.subplots(1, 5, figsize=(20, 4))
+        axs[0].imshow(original, cmap='gray')
+        axs[0].set_title("Original (float32)")
+        axs[1].imshow(edges, cmap='gray')
+        axs[1].set_title("Laplacian (float32)")
+        axs[2].imshow(binary_mask, cmap='gray')
+        axs[2].set_title("Edges (uint8 clipped)")
+        axs[3].imshow(closed_mask, cmap='gray')
+        axs[3].set_title("Morphological Closing")
+        axs[4].imshow(asteroid_mask, cmap='gray')
+        axs[4].set_title("Final Mask")
+        for ax in axs:
+            ax.axis('off')
+        plt.tight_layout()
+        plt.show()
+    
     return asteroid_mask
 
-def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, start_idx: int = 0, end_idx: int = None) -> List[Tuple[np.ndarray, np.ndarray]]:
 
+def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Extracts the asteroid spectra from the 3D datacube.
+    
+    Parameters: 
+        image_cube (np.ndarray): 3D image cube
+        mask_index (int): The frame index used to extract the asteroid coordinates
+
+    Returns:
+        List[Tuple[coords, spectra]]: coords are the coordinates of which the spectras are extracted. Coords are a list of 2 e.g. [y, x]
+    """
+    print(f'cube shape: {image_cube.shape}')
     image = image_cube[mask_index]
 
     mask = asteroid_mask(image)
 
     #Store the coordinates of the image where mask has value of non 0
     coords = np.argwhere(mask != 0)
-
     #Extract the corresponding spectra for coords
-    spectra = np.array([image_cube[start_idx:end_idx, y, x] for y, x in coords])
+    spectra = np.array([image_cube[:, y, x] for y, x in coords])
 
     #Combine coords and the spectra
     combined = list(zip(coords, spectra))
@@ -340,3 +411,41 @@ def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | 
         data = np.reshape(data, (1, len(data)))
 
     return denoise_array(data, sigma=sigma_nm, x=wavelength)
+
+
+
+"""
+Testing utilities
+"""
+
+
+def overlay_images(image1, image2, mode='red-green', title='Image Overlay'):
+    """
+    Overlay two aligned grayscale images using RGB channels to visualize alignment.
+
+    Parameters:
+    - image1, image2: 2D NumPy arrays (grayscale images)
+    - mode: 'red-green' or 'red-blue' (channel assignment)
+    - title: Title for the plot
+    """
+    # Normalize both images to [0, 1]
+    def normalize(img):
+        img = img.astype(np.float32)
+        return (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
+
+    img1_norm = normalize(image1)
+    img2_norm = normalize(image2)
+
+    # Create RGB composite
+    rgb = np.zeros((*image1.shape, 3), dtype=np.float32)
+
+    if mode == 'red-green':
+        rgb[..., 0] = img1_norm  # Red
+        rgb[..., 1] = img2_norm  # Green
+    elif mode == 'red-blue':
+        rgb[..., 0] = img1_norm  # Red
+        rgb[..., 2] = img2_norm  # Blue
+    else:
+        raise ValueError("Mode must be 'red-green' or 'red-blue'.")
+
+    return(rgb)
