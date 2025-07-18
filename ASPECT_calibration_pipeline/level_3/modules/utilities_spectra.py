@@ -318,7 +318,7 @@ def denoise_and_norm_file(file: str, denoising: bool, normalising: bool, sigma_n
 def clean_and_resave(filename: str, reinterpolate: bool = False, used_minerals: np.ndarray | None = None,
                      used_endmembers: list[list[bool]] | None = None, grid_setup: dict | None = None,
                      filtering_setup: dict | None = None,) -> None:
-    from modules.NN_data import load_composition_data as load_data
+    from level_3.modules.NN_data import load_composition_data as load_data
 
     if grid_setup is None: grid_setup = comp_grid
     if filtering_setup is None: filtering_setup = comp_filtering_setup
@@ -400,7 +400,7 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray,
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_mae, my_rmse, my_r2, my_sam
+    from level_3.modules.NN_losses_metrics_activations import my_mae, my_rmse, my_r2, my_sam
 
     if np.any(y_true > 1.) or np.any(y_pred > 1.):
         y_true, y_pred = y_true / 100., y_pred / 100.
@@ -444,7 +444,7 @@ def compute_within(y_true: np.ndarray, y_pred: np.ndarray, error_limit: tuple[fl
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_quantile, my_ae
+    from level_3.modules.NN_losses_metrics_activations import my_quantile, my_ae
 
     if np.any(y_true > 1.) or np.any(y_pred > 1.):
         y_true, y_pred = y_true / 100., y_pred / 100.
@@ -483,7 +483,7 @@ def compute_one_sigma(y_true: np.ndarray, y_pred: np.ndarray,
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_quantile
+    from level_3.modules.NN_losses_metrics_activations import my_quantile
 
     if np.any(y_true > 1.) or np.any(y_pred > 1.):
         y_true, y_pred = y_true / 100., y_pred / 100.
@@ -590,7 +590,7 @@ def is_taxonomical(model: str | Model | None = None, bin_code: str | None = None
 
 
 def gimme_custom_objects(model_name: str, **kwargs) -> dict:
-    from modules.NN_losses_metrics_activations import create_custom_objects
+    from level_3.modules.NN_losses_metrics_activations import create_custom_objects
     if is_taxonomical(model_name):
         used_minerals, used_endmembers = None, None
     else:
@@ -712,7 +712,7 @@ def error_estimation_overall(y_true: np.ndarray, y_pred: np.ndarray, actual_erro
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_rmse
+    from level_3.modules.NN_losses_metrics_activations import my_rmse
 
     if np.all(y_true <= 1.):  # to percents
         y_true = y_true[:] * 100.
@@ -730,7 +730,7 @@ def error_estimation_bin_like(y_true: np.ndarray, y_pred: np.ndarray, actual_err
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_rmse, clean_ytrue_ypred
+    from level_3.modules.NN_losses_metrics_activations import my_rmse, clean_ytrue_ypred
 
     num_minerals = gimme_num_minerals(used_minerals)
     num_labels = np.shape(y_true)[1]
@@ -962,7 +962,7 @@ def print_tax_accuracy(f1_accuracy: np.ndarray, what: str, all_to_one: bool = Fa
 
 
 def print_info(y_true: np.ndarray, y_pred: np.ndarray, bin_code: str, which: str = "test") -> np.ndarray:
-    from modules.NN_losses_metrics_activations import my_rmse, my_f1_score
+    from level_3.modules.NN_losses_metrics_activations import my_rmse, my_f1_score
 
     taxonomical = is_taxonomical(bin_code=bin_code)
 
@@ -1099,7 +1099,7 @@ def find_outliers(y_true: np.ndarray, y_pred: np.ndarray,
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_ae
+    from level_3.modules.NN_losses_metrics_activations import my_ae
 
     minimum_PX_fraction = 0.95  # minimum 95 vol% of OPX + CPX
 
@@ -1140,7 +1140,7 @@ def outliers_frequency(y_true: np.ndarray, y_pred: np.ndarray,
     if used_minerals is None: used_minerals = minerals_used
     if used_endmembers is None: used_endmembers = endmembers_used
 
-    from modules.NN_losses_metrics_activations import my_ae
+    from level_3.modules.NN_losses_metrics_activations import my_ae
 
     absolute_error = my_ae(used_minerals=used_minerals, used_endmembers=used_endmembers,
                            cleaning=True, all_to_one=False)(y_true, y_pred).numpy()
@@ -1227,7 +1227,7 @@ def combine_composition_and_taxonomy_predictions(filename: str, bin_code_comp: s
                                                  bin_code_tax: str | None = None,
                                                  grid_model: str | None = None,
                                                  proportiontocut: float | None = None) -> tuple[np.ndarray, ...]:
-    from modules.NN_evaluate import evaluate
+    from level_3.modules.NN_evaluate import evaluate
 
     if bin_code_comp is None: bin_code_comp = comp_output_setup["bin_code"]
     if bin_code_tax is None: bin_code_tax = tax_output_setup["bin_code"]

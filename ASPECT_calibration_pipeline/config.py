@@ -30,9 +30,13 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 spice_mk = spice_mk_plan
 
 # INSTRUMENT DATA
-instrument = 'nir1-nir2' 
+instrument = 'vis-nir1-nir2' 
 
 pipeline = '3'
+
+models = 'M'
+
+initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
 
 channel_map = {
     0 : 'VIS',

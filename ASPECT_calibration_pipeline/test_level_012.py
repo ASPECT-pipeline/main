@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import json
 from pathlib import Path
 import re
-import cv2
 import math
 from matplotlib.patches import Patch
 from pprint import pprint
@@ -80,16 +79,21 @@ def test_spice_metadata():
 def test_convert_to_fits(input: str, output: str):
     convertToFits.convert_to_fits(acq_path, output, )
 
-def read_fits_file(path, visualise = True):
+def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
-        print(f'Fitsfile from path:')
-        print({path})
+        # print(f'Fitsfile from path:')
+        # print({path})
+        img_cube = hdul[1].data
+        for i, frame in enumerate(img_cube):
+            count = 0
+            if np.any(frame < 0):
+                print(f"Frame {i} contains negative values.")
 
         for i, hdu in enumerate(hdul):
 
             h = hdu.header
-            print(f'Header for HDU {i}')
-            print(repr(h))
+            # print(f'Header for HDU {i}')
+            # print(repr(h))
 
 
             if visualise:
@@ -609,7 +613,7 @@ Function calls after this
 
 # test_spice_metadata()
 
-# read_fits_file(simulated_output_ASP , True)
+read_fits_file(simulated_output_ASP , False)
 # visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_vis, 0.01)
 # update_fits_wl(simulated_output_vis)

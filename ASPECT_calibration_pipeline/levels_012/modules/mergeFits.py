@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from typing import List
 from pathlib import Path
 
+
 """
     Function for aligning and resampling vis channel images with nir channel images 
     based on asteroid edge detection, feature extraction, and feature matching.
@@ -127,9 +128,10 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
         for frame in vis_data:
             # Convert to little-endian float32 for OpenCV
             little_endian = np.ascontiguousarray(frame.astype('<f4'))
-            wraped = cv2.warpPerspective(little_endian, transforamtion_matrix, (640, 512), flags=cv2.INTER_CUBIC )
+            wrapped = cv2.warpPerspective(little_endian, transforamtion_matrix, (640, 512), flags=cv2.INTER_LINEAR )
+
             # Convert back to big_endian float32
-            big_endian = np.ascontiguousarray(wraped.astype('>f4'))
+            big_endian = np.ascontiguousarray(wrapped.astype('>f4'))
             new_image_data.append(big_endian)
 
     for frame in nir1_data:
