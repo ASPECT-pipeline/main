@@ -1,3 +1,4 @@
+import cv2
 import os
 import levels_012.modules.utilities as utilities
 import levels_012.modules.convertToFits as convertToFits
@@ -45,7 +46,7 @@ simulated_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/202
 simulated_vis = os.path.join(simulated_dir, 'dc_0_exp_000.bin')
 simulated_nir1 = os.path.join(simulated_dir, 'dc_1_exp_000.bin')
 
-simulated_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00')
+simulated_output_dir = os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_simulated/2027-03-23_06_00_00/example-3')
 simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_1B.fits')
 simulated_output_nir1 = os.path.join(simulated_output_dir, 'AS1_XXXXXX_270323T060000_1B.fits')
 simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_XXXXXX_270323T060000_1B.fits')
@@ -127,7 +128,7 @@ def read_fits_file(path, visualise = False):
             
         print()
 
-def visualise_fits(fitsPath, visualise:bool = True, spect:bool = False):
+def visualise_fits(fitsPath, visualise:bool = True, spect:bool = True):
     name = os.path.splitext(os.path.basename(fitsPath))[0]
     print(f'Reading file: {name}')
     # Open FITS file using astropy
@@ -194,13 +195,13 @@ def visualise_fits(fitsPath, visualise:bool = True, spect:bool = False):
                     nir1_s = spectra[vis_len : vis_len+nir1_len]
                     nir2_s = spectra[vis_len+nir1_len : ]
 
-                    # plt.figure(figsize=(10, 5))
-                    # plt.plot(all_wavelengths, spectra, 'ro-', label="Spectra")
-                    # plt.xlabel("Wavelength (nm)")
-                    # plt.ylabel("values")
-                    # plt.title(f"Spectra from ({x}, {y})")
-                    # plt.legend()
-                    # plt.show()
+                    plt.figure(figsize=(10, 5))
+                    plt.plot(all_wavelengths, spectra, 'ro-', label="Spectra")
+                    plt.xlabel("Wavelength (nm)")
+                    plt.ylabel("values")
+                    plt.title(f"Spectra from ({x}, {y})")
+                    plt.legend()
+                    plt.show()
 
                     # Display multiple spectras across the image
                     positions = [(250,250), (110, 130), (130, 300), (475, 260)]
@@ -225,7 +226,7 @@ def visualise_fits(fitsPath, visualise:bool = True, spect:bool = False):
                     # plt.ylabel("values")
                     # plt.title("Spectra from (250, 250)")
                     # plt.legend()
-                    # plt.show()
+                    plt.show()
 
 
                     """
@@ -280,16 +281,16 @@ def visualise_fits(fitsPath, visualise:bool = True, spect:bool = False):
                     plt.show()
 
                 # Display all 2D images
-                    # plt.figure(figsize=(cols * 4, rows * 4))
-                    # plt.suptitle('2D Slices from Data Cube', fontsize=16)
-                    # for i in range(naxis3):
-                    #     plt.subplot(rows, cols, i + 1)
-                    #     plt.imshow(data[i, :, :], cmap='gray')
-                    #     plt.title(f'Slice {i + 1}')
-                    #     plt.axis('off')
+                    plt.figure(figsize=(cols * 4, rows * 4))
+                    plt.suptitle('2D Slices from Data Cube', fontsize=16)
+                    for i in range(naxis3):
+                        plt.subplot(rows, cols, i + 1)
+                        plt.imshow(data[i, :, :], cmap='gray')
+                        plt.title(f'Slice {i + 1}')
+                        plt.axis('off')
 
-                    # plt.tight_layout()
-                    # plt.show()
+                    plt.tight_layout()
+                    plt.show()
 
                     visN = cv2.normalize(data[1], None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
                     nirN = cv2.normalize(data[14], None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
@@ -613,8 +614,8 @@ Function calls after this
 
 # test_spice_metadata()
 
-read_fits_file(simulated_output_ASP , False)
-# visualise_fits(simulated_output_ASP, visualise=True, spect=True)
+# read_fits_file(simulated_output_ASP , False)
+visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_vis, 0.01)
 # update_fits_wl(simulated_output_vis)
 # readBinfile(decompressed , 'NIR')

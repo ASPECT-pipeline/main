@@ -276,7 +276,6 @@ def sliding_window(image: np.ndarray, kernel: np.ndarray,
     return result
 
 
-
 def interpolate_mask_1d(spectrum: np.ndarray, mask: np.ndarray | None = None,
                         interp_nans: bool = True, fill_value: float = np.nan, keep_edges: bool = True) -> np.ndarray: #fill_value: float = np.nan
     if spectrum.ndim == 2 and spectrum.shape[0] == 1:

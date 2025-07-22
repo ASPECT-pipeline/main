@@ -11,8 +11,8 @@ from level_3.modules._constants import (_path_model, _path_hp_tuning, _model_suf
                                 _show_control_plot)
 
 # defaults only
-from modules.NN_config_composition import comp_model_setup
-from modules.NN_config_taxonomy import tax_model_setup
+from level_3.modules.NN_config_composition import comp_model_setup
+from level_3.modules.NN_config_taxonomy import tax_model_setup
 
 import numpy as np
 import pandas as pd

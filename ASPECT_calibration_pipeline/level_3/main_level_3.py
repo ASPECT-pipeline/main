@@ -5,7 +5,7 @@ from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction,
 from level_3.modules.NN_evaluate import evaluate
 from level_3.test_utilities import get_reflectances, plot_4_spectra, plot_spectra
 from level_3.mgm import fit, plot
-from level_3.test_utilities import show_mgm_figures
+from level_3.test_utilities import show_mgm_figures, visualise_composition
 import matplotlib
 matplotlib.use('MacOSX')
 
@@ -161,6 +161,7 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
             denoised_spectras.append(denoised)
 
     denoised_spectras = np.array(denoised_spectras)
+    # denoised_spectras = denoised_spectras[45000:45005]
 
     print(f'Normalising spectras at {norm_wl}nm')
     spectra_normalized = normalise_spectra(
@@ -168,14 +169,6 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
         wavelength=selected_wl,
         wvl_norm_nm=norm_wl
     )
-
-    # for i, arr in enumerate(spectras):
-    #     if np.any(arr < 0):
-    #         print(f'Array at index {i}, coods: {coords[i]} contains negative values: {arr}')
-
-    for i, frame in enumerate(img_cube):
-        if np.any(frame < 0):
-            print(f"Frame {i} contains negative values.")
 
     model = [str(m).upper() for m in models.split('-')] # Analysis to be executed
 
@@ -186,7 +179,7 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
             combined = np.column_stack((selected_wl, spectra))
             result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
             mgm_results.append(result)
-            if i == 1000:
+            if i % 10 == 0:
                 print(f'{i} / {len(denoised_spectras)}')
             #     print(i)
             #     result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
@@ -200,7 +193,7 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
         # combined = np.column_stack((selected_wl, denoised_spectras[50000]))
         # figs = plot(combined,mgm_results[0])
         # show_mgm_figures(figs)
-    return
+    
     if 'C' in model:
         print('Composition analysis with Neural Network')
         model_subdir = os.path.join('composition', stem)
@@ -209,8 +202,10 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
         composition = evaluate(model_names, spectra_normalized)
 
         print('Composition analysis:')
-        print(len(composition))
-        print(composition[0])
+        print(f'Lenght of compositions {len(composition)}')
+        print(composition[45000:45005])
+
+        visualise_composition(img_cube[0],composition, coords)
     if 'T' in model:
         model_subdir = os.path.join('taxonomy', stem)
         model_name = ""

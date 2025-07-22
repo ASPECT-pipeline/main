@@ -99,4 +99,4 @@ def test_and_plot_3A():
     r = test_and_plot_remove_outliers(r, wl)
     r = test_and_plot_denoise_spectra(r, wl)
 
-test_and_plot_3A()
+# test_and_plot_3A()

@@ -5,11 +5,11 @@ This file contains values for the pipeline. Modify the values to match your usec
 # input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_Autoseq_20240809/acqseq_505"
 # input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00"
 input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00/example-2"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/test_output/ASPECT_simulated/2027-03-23_06_00_00/example-3"
 
 # OUTPUT path where the results are saved
 # output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/pipeline/main/test_data/test_output/ASPECT_DIFF"
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00"
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/test_output/ASPECT_simulated/2027-03-23_06_00_00"
 
 
 # Is the data differetially encoded
@@ -18,7 +18,7 @@ differential: bool = False
 # Meta data
 software: str = 'ASPECTCAL v1.0'
 missphase: str = 'SIMULATE'
-observph: str = 'example-2'
+observph: str = 'example-3'
 target: str = 'DIDYMOS'
 object: str = 'Didymos'
 
@@ -34,7 +34,7 @@ instrument = 'vis-nir1-nir2'
 
 pipeline = '3'
 
-models = 'M'
+models = 'C'
 
 initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
 

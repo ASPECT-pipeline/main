@@ -19,8 +19,7 @@ __eps = 0.01
 def absModel(x,cp):
     y = 0.0
     for pv in numpy.array(cp).reshape((-1,3)):
-        sigma = max(pv[2], 1e-6) # added later
-        y = y + pv[0] * numpy.exp(-0.5 * ((_wlwn(x)-pv[1])/sigma)**2) # sigma was pv[2]
+        y = y + pv[0] * numpy.exp(-0.5 * ((_wlwn(x)-pv[1])/pv[2])**2)
     return -y
 
 

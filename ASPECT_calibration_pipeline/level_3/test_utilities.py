@@ -202,3 +202,22 @@ def plot_4_spectra(one, two, three, four, wl, names):
     plt.title(names[4])
     plt.legend()
     plt.show()
+
+
+def visualise_composition(image, results, coordinates):
+
+    print(f'lenght of composition: {len(results)}')
+    print(f'lenght of coordinates: {len(coordinates)}')
+    compositions = results[:, :3]
+
+    rgb_image = np.zeros((*image.shape, 3))
+
+    for (row, col), comp in zip(coordinates, compositions):
+        rgb_image[row, col] = comp
+
+    rgb_image = np.clip(rgb_image, 0, 1)
+
+    plt.imshow(rgb_image)
+    plt.title("OL (R), OPX (G), CPX (B)")
+    plt.axis("off")
+    plt.show()

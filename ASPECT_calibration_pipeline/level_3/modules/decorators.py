@@ -4,7 +4,7 @@ from typing import Callable
 
 
 def timing(func=None, num_repeats: int = 1):
-    from modules.utilities import timestamp  # must be inside due to circular import
+    from level_3.modules.utilities import timestamp  # must be inside due to circular import
     """
     Define parametrized decorator with arguments
     """

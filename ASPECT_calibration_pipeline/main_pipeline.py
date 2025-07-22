@@ -33,7 +33,7 @@ def main_pipeline():
     pipeline_steps = [str(s) for s in pipeline.split('-')]
 
 
-    if '01' in pipeline_steps:
+    if '1' in pipeline_steps:
         print(f'Executing pipeline levels 0 and 1')
         level_2_input = main_calibration.pipeline_levels_01(input_dir=input_dir, output_dir=output_dir, differential=differential)
         print(f'Calibration levels 0 and 1 completed. New Files created in directory: {level_2_input.resolve()}')
@@ -56,7 +56,7 @@ def main_pipeline():
     
     if '3' in pipeline_steps:
         print(f'Executing pipeline level 3')
-        if level_3_input is not None and level_3_input.is_file():
+        if level_3_input is not None and Path(level_3_input).is_file():
             level_3_output = main_level_3.level3(fits_file=level_3_input, instrument=instrument, models=models, initGuess=initGuess)
         else:
             raise FileNotFoundError(f"Level 3 expects a FITS file with '_2B.fits' ending, but got: {level_3_input}")
