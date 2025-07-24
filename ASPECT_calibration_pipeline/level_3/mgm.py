@@ -22,6 +22,22 @@ def absModel(x,cp):
         y = y + pv[0] * numpy.exp(-0.5 * ((_wlwn(x)-pv[1])/pv[2])**2)
     return -y
 
+def bandDepths(res):
+    fit1 = res[1]
+    fitlin = res[2]
+    np = len(fit1)
+    if np < 1:
+        return None
+    
+    # Model estimates
+    nfit1c = numpy.array([ contModel(_wlwn(wl),fitlin) for wl in fit1[:,1] ])
+    nfit1a = numpy.array([ absModel(_wlwn(wl),fit1) for wl in fit1[:,1] ])
+    
+    # Parameters
+    bd = _e2r(nfit1c) - _e2r(nfit1c+nfit1a)
+    bw = fit1[:,2] * 2 * numpy.sqrt(2 * numpy.log(2))
+    
+    return numpy.array([bd, fit1[:,1], bw]).T
 
 def contModel(x,linpar):
     y = 0.0
@@ -79,8 +95,8 @@ def fit(d, ip, eps = __eps, contLinDeg = -1, maxRounds = 25):
     Xmat = numpy.array(Xmat)
     contlabs = [ "b"+str(degr) for degr in range(contLinDeg+1)]
     while j1 == 2 or (prevmin - curmin > eps and j1 <= maxRounds):
-        # print("")
-        # print(f"=== Optimizing round {j1} === ");
+        print("")
+        print(f"=== Optimizing round {j1} === ");
         # Linear continuum
         evec = numpy.array([ val - absModel(wn,ores.x) for (wn,val) in cd])
         linres = statsmodels.api.OLS(evec,Xmat).fit()
@@ -95,19 +111,19 @@ def fit(d, ip, eps = __eps, contLinDeg = -1, maxRounds = 25):
         prevmin = curmin
         curmin = numpy.sqrt(ores.fun/nd)
         # Print progress info
-        # print(f"RMS {curmin}, difference to previous {prevmin-curmin}")
-        # print("Band parameters")
+        print(f"RMS {curmin}, difference to previous {prevmin-curmin}")
+        print("Band parameters")
         xtab = ores.x.reshape((-1,3)).tolist()
         tab = [['','s','mu','sigma']]
         for j2 in range(np):
             tab.append([f"Band {j2}"] + xtab[j2])
-        # print(tabulate.tabulate(tab,headers='firstrow'))
-        # print("Continuum parameters")
+        print(tabulate.tabulate(tab,headers='firstrow'))
+        print("Continuum parameters")
         xtab = [linres.params.tolist(),linres.pvalues.tolist()]
         tab = [['']+contlabs]
         tab.append(['estimate']+linres.params.tolist())
         tab.append(['p-value']+linres.pvalues.tolist())
-        # print(tabulate.tabulate(tab,headers='firstrow'))
+        print(tabulate.tabulate(tab,headers='firstrow'))
         j1 = j1+1
     
     return [curmin, ores.x.reshape(-1,3), linres.params, linres.pvalues]

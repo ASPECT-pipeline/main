@@ -202,7 +202,7 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
         composition = evaluate(model_names, spectra_normalized)
 
         print('Composition analysis:')
-        print(f'Lenght of compositions {len(composition)}')
+        print(f'Length of compositions {len(composition)}')
         print(composition[45000:45005])
 
         visualise_composition(img_cube[0],composition, coords)
@@ -212,7 +212,9 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
         model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
 
         taxonomy = evaluate(model_names, spectra_normalized)
-
+        print('Taxonomy analysis:')
+        print(f'Length of taxonomy {len(taxonomy)}')
+        print(composition[0])
     print()
 
 # level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'), test_with_simulated=True)

@@ -615,7 +615,6 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> s
     
     return ",".join(map(str, wavelengths))
 
-
 def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
     path = Path(path)
     if not path.exists():
@@ -666,6 +665,7 @@ def combine_image_headers(headers: List[Header]) -> Header:
     del combined_header['SP1']
     del combined_header['SP2']
     del combined_header['SP3']
+    del combined_header['CHANNEL']
     exposure = ''
     channels = ''
     for i, hdr in enumerate(headers):

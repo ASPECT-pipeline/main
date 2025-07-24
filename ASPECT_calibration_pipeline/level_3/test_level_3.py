@@ -23,29 +23,14 @@ df = pd.read_csv(csv_path, sep=" ", header=None)
 # 2. Extract wavelengths and spectra
 wavelengths = df.iloc[:, 0].to_numpy()         # shape (N,)
 spectra = df.iloc[:, 1:].to_numpy().T          # shape (16, N)
-
+spectra_normalized = normalise_spectra(
+    data=spectra,
+    wavelength=wavelengths,
+    wvl_norm_nm=1539
+)
 
 fits_file = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits')
 simulated_cube = os.path.join(os.getcwd(), 'test_data/test_outputs/simulated_full_datacube.fits')
-
-def test_NN():
-    
-    spectra_normalized = normalise_spectra(
-        data=spectra,
-        wavelength=wavelengths,
-        wvl_norm_nm=1539.0
-    )
-
-    model_subdir = "composition/ASPECT-vis-nir1-nir2-1539"   # Composition 
-    model_subdir = "taxonomy/ASPECT-vis-nir1-nir2-1539"   # Taxonomy
-
-    model_name = ""
-    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
-    predictions = evaluate(model_names, spectra_normalized)
-
-    print(predictions)
-
-# test_NN()
 
 def test_preprocessing_and_NN():
     print('inside test_preprocessing')
@@ -100,3 +85,32 @@ def test_and_plot_3A():
     r = test_and_plot_denoise_spectra(r, wl)
 
 # test_and_plot_3A()
+
+def test_NN(model):
+    # 1. Load spectra file
+    csv_path = os.path.join(_project_data, "600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv")
+    df = pd.read_csv(csv_path, sep=" ", header=None)
+
+    # 2. Extract wavelengths and spectra
+    wavelengths = df.iloc[:, 0].to_numpy()         # shape (N,)
+    spectra = df.iloc[:, 1:].to_numpy().T          # shape (16, N)
+    spectra_normalized = normalise_spectra(
+        data=spectra,
+        wavelength=wavelengths,
+        wvl_norm_nm=1539
+    )
+    
+    if model == 'T':
+        model_subdir = os.path.join('taxonomy', 'ASPECT-nir1-nir2-1539')
+    else:
+        model_subdir = os.path.join('composition', 'ASPECT-nir1-nir2-1539')
+    model_name = ""
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
+
+    result = evaluate(model_names, spectra_normalized)
+    print(f'{model} analysis:')
+    print(f'Length of result {len(result)}')
+    print(f'first instance:')
+    print(result[0])
+
+# test_NN('T')

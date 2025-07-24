@@ -22,7 +22,7 @@ comp_output_setup = {
 
 # Re-interpolate input data to different resolutions (see reinterpolate_data in load_data.py)
 comp_grid_setup = {
-    "instrument": "ASPECT-vis-nir1-nir2",  # "HS-H", "ASPECT-vis-nir1-nir2",
+    "instrument": "ASPECT-nir1-nir2",  # "HS-H", "ASPECT-vis-nir1-nir2",
 
     "interpolate_to": None,  # "full", "Itokawa", "Eros"; only if "instrument" is None
 

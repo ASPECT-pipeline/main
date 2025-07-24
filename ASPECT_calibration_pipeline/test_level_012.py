@@ -13,6 +13,10 @@ from matplotlib.patches import Patch
 from pprint import pprint
 from collections import defaultdict
 
+import level_3.mgm as mgm
+from level_3.test_utilities import show_mgm_figures
+import level_3.level_3_utilities as level_3_utilities
+
 
 # ASPECT FLY images
 acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
@@ -53,6 +57,9 @@ simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_XXXXXX_270323T06
 simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_XXXXXX_270323T060000_2B.fits')
 
 # simulated_cube = os.path(os.getcwd())
+
+mgm_test = os.path.join(os.getcwd(), 'test_data/mgm_test_spectra/DataSet1_nm.txt')
+mgm_didymos = os.path.join(os.getcwd(), 'test_data/mgm_test_spectra/didymos_spectra.txt')
 
 # Getting channels frame counts and original fiel names from acquisition folder
 def test_channel_frames_names():
@@ -601,7 +608,177 @@ def try_read_cds():
         print(utilities.read_cds(bintable['NIR1_0'][0], 4, 100 ,5))
         print(utilities.read_cds(bintable['NIR1_0'][0], 100, 0 ,4))
 
- 
+def inspect_pipeline_results(asp: str, as0: str, as1: str, vis_bin: str, nir_bin: str):
+    """
+    Function to inspect the results of the pipeline.
+    
+    Parameters: 
+        asp: path to a fits file of level 2. 
+        as0: path to a VIS channel fits file of level 0 or 1.
+        as1: path to a NIR channel fits file of level 0 or 1.
+        vis_bin: path to a VIS channel binary file (decompressed and decoded)
+        nir_bin: path to a NIR channel binary file (decompressed and decoded)
+    """
+    
+    asp = Path(asp)
+    as0 = Path(as0)
+    as1 = Path(as1)
+    vis_bin = Path(vis_bin)
+    nir_bin = Path(nir_bin)
+
+    print('Inspecting the results of ASPECT pipeline with files')
+    print(f'Raw VIS binary: {vis_bin.name}')
+    print(f'Raw NIR binary: {nir_bin.name}')
+    print(f'FITS VIS: {as0.name}')
+    print(f'FITS NIR: {as1.name}')
+    print(f'Combined FITS: {asp.name}')
+
+    try:
+        with open(vis_bin, 'rb') as vis_bin_file, open(nir_bin, 'rb') as nir_bin_file:
+            vis_bin_data = vis_bin_file.read()
+            nir_bin_data = nir_bin_file.read()
+            vis_bin_array = np.frombuffer(vis_bin_data, dtype='<u2')
+            nir_bin_array = np.frombuffer(nir_bin_data, dtype='<u2')
+            vis_bin_img = vis_bin_array.reshape(1024, 1024)
+            nir_bin_img = nir_bin_array.reshape(512, 640)
+        with fits.open(as0) as as0_hdul, fits.open(as1) as as1_hdul, fits.open(asp) as asp_hdul:
+            as0_data = as0_hdul[1].data
+            as1_data = as1_hdul[1].data
+            asp_data = asp_hdul[1].data
+    except Exception as e:
+        print(f'Error occured reading the files: {e}')
+
+    print(f'Comparing files')
+    def compare_pixels(img1, img2, x, y):
+        if img1[x][y] == img2[0][x][y]:
+            print(f'pixel at [{x}][{y}]: {img1[x][y]} == {img2[0][x][y]} ✅')
+        else:
+            print(f'pixel at [{x}][{y}]: {img1[x][y]} != {img2[0][x][y]} ❌')
+
+    print('VIS')
+    compare_pixels(vis_bin_img, as0_data, 0, 0)
+    compare_pixels(vis_bin_img, as0_data, 500, 500)
+    compare_pixels(vis_bin_img, as0_data, 350, 750)
+
+    print(f'NIR')
+    compare_pixels(nir_bin_img, as1_data, 0, 0)
+    compare_pixels(nir_bin_img, as1_data, 250, 250)
+    compare_pixels(nir_bin_img, as1_data, 350, 150)
+
+    print(f'Visualising alignment')
+    vis = as0_data[0]
+    nir = as1_data[0]
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(vis, cmap='gray')
+    plt.title(f'VIS Frame_0')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(nir, cmap='gray')
+    plt.title(f'NIR1 Frame_0')
+    plt.axis('off')
+    plt.suptitle('Comparison of VIS and NIR Channels') 
+    plt.show()
+
+    # Step 1: Edge detection
+    edges1 = utilities.laplacian(vis)
+    edges2 = utilities.laplacian(nir)
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(edges1, cmap='gray')
+    plt.title(f'VIS')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(edges2, cmap='gray')
+    plt.title(f'NIR1')
+    plt.axis('off')
+    plt.suptitle('Laplacian edges') 
+    plt.show()
+
+    # Step 2: Feature detection using ORB
+    orb = cv2.ORB_create(nfeatures=2000) # create ORB feature detector
+    # keypoints and binary descriptions
+    keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
+    # Draw keypoints on each image
+    image1_with_kp = cv2.drawKeypoints(edges1, keypoints1, None, color=(0, 255, 0), flags=0)
+    image2_with_kp = cv2.drawKeypoints(edges2, keypoints2, None, color=(0, 255, 0), flags=0)
+
+    # Display using matplotlib
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(image1_with_kp, cmap='gray')
+    plt.title(f'ORB Keypoints ({len(keypoints1)}) - VIS')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(image2_with_kp, cmap='gray')
+    plt.title(f'ORB Keypoints ({len(keypoints2)}) - NIR')
+    plt.axis('off')
+    plt.suptitle('ORB Feature Keypoints')
+    plt.show()
+
+    index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
+                    table_number=30,  # Number of hash tables
+                    key_size=20,     # Size of the key
+                    multi_probe_level=2)  # Number of probes
+        
+    search_params = dict(checks=100)
+    flann = cv2.FlannBasedMatcher(index_params, search_params) # Initialize the FLANN
+    flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2) # Match features
+    print(f'FLANN matches before filtering: {len(flann_matches)}')
+    matches = utilities.filter_by_distance(flann_matches)
+    print(f'FLANN matches after filtering: {len(matches)}')
+    N = 500
+    matches_to_draw = matches[:N]
+    # Draw matches on combined image
+    matched_img = cv2.drawMatches(
+        edges1, keypoints1,
+        edges2, keypoints2,
+        matches_to_draw,
+        None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    )
+    # Show the match visualization
+    plt.figure(figsize=(15, 8))
+    plt.imshow(matched_img)
+    plt.title(f'{N} FLANN feature matches')
+    plt.axis('off')
+    plt.show()
+
+    print('Visualising the results of alignment')
+    legend_elements = [
+        Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
+        Patch(facecolor='red', edgecolor='black', label='Only in vis image'),
+        Patch(facecolor='green', edgecolor='black', label='Only in nir image')
+    ]
+    overlay = utilities.overlay_images(asp_data[0], asp_data[13])
+    plt.figure()
+    plt.suptitle('Vis and Nir frame overlay', fontsize=16)
+    plt.imshow(overlay)
+    plt.axis('off')      
+    plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+    plt.show()
+
+def test_mgm(data):
+    # strength, center, std
+    # initGuess = [[0.3, 0.94, 0.11], [0.5, 1.12, 0.11], [0.3, 1.32, 0.09], [0.2, 2.14, 0.19]]
+    initGuess = [[0.3, 940, 110], [0.5, 1120, 110], [0.3, 1320, 90], [0.2, 2140, 190]]
+    # initGuess = [[0.67, 950, 100],[0.11, 1210, 80], [0.57, 1950, 270]]
+    with open(data, 'r') as f:
+        dat = np.loadtxt(f)
+    # RMS, band parameters, continuum parameters, continuum parameters P-values
+    result = mgm.fit(dat, initGuess, contLinDeg=0, eps=0.1)
+    print(f'mgm results')
+    print(result)
+    figure = mgm.plot(dat, result)
+    show_mgm_figures(figure)
+
 """
 Function calls after this
 """
@@ -610,12 +787,12 @@ Function calls after this
 # test_primary_metadata()
 
 # test_convert_to_fits(input=autoseq_505, output=fits_output_dir)
-
+# test_mgm(mgm_didymos)
 
 # test_spice_metadata()
 
 # read_fits_file(simulated_output_ASP , False)
-visualise_fits(simulated_output_ASP, visualise=True, spect=True)
+# visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_vis, 0.01)
 # update_fits_wl(simulated_output_vis)
 # readBinfile(decompressed , 'NIR')
@@ -627,8 +804,15 @@ visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 
 # compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/503/dc_0_exp_000.bin'), os.path.join(autoseq_dir, 'acqseq_503/acq_000_decompressed/dc_0_exp_000_diffEnc.bin'),(1024, 1024),visualize=False)
 # try_read_cds()
+# inspect_pipeline_results(simulated_output_ASP, simulated_output_vis, simulated_output_nir1, simulated_vis, simulated_nir1)
 
-# Python3 ASPECT_calibration_pipeline/test_level_012.py
+
+test_mgm(mgm_test)
+
+""" 
+Python3 ASPECT_calibration_pipeline/test_level_012.py
+
+"""
 
 
 

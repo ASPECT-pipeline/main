@@ -30,7 +30,7 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 spice_mk = spice_mk_plan
 
 # INSTRUMENT DATA
-instrument = 'vis-nir1-nir2' 
+instrument = 'nir1-nir2' 
 
 pipeline = '3'
 
