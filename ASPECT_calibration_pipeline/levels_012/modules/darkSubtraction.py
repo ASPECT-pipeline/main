@@ -16,7 +16,6 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
     """
 
     # Data from fits file
-    print(f'hdul length: {len(hdul)}')
     img_HDU = hdul[1] # Contains the image cube (or swir readings)
     img_data = img_HDU.data
     img_header = img_HDU.header # Image HDU header

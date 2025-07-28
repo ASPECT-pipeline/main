@@ -19,6 +19,15 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 
+def validate_pipeline_steps(steps: list[str]) -> bool:
+    allowed_steps = {'1', '2', '3'}
+    steps = [s.strip() for s in steps if s.strip()]
+    if not steps:
+        raise ValueError(f"Pipeline step list is empty. See config.py file 'pipeline' allowed steps: {allowed_steps}")
+    invalid = [step for step in steps if step not in allowed_steps]
+    if invalid:
+        raise ValueError(f"Invalid pipeline steps found: {invalid}. See config.py file 'pipeline' allowed steps: {allowed_steps}")
+
 def verify_directory_path(p: str | Path) -> Path:
     """
     Convert input to a Path object by pathlib python library and verify it is an ecisting directory.
@@ -140,10 +149,36 @@ def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
 
     return channel_info
 
+def sc_clock_to_base32(sc_seconds: int, offset: int = 0) -> str:
+    """
+    Convert a spacecraft time (in seconds) to an unique 6 character image number, increasing by the acquisition time.
+    It generated as the base 32 coding of the image capture SC clock seconds. In case of clock counter restart, 
+    the time of the restart event will be added to result a continuously increasing number.
+
+    Parameters: 
+        sc_seconds (int): The spacecraft clock time in seconds.
+        offset (int): Offset to add to clock time (e.g. after clock reset). Default is 0.
+
+    Returns:
+        str: A 6-character base-32 string representing the unique image number
+    """
+
+    alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'
+    base = 32
+    value = sc_seconds + offset
+    if value < 0:
+        raise ValueError("Clock time + offset must be non-negative")
+    result = ''
+    for _ in range(6):
+        result = alphabet[value % base] + result
+        value //= base
+    
+    return result
+
 def get_current_utc_time_str():
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
-def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> str:
+def form_fits_name(channel: str, image_number: str, utc_time: str, calib_lvl: str) -> str:
     channel_map = {
             'VIS'   : 0,
             'NIR1'  : 1,
@@ -151,10 +186,14 @@ def form_fits_name(channel: str, sc_clk: str, utc_time: str, calib_lvl: str) -> 
             'SWIR'  : 3
         }
     asp_id = channel_map[channel]
-    utc_format = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%S.%f").strftime("%y%m%dT%H%M%S")
-    if sc_clk == '':
-        sc_clk = 'XXXXXX'
-    file_name = f'AS{asp_id}_{sc_clk}_{utc_format}_{calib_lvl}.fits'
+    try:
+        utc_format = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%S.%f").strftime("%y%m%dT%H%M%S")
+    except Exception as e:
+        print(f"[WARNING] Failed to parse UTC time '{utc_time}': {e}")
+        utc_format = 'XXXXXXXXXXXXX'
+    if image_number == '':
+        image_number = 'XXXXXX'
+    file_name = f'AS{asp_id}_{image_number}_{utc_format}_{calib_lvl}.fits'
     return file_name
 
 def collect_primary_metadata(
@@ -211,46 +250,78 @@ def collect_instrument_metadata(
     Returns:
          Dict[header_keyword, Tuple(value, comment)]
     """
+    metadata = {
+        'DATE-OB' : ('UNK', 'UTC time of observation'),
+        'OBJECT': (object, 'Observation object'),
+        'EXPOSURE': ('UNK', 'Exposuretime(s) [DNs]'),
+        'CCDTEMP': ('UNK', 'Detector temp [DNs]'),
+        'AMBTEMP': ('UNK', 'Ambient temperature'),
+        'SC_CLK': ('UNK', 'SC clock Hera instrument format'),
+        'ERRORFLG': ('UNK', 'Error flags for instrument')
+    }
 
-    telemetry_path = Path(telemetry_path)
-    config_path = Path(config_path)
-
-    telemetry_data = json.loads(telemetry_path.read_text(encoding='utf=8')) # Telemetry etries
-    channel_specific_telemetry = telemetry_data[channel]
-
-    config_data = json.loads(config_path.read_text(encoding='utf-8')) # Config entries
+    # Load telemetry file
+    try:
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
+        return metadata
     
-    metadata = {}
+    # DATE-OB
+    try:
+        acq_date = telemetry_data.get('ACQ_DATE', None)
+        if acq_date:
+            dt = datetime.strptime(acq_date, "%a %b %d %H:%M:%S %Y")
+            metadata['DATE-OB'] = (dt.strftime("%Y-%m-%dT%H:%M:%S.000"), 'UTC time of observation')
+        else:
+            print(f"[WARNING] 'ACQ_DATE' missing in telemetry file.")
+    except Exception as e:
+        print(f"[WARNING] Failed to parse 'ACQ_DATE': {e}")
 
-    Acq_date = telemetry_data['ACQ_DATE']
-    dt = datetime.strptime(Acq_date, "%a %b %d %H:%M:%S %Y")
-    metadata['DATE-OB'] = (dt.strftime("%Y-%m-%dT%H:%M:%S.000"), 'UTC time of observation')
+    # Channel specific telemetry
+    channel_specific_telemetry = telemetry_data.get(channel, {})
 
-    metadata['OBJECT'] = (object, 'Observed object')
+    # CCDTEMP
+    try: 
+        det_temp = channel_specific_telemetry['DET_TEMP']
+        metadata['CCDTEMP'] = (det_temp, 'Detector temp [DNs]')
+    except KeyError:
+        print(f"[WARNING] 'DET_TEMP' missing for channel '{channel}' in telemetry.")
 
-    match channel:
-            case 'VIS': taskFile = config_data['visTaskFile']
-            case 'NIR1': taskFile = config_data['nir1TaskFile']
-            case 'NIR2': taskFile = config_data['nir2TaskFile']
-            case 'SWIR': taskFile = config_data['swirTaskFile']
-        
-    task_values = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-    #Extract exposure times
-    exposure_times = [task_values[i][4] for i in range(len(task_values))]
-    if all(x == exposure_times[0] for x in exposure_times):
-        exposure_times = [exposure_times[0]]
-    exposures_str = ','.join(str(x) for x in exposure_times)
-    metadata['EXPOSURE'] = (exposures_str, "Exposuretime(s) [DNs]")
+    try: 
+        fault = channel_specific_telemetry['FAULT']
+        metadata['ERRORFLG'] = (fault, 'Error flags for instrument')
+    except KeyError:
+        print(f"[WARNING] 'FAULT' missing for channel '{channel}' in telemetry.")
+    
+    try: 
+        config_data = json.loads(config_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
 
-    det_temp = channel_specific_telemetry['DET_TEMP']
-    metadata['CCDTEMP'] = (det_temp, f'Detector temp [DNs]')
+    task_file_key = {
+        'VIS': 'visTaskFile',
+        'NIR1': 'nir1TaskFile',
+        'NIR2': 'nir2TaskFile',
+        'SWIR': 'swirTaskFile',
+    }.get(channel)
 
-    metadata['AMBTEMP'] = ('', 'Ambient temperature')
-
-    metadata['SC_CLK'] = ('', 'SC clock Hera instrument format')
-
-    fault = channel_specific_telemetry['FAULT']
-    metadata['ERRORFLG'] = (fault, 'Error flags for instrument')
+    task_file = config_data.get(task_file_key, '')
+    if not task_file:
+        print(f"[WARNING] Task file entry '{task_file_key}' not found in config.json")
+    else:
+        try:
+            task_values = [task_file[i:i + 8] for i in range(0, len(task_file), 8)]
+            exposure_times = [task_values[i][4] for i in range(len(task_values))]
+            if exposure_times:
+                if all(x == exposure_times[0] for x in exposure_times):
+                    exposure_times = [exposure_times[0]]
+                exposures_str = ','.join(str(x) for x in exposure_times)
+                metadata['EXPOSURE'] = (exposures_str, "Exposuretime(s) [DNs]")
+            else:
+                print(f"[WARNING] No valid exposure times extracted from task file.")
+        except Exception as e:
+            print(f"[WARNING] Failed to parse exposure times from task file: {e}")
 
     return metadata
     
@@ -272,6 +343,16 @@ def collect_instrument_specific_metadata(
     """
 
     metadata = {}
+    try:
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
+        return metadata
+    
+    try: 
+        config_data = json.loads(config_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
 
     #### Impelement here the ASPECT specific metadata
 
@@ -296,14 +377,42 @@ def collect_spice_metadata(
     """
     telemetry_path = Path(telemetry_path) 
     mk = str(mk)
+    spice_metadata = {
+        'SPICE_MK'  : ('UNK', 'SPICE metakernel'),
+        'SPICEVER'  : ('UNK', 'SPICE dataset version'),
+        'SPICECLK'  : ('UNK', 'SC clock SPICE format'),
+        'SUN_POSX'  : ('UNK', 'Sun position vector X [km]'),
+        'SUN_POSY'  : ('UNK', 'Sun position vector Y [km]'),
+        'SUN_POSZ'  : ('UNK', 'Sun position vector Z [km]'),
+        'SOLAR_D'   : ('UNK', 'Solar distance'),
+        'EARTPOSX'  : ('UNK', 'Earth position vector X [km]'),
+        'EARTPOSY'  : ('UNK', 'Earth position vector Y [km]'),
+        'EARTPOSZ'  : ('UNK', 'Earth position vector Z [km]'),
+        'EARTH_D'   : ('UNK', 'Earth distance'),
+        'TARGET'    : (target, 'Observation target'),
+        'TRG_POSX'  : ('UNK', 'Target position vector X [km]'),
+        'TRG_POSY'  : ('UNK', 'Target position vector Y [km]'),
+        'TRG_POSZ'  : ('UNK', 'Target position vector Z [km]'),
+        'TRG_DIST'  : ('UNK', 'Target distance'),
+        'SC_QUATW'  : ('UNK', 'Spacecraft quaternion (W)'),
+        'SC_QUATX'  : ('UNK', 'Spacecraft quaternion (X)'),
+        'SC_QUATY'  : ('UNK', 'Spacecraft quaternion (Y)'),
+        'SC_QUATZ'  : ('UNK', 'Spacecraft quaternion (Z)'),
+        'CAM_RA'    : ('UNK', 'Camera axis RA [deg]'),
+        'CAM_DEC'   : ('UNK', 'Camera axis DEC [deg]'),
+        'CAM_NAZ'   : ('UNK', 'Camera axis north azimuth [deg]'),
+        'SOL_ELNG'  : ('UNK', 'Solar elongation')
+    }
 
-    telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8')) # Telemetry etries
+    try:
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
+        return spice_metadata
 
     utc_ob = telemetry_data['ACQ_DATE']
     if test:
         utc_ob = '2027-03-23T06:00:00.000' # Testing # Old '2025-06-15T05:40:46.6666'
-
-    spice_metadata = {}
 
     hera_spice.load_meta_kernel(mk) # Load the meta kernel
 
@@ -491,37 +600,54 @@ def collect_image_metadata(config_path: Path, channel: str) -> Dict[str, Tuple[s
     """
     
     meta_data = {}
-
-    config_data = json.loads(config_path.read_text(encoding='utf-8')) # Config entries
-
-
-    #read SP values for each image
-    match channel:
-        case 'VIS':
-            taskFile = config_data['visTaskFile']
-        case 'NIR1':
-            taskFile = config_data['nir1TaskFile']
-        case 'NIR2':
-            taskFile = config_data['nir2TaskFile']
-        case 'SWIR':
-            taskFile = config_data['swirTaskFile']
-    
-
-    #Extract sp values from taskValues
-    taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-    sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
-    sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
-    sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
-    #Extract exposure times
-    exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
-    exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
-    sp1 = ','.join(str(x) for x in sp1Values)
-    sp2 = ','.join(str(x) for x in sp2Values)
-    sp3 = ','.join(str(x) for x in sp3Values)
-    #Check the order based on SP1 index 3
-    order = check_order(sp1Values[3], channel)
-
     meta_data['CHANNEL'] = (channel, 'Instrument channel')
+
+    try: 
+        config_data = json.loads(config_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
+
+    
+    #read SP values for each image
+    try:
+        match channel:
+            case 'VIS':
+                taskFile = config_data['visTaskFile']
+            case 'NIR1':
+                taskFile = config_data['nir1TaskFile']
+            case 'NIR2':
+                taskFile = config_data['nir2TaskFile']
+            case 'SWIR':
+                taskFile = config_data['swirTaskFile']
+    except KeyError as e:
+        print(f"[WARNING] Missing task file entry for channel '{channel} in config.json'")
+        return meta_data
+
+    try:
+        #Extract sp values from taskValues
+        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
+        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
+        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
+        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
+        #Extract exposure times
+        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
+        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
+        sp1 = ','.join(str(x) for x in sp1Values)
+        sp2 = ','.join(str(x) for x in sp2Values)
+        sp3 = ','.join(str(x) for x in sp3Values)
+        #Check the order based on SP1 index 3
+        if len(sp1Values) > 3:
+            order = check_order(sp1Values[3], channel)
+        else:
+            print(f"[WARNING] Not enough Setpoint values to determine order.")
+            order = 'UNK'
+
+    except Exception as e:
+        print(f'[WARNING] Failed to parse task file values: {e}')
+        sp1 = sp2 = sp3 = 'UNK'
+        exposureTimes = 'UNK'
+        order = 'UNK'
+    
     meta_data['ORDER'] = (order, 'LOW / HIGH')
     meta_data['EXPOSURE'] = (exposureTimes, 'Exposuretime(s) [DNs].')
     meta_data['SP1'] = (sp1, 'Setpoint 1')
@@ -580,6 +706,9 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> s
     Returns:
         str: wavelengths in string separated by comma
     """
+    if sp_values == None:
+        print(f"[WARNING] no piezo setpoint values for wavelenght conversion")
+        return 'UNK'
     wavelengths = []
     
     match (channel, order):
@@ -612,6 +741,9 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> s
             for i in range(0, len(sp_values)):
                 wavelength = round(0.2869 * sp_values[i] - 3847.2)
                 wavelengths.append(wavelength)
+        case _ , _:
+            print(f"[WARNING] invalid channel '{channel}' / order '{order}' inside wavelenght conversion.")
+            return 'UNK'
     
     return ",".join(map(str, wavelengths))
 

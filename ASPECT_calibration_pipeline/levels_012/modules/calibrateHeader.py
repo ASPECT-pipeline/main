@@ -32,26 +32,37 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
         img_header = img_HDU.header # Image HDU header
         channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
         order = img_header.get('ORDER') # Order used for capturing light
-        piezo1_values = img_header.get('SP1').split(",") # capasitance values of setpoint 1
-        piezo1_values = [float(value) for value in piezo1_values] # convert the values to numbers
+        try:
+            piezo1_values = img_header.get('SP1').split(",") # capasitance values of setpoint 1
+            piezo1_values = [float(value) for value in piezo1_values] # convert the values to numbers
+        except Exception as e:
+            print(f"[WARNING] No valid piezo setpoint values {e}")
+            piezo1_values = None
 
         # Convert exposure time from DNs to seconds
         exposure = primary_header['EXPOSURE']
-        exposure_list = list(map(int, exposure.split(',')))
-        exposures_in_s = [utilities.exposure_conversion(x, channel) for x in exposure_list]
-        exposures_str = ','.join(str(x) for x in exposures_in_s)
-        primary_header['EXPOSURE'] = (exposures_str, "Exposure time [s]")
-
+        if exposure and exposure != 'UNK':
+            exposure_list = list(map(int, exposure.split(',')))
+            exposures_in_s = [utilities.exposure_conversion(x, channel) for x in exposure_list]
+            exposures_str = ','.join(str(x) for x in exposures_in_s)
+            primary_header['EXPOSURE'] = (exposures_str, "Exposure time [s]")
+        else:
+            print(f"[WARNING] no valid exposure value '{exposure}' found in primary header")
+            exposures_str = 'UNK'
         # Convert detector reading from DN to Kelvins and Celsius
         det_temp = primary_header['CCDTEMP']
-        det_temp = float(det_temp)
-        c, k = utilities.det_temp_conversion(det_temp, channel)
-        c = round(c, 2)
-        k = round(k, 2)
-        if channel in ('NIR1','NIR2'):
-            primary_header['CCDTEMP'] = ('UNK', f"Detector temp [K] ('UNK' [C])")
+        if det_temp and det_temp != 'UNK':
+            det_temp = float(det_temp)
+            c, k = utilities.det_temp_conversion(det_temp, channel)
+            c = round(c, 2)
+            k = round(k, 2)
+            if channel in ('NIR1','NIR2'):
+                primary_header['CCDTEMP'] = ('UNK', f"Detector temp [K] ('UNK' [C])")
+            else:
+                primary_header['CCDTEMP'] = (k, f'Detector temp [K] ({c} [C])')
         else:
-            primary_header['CCDTEMP'] = (k, f'Detector temp [K] ({c} [C])')
+            print(f"[WARNING] not a valid CCDTEMP '{det_temp}' found in primary header")
+        
 
         # Create new list of HDU's and append the cube to it
         HDUs = []

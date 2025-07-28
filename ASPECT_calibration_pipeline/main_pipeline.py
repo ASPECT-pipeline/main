@@ -1,5 +1,6 @@
 from config import input_directory, output_directory, observph, differential, pipeline, instrument, models, initGuess
 import levels_012.main_calibration as main_calibration
+import levels_012.modules.utilities as level_012_utilities
 import level_3.main_level_3 as main_level_3
 from pathlib import Path
 
@@ -31,7 +32,7 @@ def main_pipeline():
     output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
     print(f'New directory created for this acquisition: {output_dir.resolve()}')
     pipeline_steps = [str(s) for s in pipeline.split('-')]
-
+    level_012_utilities.validate_pipeline_steps(pipeline_steps)
 
     if '1' in pipeline_steps:
         print(f'Executing pipeline levels 0 and 1')

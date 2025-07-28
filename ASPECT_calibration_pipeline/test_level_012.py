@@ -61,6 +61,8 @@ simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_XXXXXX_270323T060
 mgm_test = os.path.join(os.getcwd(), 'test_data/mgm_test_spectra/DataSet1_nm.txt')
 mgm_didymos = os.path.join(os.getcwd(), 'test_data/mgm_test_spectra/didymos_spectra.txt')
 
+invalid_test = os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_simulated/2027-03-23_06_00_00/example-3/AS0_XXXXXX_270323T060000_1B.fits')
+
 # Getting channels frame counts and original fiel names from acquisition folder
 def test_channel_frames_names():
     acq_folder = utilities.get_acq_folder(acq_path)
@@ -89,8 +91,8 @@ def test_convert_to_fits(input: str, output: str):
 
 def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
-        # print(f'Fitsfile from path:')
-        # print({path})
+        print(f'Fitsfile from path:')
+        print({path})
         img_cube = hdul[1].data
         for i, frame in enumerate(img_cube):
             count = 0
@@ -100,8 +102,8 @@ def read_fits_file(path, visualise = False):
         for i, hdu in enumerate(hdul):
 
             h = hdu.header
-            # print(f'Header for HDU {i}')
-            # print(repr(h))
+            print(f'Header for HDU {i}')
+            print(repr(h))
 
 
             if visualise:
@@ -791,7 +793,7 @@ Function calls after this
 
 # test_spice_metadata()
 
-# read_fits_file(simulated_output_ASP , False)
+read_fits_file(invalid_test , False)
 # visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_vis, 0.01)
 # update_fits_wl(simulated_output_vis)
@@ -807,7 +809,7 @@ Function calls after this
 # inspect_pipeline_results(simulated_output_ASP, simulated_output_vis, simulated_output_nir1, simulated_vis, simulated_nir1)
 
 
-test_mgm(mgm_test)
+# test_mgm(mgm_test)
 
 """ 
 Python3 ASPECT_calibration_pipeline/test_level_012.py

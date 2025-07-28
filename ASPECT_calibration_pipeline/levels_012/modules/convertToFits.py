@@ -4,7 +4,7 @@ from astropy.io import fits
 from pathlib import Path
 from typing import List, Tuple
 import levels_012.modules.utilities as utilities
-from config import spice_mk, channel_map, software, missphase, observph, target, object
+from config import spice_mk, channel_map, software, missphase, observph, target, object, sc_clock_seconds, sc_clock_offset
 import json
 import re
 
@@ -46,7 +46,7 @@ def convert_to_fits(
         output_dir (Path):  Directory where the Fits file(s) are stored.
         channel (str):      Instrument channel name
         channel_info:       Tuple[channel name, List[file names of that channel]]
-        diff:               Either string, Path or None. Used if the fiels are differnetial encoded
+        diff:               Either string, Path or None. Used if the files are differnetial encoded
     
     Return:
         Path: Path to the directory containing the Fits file(s) (output_dir)
@@ -87,6 +87,7 @@ def convert_to_fits(
     for key, (value, comment) in spice_metadata.items():
         primary_header.append((key, value, comment))
 
+
     # Append calibration metadata
     calibration_metadata = utilities.collect_calibration_metadata()
     for key, (value, comment) in calibration_metadata.items():
@@ -98,14 +99,11 @@ def convert_to_fits(
     primary_header.insert('SPICE_MK',('COMMENT', ' - - - - - - - - SPICE data - - - - - - - - '), after=False)
     primary_header.insert('SOL_ELNG',('COMMENT', ' - - - - - - - - Calibration specific data - - - - - - - - '), after=True)
     
-
     # Generate FITS file name 
     utc_time = primary_header['DATE-OB']
-    sc_clk = primary_header['SC_CLK']
-    fits_name = utilities.form_fits_name(channel, sc_clk, utc_time, '0A')
-    
+    image_number = utilities.sc_clock_to_base32(sc_seconds=sc_clock_seconds, offset=sc_clock_offset)
+    fits_name = utilities.form_fits_name(channel, image_number, utc_time, '0A')
     primary_header['FILENAME'] = fits_name
-    # print(repr(primary_header))
 
     """
     Image data

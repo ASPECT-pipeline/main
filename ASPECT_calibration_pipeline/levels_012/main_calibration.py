@@ -54,26 +54,33 @@ def calibration_pipeline(
     """
     These functions perform the level 0 and 1 of the pipeline
     Parmeters:
-        path: Path to a folder containing data of an acquisition from a single sensor.
-        output: Path to the folder where the fits files will be stored.
+        input_dir (str | Path): Path to a folder containing data of an acquisition from a single sensor.
+        output_dir (str | Path): Path to the folder where the fits files will be stored.
+        channel (str): VIS, NIR1, NIR2, or SWIR
+        channel_info (Tuple[str, List[str]]): [original filename, List[files that belongs to the channel]]
+        differential (bool):  Differential encoding is used for the files. 
     """
 
     diff = None
     # Search for the differential encoding offsets, if not found the differential decoding is not executed
     if differential:
-        acq_dir = Path(input_dir) / 'acq_000'
-        for subdir in acq_dir.iterdir():
-            if subdir.is_dir():
-                candidate = subdir / 'diff_encoding.json'
-                if candidate.is_file():
-                    diff= Path(candidate)
+        matches = list(Path(input_dir).rglob('diff_encoding.json'))
+
+        if not matches:
+            raise FileNotFoundError(f"'differential' is True but no 'diff_encoding.json' file was found under {input_dir}")
+        elif len(matches) > 1:
+            raise RuntimeError(f"Multiple 'diff_encoding.json' files found under {input_dir}. Expected only one.")
+        else:
+            diff = matches[0]
+
+
     # Convert the input directory into FITS file(s)
     fits_file = convertToFits.convert_to_fits(
             dir_path=input_dir, 
             output_dir=output_dir,
             channel=channel,
             channel_info=channel_info,
-            diff= diff
+            diff=diff
         )
     
     print(f'New fits file created: {fits_file}')
@@ -103,11 +110,9 @@ def calibration_pipeline(
         hdul = flatField.flat_field_calibration(hdul)
         print(f'Flat field calibrated')
 
-
         # Replace bad pixels with neigbours
         hdul = badPixels.replace_bad_pixels(hdul)
         print(f'Bad pixels replaced')
-
 
         # Apply radiometric calibration
         hdul = radiometric.radiometric_calibration(hdul)
@@ -160,9 +165,10 @@ def pipeline_levels_01(
 
     acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(input_dir)
 
+    print('Separating acquisition directory into channel specific files.')
     channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]
     channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
-
+    print(f'Channels found: {channel_names}.')
     for channel in channel_names:
         print(f'Calibrating channel: {channel}')
         channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames_belongs_this_channels]]
@@ -221,22 +227,3 @@ def pipeline_level_02(input_dir: str | Path, output_dir: str | Path, instrument:
     combined_fits_file = mergeFits.merge_fits_files(files=files_to_be_combined, output_dir=output_dir)
 
     return combined_fits_file
-
-# ASPECT FLY
-acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
-fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly')
-fits_output_dir_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
-
-# ASPECT simulated
-acq_path_sim = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen')
-fits_output_dir_sim = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated')
-fits_output_dir_sim_ = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_simulated/2027-03-23_06_00_00')
-
-# ASPECT Diffetential encoded
-autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_505')
-autoseq_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_DIFF')
-
-# pipeline_levels_01(autoseq_dir, autoseq_output_dir, differential=True)
-# pipeline_level_02(fits_output_dir_sim_, fits_output_dir_sim_)
-
-# Python3 ASPECT_calibration_pipeline/levels_012/main_calibration.py
