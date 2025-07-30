@@ -44,7 +44,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
         if exposure and exposure != 'UNK':
             exposure_list = list(map(int, exposure.split(',')))
             exposures_in_s = [utilities.exposure_conversion(x, channel) for x in exposure_list]
-            exposures_str = ','.join(str(x) for x in exposures_in_s)
+            exposures_str = ','.join(f"{x:.6f}" for x in exposures_in_s)
             primary_header['EXPOSURE'] = (exposures_str, "Exposure time [s]")
         else:
             print(f"[WARNING] no valid exposure value '{exposure}' found in primary header")
@@ -59,7 +59,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
             if channel in ('NIR1','NIR2'):
                 primary_header['CCDTEMP'] = ('UNK', f"Detector temp [K] ('UNK' [C])")
             else:
-                primary_header['CCDTEMP'] = (k, f'Detector temp [K] ({c} [C])')
+                primary_header['CCDTEMP'] = (f"{k:.2f}", f'Detector temp [K] ({f"{c:.2f}"} [C])')
         else:
             print(f"[WARNING] not a valid CCDTEMP '{det_temp}' found in primary header")
         

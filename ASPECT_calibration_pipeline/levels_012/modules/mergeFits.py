@@ -10,30 +10,24 @@ from pathlib import Path
 
 
 """
-    Function for aligning and resampling vis channel images with nir channel images 
+    Function for aligning vis channel images with nir channel images 
     based on asteroid edge detection, feature extraction, and feature matching.
 
     Steps of the method:
     1. Edge detection 
-        Detecting contours of the asteroid using second-order derivative based Laplacian method
+        Detecting contours of the asteroid using second-order derivative based Laplacian method.
     2. Feature extraction
         Oriented FAST and Rotated BRIEF (ORB) function for detecting FAST keypoints with an orientation
-        and BRIEF binary descriptors for keypoints
+        and BRIEF binary descriptors for keypoints.
     3. Feature matching
-        FLANN with LSH for matching keypoints from vis image to nir image keypoints 
-        based on approximating their descriptor similarity with hash functions.
-        The matches are filtered either based on the orientation of FAST keypoints, or by the distance between the first and the second match candidate.
+        Fast Library for Approximate Nearest Neighbour (FLANN) with LSH for matching keypoints from vis image to nir image keypoints 
+        based on approximating their descriptor similarity with locality-sensitive hashing.
+        The matches are filtered based by the distance between the first and the second match candidate.
     4. Estimating transformation matrix
-        Estimating a 3x3 transformation matrix based on the feature matches using RANSAC
+        Estimating a 3x3 transformation matrix based on the feature matches using random sample consensus (RANSAC)
     5. Aligning the image
-        Applying the transformation matrix to map the visible image to have the same dimensions os nir image
+        Applying the transformation matrix to map the visible images to have the same dimensions as near-infrared images
         so that the asteroid appears same sized at the same (x,y) location on the image
-    
-    
-    Function: align_fits_files
-        Description:
-            Given paths to 4 fitsfiles, performs the estimateMatrix method from utilities.py and uses the trasnformation matrix to align every 2D visible image from VIS with NIR1. 
-            Creates one ImageHDU containing the aligned datacube that has all vis and nir files
 
 """
 def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
@@ -77,7 +71,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
             channel_int = int(char)
             channel_name = channel_map[channel_int]
             if channel_name in channels:
-                raise ValueError(f"Duplicate channel '{channel_name}' found in file '{file.name}'")
+                raise ValueError(f"Duplicate channel '{channel_name}' found in file '{files}'")
             channels.append(channel_name)
 
             with fits.open(file) as hdul:
@@ -103,7 +97,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     if len(channels) == 1:
         print(f'More than one channel needed to combine.')
         return files[0]
-    
+    print(f"Combining channels {channels}")
     # Create new list of HDU's and append the primary HDU, new image HDU and other extensions.
     HDUs = []
     new_primary_header = utilities.combine_primary_headers(primary_header_list)

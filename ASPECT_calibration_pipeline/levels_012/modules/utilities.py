@@ -692,7 +692,7 @@ def exposure_conversion(value: float, channel: str) -> float:
         case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
         case 'NIR1': return value / 100000
         case 'NIR2': return value / 100000
-        case 'SWIR': return value 
+        case 'SWIR': return value
 
 def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> str:
     """
@@ -710,6 +710,7 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> s
         print(f"[WARNING] no piezo setpoint values for wavelenght conversion")
         return 'UNK'
     wavelengths = []
+    return 'UNK'
     
     match (channel, order):
         # The correct values for the corretion needed
@@ -805,6 +806,8 @@ def combine_image_headers(headers: List[Header]) -> Header:
         exposure += f'{exp}, '
         channel = hdr.get('CHANNEL')
         channels += f'{channel}, '
+        frames = hdr.get('FRAMES')
+        combined_header[f'{channel}_FRM'] = (frames, f'Frames')
         order = hdr.get('ORDER')
         combined_header[f'{channel}_O'] = (order, f'LOW / HIGH')
         wl = hdr.get('WAVELEN')

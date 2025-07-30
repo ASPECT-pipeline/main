@@ -9,7 +9,7 @@ from pathlib import Path
 """
 This is the main file to call the ASPECT data processing pipeline. More information about the pipeline in README.md file.
 
-to run nthe pipeline: python3 ASPECT_calibration_pipeline/main_pipeline.py
+to run the pipeline: python3 ASPECT_calibration_pipeline/main_pipeline.py
 """
 
 
@@ -28,13 +28,13 @@ def main_pipeline():
         raise NotADirectoryError(f"Path exists but is not a directory: {input_dir}")
     
     output_dir = Path(output_directory)
-    output_dir = Path(output_dir) / observph # output directory for this acquisition
-    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
-    print(f'New directory created for this acquisition: {output_dir.resolve()}')
     pipeline_steps = [str(s) for s in pipeline.split('-')]
     level_012_utilities.validate_pipeline_steps(pipeline_steps)
 
     if '1' in pipeline_steps:
+        output_dir = Path(output_dir) / observph # output directory for this acquisition
+        output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
+        print(f'New directory created for this acquisition: {output_dir.resolve()}')
         print(f'Executing pipeline levels 0 and 1')
         level_2_input = main_calibration.pipeline_levels_01(input_dir=input_dir, output_dir=output_dir, differential=differential)
         print(f'Calibration levels 0 and 1 completed. New Files created in directory: {level_2_input.resolve()}')

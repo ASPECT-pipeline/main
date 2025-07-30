@@ -12,49 +12,29 @@ import math
 from matplotlib.patches import Patch
 from pprint import pprint
 from collections import defaultdict
-
+from typing import List, Union
 import level_3.mgm as mgm
 from level_3.test_utilities import show_mgm_figures
 import level_3.level_3_utilities as level_3_utilities
 
 
-# ASPECT FLY images
-acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_101')
-acq_path = os.path.join(os.getcwd(), 'test_data/ASPECT_fly_images/acqseq_104')
-decoded_binaries = os.path.join(acq_path, 'acq_000_decompressed')
-decompressed = os.path.join(decoded_binaries , 'dc_1_exp_000.bin')
-
-# ASPECT FLY output
-meta_folder = os.path.join(acq_path, 'meta')
-fits_output_dir = os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/ASPECT_fly/104')
-aspect_fly_fits_vis = os.path.join(fits_output_dir, 'AS0_XXXXXX_200101T014411_1B.fits')
-aspect_fly_fits_nir1 = os.path.join(fits_output_dir, 'AS1_XXXXXX_200101T014800_1B.fits')
-aspect_fly_fits_nir2 = os.path.join(fits_output_dir, 'AS2_XXXXXX_200101T014800_1B.fits')
-aspect_fly_fits_swir = os.path.join(fits_output_dir, 'AS3_XXXXXX_200101T014411_1B.fits')
-aspect_fly_fits_nir1_nir2 = os.path.join(fits_output_dir, 'ASP_XXXXXX_200101T014800_2B.fits')
 
 # ASPECT DIFF encoded images
 autoseq_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809') # FOLDER
-autoseq_505 = os.path.join(autoseq_dir, 'acqseq_505')
-autoseq_505_diff = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding')
-autoseq_505_out = os.path.join(autoseq_dir, 'pipeline_diff_decoded')
-autoseq_505_in = os.path.join(autoseq_dir, 'pipeline_jp2_decoded')
-autoseq_505_offsets = os.path.join(autoseq_dir, 'acqseq_505/acq_000/meta_diff_encoding/diff_encoding.json')
+diff_decoded = os.path.join(autoseq_dir, 'diff_decoded') # Diff_decoded folder
 
-autoseq_encoded_vis0 = os.path.join(autoseq_dir, 'acqseq_505/acq_000/diff_encoding/dc_0_exp_001_diffEnc.bin.jp2')
-autoseq_decoded_vis0 = os.path.join(autoseq_dir, 'diff_decoded/505/dc_0_decoded.dat02.img')
-autoseq_decoding_ouput = os.path.join(autoseq_dir, 'pipeline_diff_decoded/505')
+diff_output_dir = os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_DIFF')
 
 # SIMULATED ASPECT images
 simulated_dir = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000')
 simulated_vis = os.path.join(simulated_dir, 'dc_0_exp_000.bin')
 simulated_nir1 = os.path.join(simulated_dir, 'dc_1_exp_000.bin')
 
-simulated_output_dir = os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_simulated/2027-03-23_06_00_00/example-3')
-simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_XXXXXX_270323T060000_1B.fits')
-simulated_output_nir1 = os.path.join(simulated_output_dir, 'AS1_XXXXXX_270323T060000_1B.fits')
-simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_XXXXXX_270323T060000_1B.fits')
-simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_XXXXXX_270323T060000_2B.fits')
+simulated_output_dir = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen')
+simulated_output_vis = os.path.join(simulated_output_dir, 'AS0_000000_270323T060000_1B.fits')
+simulated_output_nir1 = os.path.join(simulated_output_dir, 'AS1_000000_270323T060000_1B.fits')
+simulated_output_nir2 = os.path.join(simulated_output_dir, 'AS2_000000_270323T060000_1B.fits')
+simulated_output_ASP = os.path.join(simulated_output_dir, 'ASP_000000_270323T060000_2B.fits')
 
 # simulated_cube = os.path(os.getcwd())
 
@@ -93,11 +73,7 @@ def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
         print(f'Fitsfile from path:')
         print({path})
-        img_cube = hdul[1].data
-        for i, frame in enumerate(img_cube):
-            count = 0
-            if np.any(frame < 0):
-                print(f"Frame {i} contains negative values.")
+        print(f'lenght of hdul: {len(hdul)}')
 
         for i, hdu in enumerate(hdul):
 
@@ -105,7 +81,13 @@ def read_fits_file(path, visualise = False):
             print(f'Header for HDU {i}')
             print(repr(h))
 
-
+            if visualise:
+                if isinstance(hdu, fits.ImageHDU):
+                    print(f'data type: {type(hdu.data)}')
+                    print(f'pixel 250, 250: {hdu.data[250][250]}')
+                    print(f'pixel type 250, 250: {type(hdu.data[250][250])}')
+                    plt.imshow(hdu.data, cmap='gray')
+                    plt.show()
             if visualise:
                 if isinstance(hdu, fits.ImageHDU):
                     print("→ This is an ImageHDU")
@@ -325,6 +307,14 @@ def readBinfile(filePath, channel):
     elif channel == "NIR":
         height = 518
         width = 648
+    else:
+        with open(filePath, 'rb') as file:
+            binaryData = file.read()
+            print(f"Read {len(binaryData)} bytes")
+            imageArray = np.frombuffer(binaryData, dtype='>u2')
+            print(imageArray)
+
+
     # print(f"height: {height} \nwidht: {width}")
 
     bytes_per_pixel, bit_depth = utilities.estimate_bit_depth(filePath, width, height)
@@ -341,21 +331,22 @@ def readBinfile(filePath, channel):
 
             imageArray = np.frombuffer(binaryData, dtype='>u2')
             imageArray = imageArray.reshape((height, width))
+            print(f"Min: {imageArray.min()}")
+            print(f"Max: {imageArray.max()}")
+
             print(f'(0,0): {imageArray[0][0]}')
             print(f'(3,150): {imageArray[3][150]}')
             print(f'(8,1): {imageArray[8][1]}')
             print(f'(346,647): {imageArray[346][647]}')
-            print(f'(4,100) - (4, 105): {imageArray[4][100:105]}')
-            print(f'(100,0) - (100, 4): {imageArray[100][:4]}')
-            # print(f'array type: {imageArray.dtype}')
-            # print(f'values [500][500] - [510][510]')
-            # print(imageArray[500:510, 500:510])
-            # plt.figure(figsize=(8,5))
-            # plt.imshow(imageArray, cmap='gray')
-            # plt.title(f'channel {channel}')
-            # plt.axis('off')
-            # plt.tight_layout()
-            # plt.show()
+            # print(f'(4,100) - (4, 105): {imageArray[4][100:105]}')
+            # print(f'(100,0) - (100, 4): {imageArray[100][:4]}')
+            print(f'array type: {imageArray.dtype}')
+            plt.figure(figsize=(8,5))
+            plt.imshow(imageArray, cmap='gray')
+            plt.title(f'channel {channel} little_endian')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.show()
 
 
     except FileNotFoundError:
@@ -488,26 +479,39 @@ def test_decoding(input:str, output: str, compare: str):
 def compare_bin_images(
     file_a: str | Path,
     file_b: str | Path,
+    is_fits: bool,
+    index: int,
     shape: tuple[int, int],
     dtype: str = "<u2",          # little-endian uint16 by default
     visualize: bool = True
 ) -> bool:
+    """
+    Compare two files, file_a is a bin file and file_b can be bin or fits
+    """
     file_a = Path(file_a)
     file_b = Path(file_b)
 
     arr_a = np.fromfile(file_a, dtype=dtype)
-    arr_b = np.fromfile(file_b, dtype=dtype)
 
+    if is_fits:
+        with fits.open(file_b) as hdul:
+            data = hdul[1].data
+            arr_b = data[index]
+    else:
+        arr_b = np.fromfile(file_b, dtype=dtype)
+        arr_b = arr_b.reshape(shape)
+
+    arr_a = arr_a.reshape(shape)
     if arr_a.size != arr_b.size:
         raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
                          f'but {file_b.name} has {arr_b.size}')
     
-    arr_a = arr_a.reshape(shape)
-    arr_b = arr_b.reshape(shape)
 
     identical = np.array_equal(arr_a, arr_b)
     print(f"{'✔️  IDENTICAL' if identical else '❌  DIFFERENT'}"
-          f'f- {file_a.name} vd {file_b.name}')
+          f'f- {file_a.name} vs {file_b.name}')
+    print(f'{arr_a[10][100]} == {arr_b[10][100]}')
+    print(f'{type(arr_a[10][100])} == {type(arr_b[10][100])}')
     
     if identical and not visualize:
         return True
@@ -609,6 +613,35 @@ def try_read_cds():
         print(utilities.read_cds(bintable['NIR1_0'][0], 346, 7 ,1))
         print(utilities.read_cds(bintable['NIR1_0'][0], 4, 100 ,5))
         print(utilities.read_cds(bintable['NIR1_0'][0], 100, 0 ,4))
+
+def replace_header_values_with_unk(fits_path: Union[str, os.PathLike], keys_to_replace: List[str]) -> None:
+    """
+    Replaces specified header values with 'UNK' in all HDUs of a FITS file,
+    while preserving the original comments. Modifies the file in-place.
+
+    Parameters:
+    - fits_path: Path to the input FITS file.
+    - keys_to_replace: List of header keys to update with value 'UNK'.
+    """
+    print(Path(fits_path).name)
+    with fits.open(fits_path, mode='update') as hdul:
+        for hdu in hdul:
+            header = hdu.header
+            for key in keys_to_replace:
+                if key in header:
+                    comment = header.comments[key]
+                    header[key] = ('UNK', comment)
+        hdul.flush()  # Write changes to disk
+
+def replace_header_value_with_custom(fits_path: Union[str, os.PathLike], key_to_replace: str, value, comment: Union[None, str]) -> None:
+    with fits.open(fits_path, mode='update') as hdul:
+        for hdu in hdul:
+            header = hdu.header
+            if key_to_replace in header:
+                if comment == None:
+                    comment = header.comments[key_to_replace]
+                header[key_to_replace] = (value, comment)
+        hdul.flush()
 
 def inspect_pipeline_results(asp: str, as0: str, as1: str, vis_bin: str, nir_bin: str):
     """
@@ -767,6 +800,47 @@ def inspect_pipeline_results(asp: str, as0: str, as1: str, vis_bin: str, nir_bin
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
     plt.show()
 
+def insert_header_entry(fits_path: Union[str, os.PathLike], key: str, value: Union[str, float, int], comment: str = "", index: int = None, hdu_index: int = 0) -> None:
+    """
+    Insert a new header entry into a FITS file at a specified position.
+
+    Parameters:
+        fits_path: Path to the FITS file (modified in-place)
+        key: Header keyword to add
+        value: Value to associate with the keyword
+        comment: Optional comment to describe the keyword
+        index: Optional index to insert at (0-based). Appends if None or out of bounds.
+        hdu_index: HDU to modify (default is 0 = primary HDU)
+    """
+
+    with fits.open(fits_path, mode='update') as hdul:
+        header = hdul[hdu_index].header
+        card = (key, value, comment)
+
+        if index is None or index >= len(header):
+            header[key] = value, comment
+        else:
+            header.insert(index, card)
+        hdul.flush()
+
+def remove_header_entries(fits_path: Union[str, os.PathLike], keys: List[str], hdu_index: int = 0 ) -> None:
+    """
+    Remove a specific header key from a FITS file.
+
+    Parameters: 
+        fits_path: Path to the FITS file
+        keys: List of keys to be removed
+        hdu_index: The HDU index where the header entry is located
+    """
+
+    with fits.open(fits_path, mode='update') as hdul:
+        header = hdul[hdu_index].header
+        for key in keys:
+            if key in header:
+                del header[key]
+        hdul.flush()
+        
+
 def test_mgm(data):
     # strength, center, std
     # initGuess = [[0.3, 0.94, 0.11], [0.5, 1.12, 0.11], [0.3, 1.32, 0.09], [0.2, 2.14, 0.19]]
@@ -781,6 +855,21 @@ def test_mgm(data):
     figure = mgm.plot(dat, result)
     show_mgm_figures(figure)
 
+
+def create_2d_fits(fits_path, index, output_dir, name):
+
+    with fits.open(fits_path) as hdul:
+        primary_header = hdul[0].header
+        image_header = hdul[1].header
+        frame = hdul[1].data[index]
+
+    primary_hdu = fits.PrimaryHDU(None,primary_header)
+    image_hdu = fits.ImageHDU(frame, image_header)
+
+    new_hdul = fits.HDUList([primary_hdu, image_hdu])
+    file_name = os.path.join(output_dir, name)
+    new_hdul.writeto(file_name, overwrite=True)
+
 """
 Function calls after this
 """
@@ -789,22 +878,38 @@ Function calls after this
 # test_primary_metadata()
 
 # test_convert_to_fits(input=autoseq_505, output=fits_output_dir)
-# test_mgm(mgm_didymos)
+# test_mgm(mgm_didymos102
 
 # test_spice_metadata()
 
-read_fits_file(invalid_test , False)
+# replace_header_values_with_unk(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), ['VIS_O', 'NIR1_O', 'NIR2_O', 'VIS_SP1', 'VIS_SP2', 'VIS_SP3', 'NIR1_SP1', 'NIR1_SP2', 'NIR1_SP3', 'NIR2_SP1', 'NIR2_SP2', 'NIR2_SP3'])
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B_705nm.fits'), 'VIS_WL', '705', None)
+# insert_header_entry(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), 'N2_FRAME', '000,001,002,003,004,005,006,007,008,009,010,011,012', 'NIR2 frames',21,1)
+# remove_header_entries(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B_705nm.fits'),['NIR1_WL', 'NIR2_WL'],1)
+
+# read_fits_file(os.path.join(os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_simulated/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')), False)
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autoseq_20240809/503/AS0_000000_240813T131257_1B.fits'), False)
+
+# read_fits_file(os.path.join(os.getcwd(), 'test_data/AFC/AF1_0EGDH4_250401T103140_1B.fits'), False)
 # visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_vis, 0.01)
 # update_fits_wl(simulated_output_vis)
-# readBinfile(decompressed , 'NIR')
+
+readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin'), 'VIS')
+
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
 
 # test_diff_decoding(autoseq_505_in,autoseq_505_out,autoseq_505_offsets)
 # utilities.rename_bin_files(simulated_dir)
 
-# compare_bin_images(os.path.join(autoseq_dir, 'diff_decoded/503/dc_0_exp_000.bin'), os.path.join(autoseq_dir, 'acqseq_503/acq_000_decompressed/dc_0_exp_000_diffEnc.bin'),(1024, 1024),visualize=False)
+file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
+# file_b = os.path.join(autoseq_dir, 'acqseq_501/acq_000_diff_decoded/VIS_decoded_003.bin')
+file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
+# compare_bin_images(file_a, file_b, True, 11, (512, 640), visualize=True)
+
+# create_2d_fits(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), 2, os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen'),'ASP_000000_270323T060000_2B_705nm.fits')
+
 # try_read_cds()
 # inspect_pipeline_results(simulated_output_ASP, simulated_output_vis, simulated_output_nir1, simulated_vis, simulated_nir1)
 
@@ -813,35 +918,7 @@ read_fits_file(invalid_test , False)
 
 """ 
 Python3 ASPECT_calibration_pipeline/test_level_012.py
-
 """
 
 
 
-
-
-
-
-# file_a = Path(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/505/dc_0_decoded.dat02.img'))
-# file_b = Path(os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_DIFF/505/AS0_XXXXXX_240813T145718_0A.fits'))
-
-# arr_a = np.fromfile(file_a, dtype='<u2')
-
-# with fits.open(file_b) as hdul:
-#     data = hdul[1].data
-
-# arr_b = data[1]
-
-# if arr_a.size != arr_b.size:
-#     raise ValueError(f'Size missmatch: {file_a.name} has {arr_a.size} pixels' 
-#                         f'but {file_b.name} has {arr_b.size}')
-
-# arr_a = arr_a.reshape(1024, 1024)
-
-# print(f'values from files')
-# print(f'(0,0); a: {arr_a[0][0]} b: {arr_b[0][0]} ')
-# print(f'(500,500); a: {arr_a[500][500]} b: {arr_b[500][500]} ')
-
-# identical = np.array_equal(arr_a, arr_b)
-# print(f"{'✔️  IDENTICAL' if identical else '❌  DIFFERENT'}"
-#         f'f- {file_a.name} vd {file_b.name}')

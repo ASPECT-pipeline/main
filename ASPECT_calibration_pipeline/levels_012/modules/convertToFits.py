@@ -87,7 +87,6 @@ def convert_to_fits(
     for key, (value, comment) in spice_metadata.items():
         primary_header.append((key, value, comment))
 
-
     # Append calibration metadata
     calibration_metadata = utilities.collect_calibration_metadata()
     for key, (value, comment) in calibration_metadata.items():

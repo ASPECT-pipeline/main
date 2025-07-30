@@ -2,12 +2,10 @@
 This file contains values for the pipeline. Modify the values to match your usecase.
 """
 # INPUT path for the acquisition data
-# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_Autoseq_20240809/acqseq_501"
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/test_output/ASPECT_simulated/ASPECT_simulated_20270323_McEwen/"
 
 # OUTPUT path where the results are saved
-# output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/test_output/ASPECT_DIFF"
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/test_output/ASPECT_simulated/2027-03-23_06_00_00/"
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/test_output/ASPECT_simulated/ASPECT_simulated_20270323_McEwen/"
 
 
 # Is the data differetially encoded
@@ -16,10 +14,10 @@ differential: bool = False
 # Meta data
 software: str = 'ASPECTCAL v1.0'
 missphase: str = 'SIMULATE'
-observph: str = 'test-3'
+observph: str = 'McEwen'
 target: str = 'DIDYMOS'
-object: str = 'Didymos'
-sc_clock_seconds: int = 123456 # Spacecraft clock in seconds
+object: str = 'dark'
+sc_clock_seconds: int = 0 # Spacecraft clock in seconds
 sc_clock_offset: int = 0  # Offset of sc_clock
 
 # Adjust these to point to the locations of spice metakernels
@@ -32,7 +30,7 @@ spice_mk = spice_mk_plan
 # INSTRUMENT DATA
 instrument = 'vis-nir1-nir2' 
 
-pipeline = '1-2-3' # Separate with '-' e.g. '1-2-3'
+pipeline = '2' # Separate with '-' e.g. '1-2-3'
 
 models = 'C'
 
