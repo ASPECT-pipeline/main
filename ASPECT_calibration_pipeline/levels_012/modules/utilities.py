@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import subprocess
 from pathlib import Path
 import warnings
-from config import kelvin
+from config import kelvin, channel_map, reverse_channel_map
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
@@ -107,12 +107,6 @@ def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
         Dict[channel, Tuple[example_filename, [all_channel_filenames]]]
     """
     acq_dir = Path(acq_dir)
-    channel_map = {
-        0: 'VIS',
-        1: 'NIR1',
-        2: 'NIR2',
-        3: 'SWIR'
-    }
     # Regular expressions for channel and frame
     pattern = re.compile(r'^dc_(\d)_')
     frame_pattern = re.compile(r'exp_(\d{3})')
@@ -234,7 +228,6 @@ def collect_primary_metadata(
 
 def collect_instrument_metadata(
         telemetry_path: Path, 
-        config_path: Path, 
         channel: str,
         object: str
     ) -> Dict[str, Tuple[str, str]]:
@@ -243,7 +236,6 @@ def collect_instrument_metadata(
 
     Parameters:
         telemetry_path (Path): Path object to the telemetry file
-        config_path (Path): Path object to the config file
         channel (str): Channel information to look for
         object (str): Name for the observed object
     
@@ -253,9 +245,6 @@ def collect_instrument_metadata(
     metadata = {
         'DATE-OB' : ('UNK', 'UTC time of observation'),
         'OBJECT': (object, 'Observation object'),
-        'EXPOSURE': ('UNK', 'Exposuretime(s) [DNs]'),
-        'CCDTEMP': ('UNK', 'Detector temp [DNs]'),
-        'AMBTEMP': ('UNK', 'Ambient temperature'),
         'SC_CLK': ('UNK', 'SC clock Hera instrument format'),
         'ERRORFLG': ('UNK', 'Error flags for instrument')
     }
@@ -281,47 +270,11 @@ def collect_instrument_metadata(
     # Channel specific telemetry
     channel_specific_telemetry = telemetry_data.get(channel, {})
 
-    # CCDTEMP
-    try: 
-        det_temp = channel_specific_telemetry['DET_TEMP']
-        metadata['CCDTEMP'] = (det_temp, 'Detector temp [DNs]')
-    except KeyError:
-        print(f"[WARNING] 'DET_TEMP' missing for channel '{channel}' in telemetry.")
-
     try: 
         fault = channel_specific_telemetry['FAULT']
         metadata['ERRORFLG'] = (fault, 'Error flags for instrument')
     except KeyError:
         print(f"[WARNING] 'FAULT' missing for channel '{channel}' in telemetry.")
-    
-    try: 
-        config_data = json.loads(config_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
-
-    task_file_key = {
-        'VIS': 'visTaskFile',
-        'NIR1': 'nir1TaskFile',
-        'NIR2': 'nir2TaskFile',
-        'SWIR': 'swirTaskFile',
-    }.get(channel)
-
-    task_file = config_data.get(task_file_key, '')
-    if not task_file:
-        print(f"[WARNING] Task file entry '{task_file_key}' not found in config.json")
-    else:
-        try:
-            task_values = [task_file[i:i + 8] for i in range(0, len(task_file), 8)]
-            exposure_times = [task_values[i][4] for i in range(len(task_values))]
-            if exposure_times:
-                if all(x == exposure_times[0] for x in exposure_times):
-                    exposure_times = [exposure_times[0]]
-                exposures_str = ','.join(str(x) for x in exposure_times)
-                metadata['EXPOSURE'] = (exposures_str, "Exposuretime(s) [DNs]")
-            else:
-                print(f"[WARNING] No valid exposure times extracted from task file.")
-        except Exception as e:
-            print(f"[WARNING] Failed to parse exposure times from task file: {e}")
 
     return metadata
     
@@ -587,7 +540,7 @@ def check_order(sp: float, channel: str) -> str:
             return ''
 
 # Read metadata from config file
-def collect_image_metadata(config_path: Path, channel: str) -> Dict[str, Tuple[str, str]]:
+def collect_image_metadata(telemetry_path: Path, config_path: Path, channel: str, frame_number_string: str) -> Dict[str, Tuple[str, str]]:
     """
     Collect image specific metadata
 
@@ -598,15 +551,43 @@ def collect_image_metadata(config_path: Path, channel: str) -> Dict[str, Tuple[s
     Returns:
         Dict[header_keyword, Tuple(value, comment)]
     """
-    
+    channel_id = reverse_channel_map[channel]
     meta_data = {}
-    meta_data['CHANNEL'] = (channel, 'Instrument channel')
+    meta_data['CHANNEL'] = (channel, f'Instrument channel [{channel_id}]')
+    meta_data[f'{channel_id}_FRAMES'] = (frame_number_string, f'{channel} frames')
 
+    # Load telemetry file
+    try:
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+        channel_specific_telemetry = telemetry_data.get(channel, {})
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
+
+    try: 
+        det_temp = channel_specific_telemetry['DET_TEMP']
+        meta_data[f'{channel_id}_CCDTMP'] = (str(det_temp), 'Detector temp [DNs]')
+    except KeyError:
+        print(f"[WARNING] 'DET_TEMP' missing for channel '{channel}' in telemetry.")
+        meta_data[f'{channel_id}_CCDTMP'] = ('UNK', 'Detector temp [DNs]')
+
+    try:
+        fpi_temp1 = channel_specific_telemetry['FPI_TEMP1']
+        meta_data[f'{channel_id}_FPI1'] = (str(fpi_temp1), 'FPI temperature 1')
+    except KeyError:
+        (f"[WARNING] FPI temperature 1 missing for channel '{channel}'.")
+        meta_data[f'{channel_id}_FPI1'] = ('UNK', 'FPI temperature 1')
+    
+    try:
+        fpi_temp2 = channel_specific_telemetry['FPI_TEMP2']
+        meta_data[f'{channel_id}_FPI2'] = (str(fpi_temp2), 'FPI temperature 2')
+    except KeyError:
+        (f"[WARNING] FPI temperature 2 missing for channel '{channel}'.")
+        meta_data[f'{channel_id}_FPI2'] = ('UNK', 'FPI temperature 2')
+    
     try: 
         config_data = json.loads(config_path.read_text(encoding='utf-8'))
     except Exception as e:
         print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
-
     
     #read SP values for each image
     try:
@@ -621,7 +602,6 @@ def collect_image_metadata(config_path: Path, channel: str) -> Dict[str, Tuple[s
                 taskFile = config_data['swirTaskFile']
     except KeyError as e:
         print(f"[WARNING] Missing task file entry for channel '{channel} in config.json'")
-        return meta_data
 
     try:
         #Extract sp values from taskValues
@@ -648,17 +628,17 @@ def collect_image_metadata(config_path: Path, channel: str) -> Dict[str, Tuple[s
         exposureTimes = 'UNK'
         order = 'UNK'
     
-    meta_data['ORDER'] = (order, 'LOW / HIGH')
-    meta_data['EXPOSURE'] = (exposureTimes, 'Exposuretime(s) [DNs].')
-    meta_data['SP1'] = (sp1, 'Setpoint 1')
-    meta_data['SP2'] = (sp2, 'Setpoint 2')
-    meta_data['SP3'] = (sp3, 'Setpoint 3')
+    meta_data[f'{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
+    meta_data[f'{channel_id}_EXPOS'] = (str(exposureTimes), 'Exposuretime(s) [DNs].')
+    meta_data[f'{channel_id}_SP1'] = (str(sp1), 'Setpoint 1')
+    meta_data[f'{channel_id}_SP2'] = (str(sp2), 'Setpoint 2')
+    meta_data[f'{channel_id}_SP3'] = (str(sp3), 'Setpoint 3')
 
     return meta_data
 
 def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
     """
-    Converts the 'DET_TEMP' entries from telemetry to Celcius and Kelvin
+    Converts the 'DET_TEMP' entries from telemetry to Celcius and Kelvin. Not available for NIR-channels
 
     Parameters:
         value (float): Detector temperature DN value
@@ -675,6 +655,27 @@ def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
         case 'NIR2': return (value, value)
         case 'SWIR':
             c = (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
+            return (c, c + kelvin)
+
+def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[float, float]:
+    """
+    Converts the FPI temperatures to Celcius and Kelvin. Not available for VIS-channel
+
+    Parameters:
+        value (float): Temperature DN value
+        channel (str): Instrument channel
+
+    Returns:
+        Tuple(Celsius, Kelvin)
+    """
+    match channel:
+        case 'VIS':
+            return (value, value)
+        case ('NIR1' | 'NIR2' | 'SWIR'):
+            if fpi == 1:
+                c = -0.034 * value + 110.93
+            else:
+                c = -0.026 * value + 81.01
             return (c, c + kelvin)
 
 def exposure_conversion(value: float, channel: str) -> float:
@@ -766,64 +767,51 @@ def combine_primary_headers(headers: list[Header]) -> Header:
     combined_header = headers[0].copy()
     combined_header['ORIGFILE'] = ('dc_X_exp_XXX.bin', 'Original file name.')
     combined_header['PROCLEVL'] = ('2B', 'Calibration level')
-    exposure = ''
-    det_temp = ''
-    det_temp_c = ''
-    for i, hdr in enumerate(headers):
-        exp = hdr.get('EXPOSURE')
-        exposure += f'{exp}, '
-        dt = hdr.get('CCDTEMP')
-        det_temp += f'{dt}, '
-        try:
-            numeric = float(dt)
-            det_temp_c += f'{numeric - kelvin}, '
-        except (ValueError, TypeError):
-            det_temp_c += f'UNK, '
-    
-    exposure = exposure.rstrip(',')
-    det_temp = det_temp.rstrip(',')
-    det_temp_c = det_temp_c.rstrip(',')
-    combined_header['EXPOSURE'] = (exposure, 'Exposure times [s]')
-    combined_header['CCDTEMP'] = (det_temp, f'Detector temp [K] ({det_temp_c} [C])')
 
     return combined_header
 
 def combine_image_headers(headers: List[Header]) -> Header:
     if not headers: 
         raise ValueError('No headers provided for combination')
+    if len(headers) == 1:
+        print(f"[WARNING] Only one header to combine in level 2.")
+        return headers[0]
+    
+    def copy_header_key(source: Header, target: Header, key: str):
+        if key in source:
+            value = source[key]
+            comment = source.comments[key]
+            target[key] = (value, comment)
+        else:
+            print(f"[INFO] Key '{key}' not found in source header; skipping.")
     
     combined_header = headers[0].copy()
-    del combined_header['ORDER']
-    del combined_header['WAVELEN']
-    del combined_header['SP1']
-    del combined_header['SP2']
-    del combined_header['SP3']
-    del combined_header['CHANNEL']
-    exposure = ''
-    channels = ''
-    for i, hdr in enumerate(headers):
-        exp = hdr.get('EXPOSURE')
-        exposure += f'{exp}, '
-        channel = hdr.get('CHANNEL')
-        channels += f'{channel}, '
-        frames = hdr.get('FRAMES')
-        combined_header[f'{channel}_FRM'] = (frames, f'Frames')
-        order = hdr.get('ORDER')
-        combined_header[f'{channel}_O'] = (order, f'LOW / HIGH')
-        wl = hdr.get('WAVELEN')
-        combined_header[f'{channel}_WL'] = (wl, f'{channel} wavelengths')
-        sp1 = hdr.get('SP1')
-        combined_header[f'{channel}_SP1'] = (sp1, f'{channel} Setpoint 1')
-        sp2 = hdr.get('SP2')
-        combined_header[f'{channel}_SP2'] = (sp2, f'{channel} Setpoint 2')
-        sp3 = hdr.get('SP3')
-        combined_header[f'{channel}_SP3'] = (sp3, f'{channel} Setpoint 3')
+    try:
+        channel_0 = combined_header.get('CHANNEL')
+        channels = [channel_0]
+        for hdr in headers[1:]:
+            channel = hdr.get('CHANNEL')
+            channels.append(channel)
+            channel_id = reverse_channel_map[channel]
+            copy_header_key(hdr, combined_header, f'{channel_id}_frames')
+            copy_header_key(hdr, combined_header, f'{channel_id}_CCDTMP')
+            copy_header_key(hdr, combined_header, f'{channel_id}_FPI1')
+            copy_header_key(hdr, combined_header, f'{channel_id}_FPI2')
+            copy_header_key(hdr, combined_header, f'{channel_id}_ORDER')
+            copy_header_key(hdr, combined_header, f'{channel_id}_EXPOS')
+            copy_header_key(hdr, combined_header, f'{channel_id}_SP1')
+            copy_header_key(hdr, combined_header, f'{channel_id}_SP2')
+            copy_header_key(hdr, combined_header, f'{channel_id}_SP3')
+            copy_header_key(hdr, combined_header, f'{channel_id}_WL')
 
-    exposure = exposure.rstrip(',')
-    channels = channels.rstrip(',')
-    combined_header['EXPOSURE'] = (exposure, 'Exposure times [s]')
-    combined_header['CHANNELS'] = (channels, 'Instrument channels')
-
+        channels_string = ','.join(channels)
+        channel_idx = combined_header.index('CHANNEL')
+        combined_header.insert(channel_idx, ('CHANNELS', channels_string, 'Instrument channels'))
+        del combined_header['CHANNEL']
+    except Exception as e:
+        print(f"[WARNING] Combining headers failed: {e}")
+        print(f'Returning the first header.')
+        headers[0]
     
     return combined_header
 
@@ -855,9 +843,6 @@ def convert_to_float64(hdul: HDUList) -> HDUList:
             hdu.data = hdu.data.astype(np.float64)
             if 'BITPIX' in hdu.header:
                 hdu.header['BITPIX'] = -64
-            print(f'HDU[{i}] data converted to float64')
-        else:
-            print(f'HDU[{i}] skipped float64 conversion')
     return hdul
 
 def convert_to_float32(hdul: HDUList) -> HDUList:
@@ -867,9 +852,6 @@ def convert_to_float32(hdul: HDUList) -> HDUList:
             hdu.data = hdu.data.astype(np.float32)
             if 'BITPIX' in hdu.header:
                 hdu.header['BITPIX'] = -32
-            print(f'HDU[{i}] data converted to float32')
-        else:
-            print(f'HDU[{i}] skipped float32 conversion')
     return hdul
 
 def extract_cds(image: np.ndarray) -> Tuple[np.ndarray, List[List[int]]]:

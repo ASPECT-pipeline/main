@@ -49,8 +49,6 @@ def main_pipeline():
     if '2' in pipeline_steps:
         print(f'Executing pipeline level 2')
         level_2_output = main_calibration.pipeline_level_02(input_dir=level_2_input, output_dir=output_dir, instrument=instru)
-        print(f'Pipeline level 2 completed')
-        print(level_2_output)
         level_3_input = level_2_output
     else: 
         level_3_input = next(level_2_input.glob("*_2B.fits"), None)

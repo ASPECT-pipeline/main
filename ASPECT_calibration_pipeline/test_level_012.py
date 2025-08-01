@@ -81,25 +81,28 @@ def read_fits_file(path, visualise = False):
             print(f'Header for HDU {i}')
             print(repr(h))
 
-            if visualise:
-                if isinstance(hdu, fits.ImageHDU):
-                    print(f'data type: {type(hdu.data)}')
-                    print(f'pixel 250, 250: {hdu.data[250][250]}')
-                    print(f'pixel type 250, 250: {type(hdu.data[250][250])}')
-                    plt.imshow(hdu.data, cmap='gray')
-                    plt.show()
+            # if isinstance(hdu, fits.ImageHDU):
+                # print(f"Min: {hdu.data[11].min()}")
+                # print(f"Max: {hdu.data[11].max()}")
+                # print(f'data[4][250][250]: {hdu.data[4][250][250]}')
+                
+
             if visualise:
                 if isinstance(hdu, fits.ImageHDU):
                     print("→ This is an ImageHDU")
                     print(f'data type: {type(hdu.data)}')
                     for i, frame in enumerate(hdu.data):
+                        print(f'frame: {i}')
+                        print(f"Min: {frame.min()}")
+                        print(f"Max: {frame.max()}")
                         print(f'points from frame {i}')
                         print(f'(250, 250): {frame[250][250]}')
                         print(f'(10, 150): {frame[10][150]}')
                         print(f'(300, 300): {frame[300][300]}')
-                        plt.imshow(frame, cmap='gray')
-                        plt.title(f'frame: {i}')
-                        plt.show()
+                        if i % 5 == 0:
+                            plt.imshow(frame, cmap='gray')
+                            plt.title(f'frame: {i}')
+                            plt.show()
                 elif isinstance(hdu, fits.BinTableHDU):
                     if i == 1:
                         print("→ This is a Binary Table HDU")
@@ -166,9 +169,9 @@ def visualise_fits(fitsPath, visualise:bool = True, spect:bool = True):
                     print(f'vis bg: {data[0, 490, 585]}')
                     print(f'nir bg: {data[12, 490, 585]}')
 
-                    vis_wl = [int(w.strip()) for w in header['VIS_WL'].split(',')]
-                    nir1_wl = [int(w.strip()) for w in header['NIR1_WL'].split(',')]
-                    nir2_wl = [int(w.strip()) for w in header['NIR2_WL'].split(',')]
+                    vis_wl = [int(w.strip()) for w in header['0_WL'].split(',')]
+                    nir1_wl = [int(w.strip()) for w in header['1_WL'].split(',')]
+                    nir2_wl = [int(w.strip()) for w in header['2_WL'].split(',')]
                     nir_wl = nir1_wl + nir2_wl
                     all_wavelengths = vis_wl + nir1_wl + nir2_wl
                     spectra = np.array(spectra)
@@ -313,7 +316,7 @@ def readBinfile(filePath, channel):
             print(f"Read {len(binaryData)} bytes")
             imageArray = np.frombuffer(binaryData, dtype='>u2')
             print(imageArray)
-
+            return
 
     # print(f"height: {height} \nwidht: {width}")
 
@@ -329,12 +332,12 @@ def readBinfile(filePath, channel):
             binaryData = file.read()
             print(f"Read {len(binaryData)} bytes")
 
-            imageArray = np.frombuffer(binaryData, dtype='>u2')
+            imageArray = np.frombuffer(binaryData, dtype='<u2')
             imageArray = imageArray.reshape((height, width))
             print(f"Min: {imageArray.min()}")
             print(f"Max: {imageArray.max()}")
 
-            print(f'(0,0): {imageArray[0][0]}')
+            print(f'(254,255): {imageArray[255][254]}')
             print(f'(3,150): {imageArray[3][150]}')
             print(f'(8,1): {imageArray[8][1]}')
             print(f'(346,647): {imageArray[346][647]}')
@@ -601,10 +604,10 @@ def test_diff_decoding(input: str, output:str, diff:str, dtype: str = "<u2",):
 
     print(f'all files decoded')
 
-def try_read_cds():
-    readBinfile(decompressed , 'NIR')
+def try_read_cds(bin, fits):
+    readBinfile(bin , 'NIR')
 
-    with fits.open(aspect_fly_fits_nir1) as hdul:
+    with fits.open(fits) as hdul:
         bintable = hdul[2].data
         print()
         print(utilities.read_cds(bintable['NIR1_0'][0], 0, 0 ,1))
@@ -630,7 +633,7 @@ def replace_header_values_with_unk(fits_path: Union[str, os.PathLike], keys_to_r
             for key in keys_to_replace:
                 if key in header:
                     comment = header.comments[key]
-                    header[key] = ('UNK', comment)
+                    header[key] = ('N/A', comment)
         hdul.flush()  # Write changes to disk
 
 def replace_header_value_with_custom(fits_path: Union[str, os.PathLike], key_to_replace: str, value, comment: Union[None, str]) -> None:
@@ -840,7 +843,6 @@ def remove_header_entries(fits_path: Union[str, os.PathLike], keys: List[str], h
                 del header[key]
         hdul.flush()
         
-
 def test_mgm(data):
     # strength, center, std
     # initGuess = [[0.3, 0.94, 0.11], [0.5, 1.12, 0.11], [0.3, 1.32, 0.09], [0.2, 2.14, 0.19]]
@@ -854,7 +856,6 @@ def test_mgm(data):
     print(result)
     figure = mgm.plot(dat, result)
     show_mgm_figures(figure)
-
 
 def create_2d_fits(fits_path, index, output_dir, name):
 
@@ -882,20 +883,28 @@ Function calls after this
 
 # test_spice_metadata()
 
-# replace_header_values_with_unk(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), ['VIS_O', 'NIR1_O', 'NIR2_O', 'VIS_SP1', 'VIS_SP2', 'VIS_SP3', 'NIR1_SP1', 'NIR1_SP2', 'NIR1_SP3', 'NIR2_SP1', 'NIR2_SP2', 'NIR2_SP3'])
-# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B_705nm.fits'), 'VIS_WL', '705', None)
-# insert_header_entry(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), 'N2_FRAME', '000,001,002,003,004,005,006,007,008,009,010,011,012', 'NIR2 frames',21,1)
-# remove_header_entries(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B_705nm.fits'),['NIR1_WL', 'NIR2_WL'],1)
+# replace_header_values_with_unk(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits'), ['0_SP1', '0_SP2', '0_SP3', '1_SP1', '1_SP2', '1_SP3', '2_SP1', '2_SP2', '2_SP3', '0_ORDER', '1_ORDER', '2_ORDER'])
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits'), '0_CCDTMP', 'N/A', "Detector temp [K] ('N/A' [C])")
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits'), '0_FPI1', 'N/A', "FPI1 temp [K] ('N/A' [C])")
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits'), '0_FPI2', 'N/A', "FPI2 temp [K] ('N/A' [C])")
 
-# read_fits_file(os.path.join(os.path.join(os.getcwd(), 'test_data/test_output/ASPECT_simulated/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')), False)
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autoseq_20240809/503/AS0_000000_240813T131257_1B.fits'), False)
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_0A.fits'), '0_CCDTMP', 'N/A', "Detector temp [DNs] ")
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_0A.fits'), '0_FPI1', 'N/A', "FPI temperature 1")
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_0A.fits'), '0_FPI2', 'N/A', "FPI temperature 2")
+
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits'), 'OBSERVPH', 'simulated', None)
+
+# remove_header_entries(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B_705nm.fits'),['1_SP1', '1_SP2', '1_SP3', '2_SP1', '2_SP2', '2_SP3', '1_ORDER', '2_ORDER', '1_EXPOS', '2_EXPOS', '1_FPI1', '1_FPI2', '2_FPI1', '2_FPI2', '1_WL', '2_WL', '1_CCDTMP', '2_CCDTMP', '1_FRAMES', '2_FRAMES'], 1)
+
+
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/104/ASP_000000_200101T014800_2B.fits'), False)
 
 # read_fits_file(os.path.join(os.getcwd(), 'test_data/AFC/AF1_0EGDH4_250401T103140_1B.fits'), False)
-# visualise_fits(simulated_output_ASP, visualise=True, spect=True)
+visualise_fits(simulated_output_ASP, visualise=True, spect=True)
 # update_fits_exposure(simulated_output_vis, 0.01)
 # update_fits_wl(simulated_output_vis)
 
-readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin'), 'VIS')
+# readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_104/acq_000_decompressed/dc_2_exp_000.bin'), 'NIR')
 
 # read_bin_dir(decoded_binaries)
 # print(test_decoding(autoseq_encoded_vis0, autoseq_decoding_ouput, autoseq_decoded_vis0))
@@ -903,14 +912,15 @@ readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/ac
 # test_diff_decoding(autoseq_505_in,autoseq_505_out,autoseq_505_offsets)
 # utilities.rename_bin_files(simulated_dir)
 
-file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
-# file_b = os.path.join(autoseq_dir, 'acqseq_501/acq_000_diff_decoded/VIS_decoded_003.bin')
-file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
-# compare_bin_images(file_a, file_b, True, 11, (512, 640), visualize=True)
+# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_autoseq_20240809/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
+# file_a = os.path.join(autoseq_dir, 'acqseq_501/acq_000_diff_decoded/VIS_decoded_003.bin')
+file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_102/acq_000_decompressed/dc_0_exp_001.bin')
+file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/102/AS0_000000_200101T014553_1B.fits'))
+# compare_bin_images(file_a, file_b, True, 1, (1024, 1024), visualize=True)
 
 # create_2d_fits(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), 2, os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen'),'ASP_000000_270323T060000_2B_705nm.fits')
 
-# try_read_cds()
+# try_read_cds(os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_104/acq_000_decompressed/dc_1_exp_000.bin'), os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/104/ASP_000000_200101T014800_2B.fits'))
 # inspect_pipeline_results(simulated_output_ASP, simulated_output_vis, simulated_output_nir1, simulated_vis, simulated_nir1)
 
 

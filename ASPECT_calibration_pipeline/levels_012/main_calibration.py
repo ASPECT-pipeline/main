@@ -84,11 +84,13 @@ def calibration_pipeline(
         )
     
     print(f'New fits file created: {fits_file}')
+    print(f'---------- LEVEL 0 COMPLETED ----------')
 
     # Process the calibration steps
 
     fits_file = calibrateHeader.calibrate_header(fits_file, output_dir)
     print(f'New fits file created: {fits_file}')
+    print(f'---------- LEVEL 1A COMPLETED ----------')
 
     fits_file = Path(fits_file)
 
@@ -128,10 +130,11 @@ def calibration_pipeline(
 
         hdul = utilities.convert_to_float32(hdul)
 
-    # create the new fits file with dark-subtracted images
+    # create the new fits
     fits_file = Path(output_dir) / file_name
     hdul.writeto(fits_file, overwrite=True)
     print(f'New fits file created: {fits_file}')
+    print(f'---------- LEVEL 1B COMPLETED ----------')
 
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
@@ -225,5 +228,6 @@ def pipeline_level_02(input_dir: str | Path, output_dir: str | Path, instrument:
             print(f'Skipping malformed filename: {file.name}')
 
     combined_fits_file = mergeFits.merge_fits_files(files=files_to_be_combined, output_dir=output_dir)
-
+    print(f'New fits file created: {combined_fits_file}')
+    print(f'---------- LEVEL 2B COMPLETED ----------')
     return combined_fits_file

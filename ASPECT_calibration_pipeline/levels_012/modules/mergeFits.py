@@ -44,7 +44,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
         (str): path to the created FITS file
     """
     if not files:
-        print(f"Parameter 'files: List[str | Path]' is empty in combine_fits_files()")
+        print(f"[WARNING] Files list empty in merge_fits_files. \nThe input directory should contain atleast two files ending with '_1B.fits'. To create them execute pipeline level 1 before level 2 or rename files.")
         return None
     
     output_dir = Path(output_dir)

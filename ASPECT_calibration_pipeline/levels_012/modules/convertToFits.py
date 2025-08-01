@@ -73,13 +73,8 @@ def convert_to_fits(
         primary_header.append((key, value, comment))
     
     # Append instrument metadata
-    instrument_metadata = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, config_path=config_path, channel=channel, object=object)
+    instrument_metadata = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, object=object)
     for key, (value, comment) in instrument_metadata.items():
-        primary_header.append((key, value, comment))
-
-    # Append instrument specific metadata
-    instrument_specific_metadata = utilities.collect_instrument_specific_metadata(telemetry_path=telemetry_path, config_path=config_path, channel=channel)
-    for key, (value, comment) in instrument_specific_metadata.items():
         primary_header.append((key, value, comment))
 
     # Append spice kernel metadata
@@ -94,7 +89,6 @@ def convert_to_fits(
 
     # Add comments to help the readability
     primary_header.insert('OBSTARGT',('COMMENT', ' - - - - - - - - Instrument data - - - - - - - - '), after=True)
-    primary_header.insert('ERRORFLG',('COMMENT', ' - - - - - - - - Instrument specific data - - - - - - - - '), after=True)
     primary_header.insert('SPICE_MK',('COMMENT', ' - - - - - - - - SPICE data - - - - - - - - '), after=False)
     primary_header.insert('SOL_ELNG',('COMMENT', ' - - - - - - - - Calibration specific data - - - - - - - - '), after=True)
     
@@ -129,7 +123,7 @@ def convert_to_fits(
                 value = np.int32(value)
             except Exception as e:
                 raise IOError(f"Error reading binary file {file_path}: {e}") from e
-            col = fits.Column(name=f'SWIR_{i}', format='J', array=[value]) # J for 32-bit, I for 16-bit integers
+            col = fits.Column(name=f'SWIR_{i}', format='E', array=[value]) # J for 32-bit, I for 16-bit integers
             cols.append(col)
 
         # Create binary table
@@ -160,9 +154,9 @@ def convert_to_fits(
             if bin_file.endswith(".jp2"):
                 decompressed_output_dir = Path(dir_path) / 'acq_000_decompressed'
                 decompressed_output = utilities.decompress_jp2(file_path, decompressed_output_dir)
-                array = np.fromfile(decompressed_output, dtype='<u2').reshape((height, width)) # big-endian 16-bit unsigned
+                array = np.fromfile(decompressed_output, dtype='<u2').reshape((height, width)) # little-endian 16-bit unsigned
             else:
-                array = np.fromfile(file_path, dtype='<u2').reshape((height, width)) # big-endian 16-bit unsigned
+                array = np.fromfile(file_path, dtype='<u2').reshape((height, width)) # little-endian 16-bit unsigned
 
             image_data.append(array)
 
@@ -186,13 +180,16 @@ def convert_to_fits(
         hdu = fits.ImageHDU(data_cube)
     # Add metadata to fits extension header
 
+    frame_number_string = ','.join(frame_numbers)
     data_header = hdu.header
-    image_data = utilities.collect_image_metadata(config_path, channel)
+    image_data = utilities.collect_image_metadata(telemetry_path=telemetry_path, config_path=config_path, channel=channel, frame_number_string=frame_number_string)
     for key, (value, comment) in image_data.items():
-        data_header.append((key, value, comment))
+        card_length = len(key) + len(value) + len(comment) + 4
+        if card_length <= 80:
+            data_header.append((key, value, comment))
+        else:
+            data_header.append((key, value, ''))
     
-    frame_number_list = ','.join(frame_numbers)
-    data_header.append(('FRAMES', frame_number_list, 'Acquisition frames'))
     HDUs.insert(0, primary_hdu) # insert the primary HDU to first
     HDUs.append(hdu) # append the data HDUx
     # Create a FITS file 
