@@ -17,34 +17,33 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
 
 
     # Data from fits file
-    primary_hdu = hdul[0]
-    primary_header = primary_hdu.header
-    img_HDU = hdul[1] # Contains the image cube (or swir readings)
-    img_data = img_HDU.data
-    img_header = img_HDU.header # Image HDU header
-    channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
+    hdu = hdul[0]
+    header = hdu.header
+    data = hdu.data
+    channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
     
     # This step is not done to SWIR images
-    if channel == 'SWIR':
-        return hdul
-    else:
-        width = img_header.get('NAXIS1')
-        height = img_header.get('NAXIS2')
+    try:
+        if channel == 'SWIR':
+            return hdul
+        else:
+            width = header.get('NAXIS1')
+            height = header.get('NAXIS2')
 
-        # Place holder flatfield array
-        # This should be replaced wiht the correct flatfield used for the imager.
-        flatField = np.ones((height, width), dtype=hdul[1].data.dtype)
+            # Place holder flatfield array
+            # This should be replaced wiht the correct flatfield used for the imager.
+            flatField = np.ones((height, width), dtype=hdul[0].data.dtype)
 
-        # To store the calibrated datacube
-        new_data_cube = img_HDU.data.astype(np.float64, copy=True)
+            # To store the calibrated datacube
+            new_data_cube = hdu.data.astype(np.float64, copy=True)
 
-        # loop over the 2D images inside the extension
-        for i, image in enumerate(img_data):
-            # Divide the image with the flatfield 
-            new_data_cube[i] = image / flatField
-        
-    
-        image_HDU = fits.ImageHDU(data=new_data_cube, header=img_header)
-        hdul[1] = image_HDU
-
+            # loop over the 2D images inside the extension
+            for i, image in enumerate(data):
+                # Divide the image with the flatfield 
+                new_data_cube[i] = image / flatField
+            
+            data = new_data_cube
+            return hdul
+    except Exception as e:
+        print(f'[WARNING] Flat field failed: {e}')
         return hdul

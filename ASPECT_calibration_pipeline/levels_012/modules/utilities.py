@@ -50,7 +50,7 @@ def verify_directory_path(p: str | Path) -> Path:
 
     return path
 
-def verify_acquisition_directory(p: Path) -> Tuple[Path, Path, Path, Path]:
+def verify_acquisition_directory(p: Path) -> Path:
     """
     Verifies that the given acquisition directory contains:
      - a 'meta' subdirectory with 'telemetry.json' and 'config.json'
@@ -60,7 +60,7 @@ def verify_acquisition_directory(p: Path) -> Tuple[Path, Path, Path, Path]:
         p (Path): Path to the acquisition directory.
 
     Returns:
-        Tuple[Path, Path, Path, Path]: Paths to (acq_dir, meta_dir, telemetery_file, and config_file)
+        Path to acq_dir
 
     Raises:
         ValueError: If any expected subdirectory or file is missing
@@ -75,10 +75,7 @@ def verify_acquisition_directory(p: Path) -> Tuple[Path, Path, Path, Path]:
     if not acq_dirs:
         raise ValueError(f"No subsirectory starting with 'acq_' found in {p}")
     if len(acq_dirs) > 1:
-        warnings.warn(
-            f"Multiple 'acq_' directories found in {p}. Using the first one: {acq_dirs[0].name}\nModify convertToFits and utilities/verify_acquisition_directory to handle more acquisitions at once",
-            category=UserWarning
-        )
+            print(f"[WARNING] Multiple 'acq_' directories found in {p}. Using the first one: {acq_dirs[0].name}")
     acq_dir = acq_dirs[0]
 
     meta_dir = p / 'meta'
@@ -93,7 +90,34 @@ def verify_acquisition_directory(p: Path) -> Tuple[Path, Path, Path, Path]:
     if not config_file.is_file():
         raise ValueError(f"Missing 'config.json' in: {meta_dir}")
     
-    return(acq_dir, meta_dir, telemetry_file, config_file)
+    return acq_dir
+
+def get_acq_tel_con(p: Path) -> Tuple[Path, Path, Path]:
+    """
+    Gets the acquistion directory, telemetry JSON and config JSON
+
+    Parameters: 
+        p (Path): Path to the acquisition directory.
+
+    Returns:
+        Tuple[Path, Path, Path]: Paths to (acq_dir, telemetery_file, and config_file)
+
+    Raises:
+        ValueError: If any expected subdirectory or file is missing
+    """
+    try:
+        acq_dirs = sorted(
+            [d for d in p.iterdir() if d.is_dir() and d.name.startswith('acq_')]
+        )
+        acq_dir = acq_dirs[0]
+        meta_dir = p / 'meta'
+
+        telemetry_file = meta_dir / 'telemetry.json'
+        config_file = meta_dir / 'config.json'
+        return(acq_dir, telemetry_file, config_file)
+    except Exception as e:
+        raise ValueError(f'Error while retrieving the acquisition directory: {e}')
+
 
 def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
     """
@@ -190,124 +214,60 @@ def form_fits_name(channel: str, image_number: str, utc_time: str, calib_lvl: st
     file_name = f'AS{asp_id}_{image_number}_{utc_format}_{calib_lvl}.fits'
     return file_name
 
-def collect_primary_metadata(
-        swcreate: str, 
-        orig_file: str, 
-        missphas: str, 
-        observph: str, 
-        obstargt: str
-    ) -> Dict[str, Tuple[str, str]]:
-    """
-    Generates the high level FITS metadata headers for primary HDU
-
-    Parameters:
-        swcreate (str): Software id 
-        orig_file (str): original filename
-        missphas (str): mission phase ID
-        observph (str): Observation ID
-        obstargt (str): observation target
-    Returns: 
-        Dict[header_keyword, Tuple(value, comment)]
-    """
-    date = get_current_utc_time_str()
-
+def get_header_template() -> Dict[str, Tuple[str, str]]: 
     metadata = {
-        'INSTRUME' : ('ASPECT', 'Camera ID'),
-        'ORIGIN'   : ('ESA-HERA', ''),
-        'DATE'     : (date, 'UTC time of file creation'),
-        'FILENAME' : ('', 'Name of the actual fits file'), # generated later by form_fits_name. needs sc clock count.
-        'SWCREATE' : (swcreate, 'Software identification'),
-        'ORIGFILE' : (orig_file, 'Original file name.'),
-        'PROCLEVL' : ('0', 'Calibration level'),
-        'MISSPHAS' : (missphas, 'HERA Mission Phase ID'),
-        'OBSERVPH' : (observph, 'HERA Observation ID'),
-        'OBSTARGT' : (obstargt, 'Observation target'),
+        'INSTRUME'  : ('UNK', 'Camera ID'),
+        'ORIGIN'    : ('UNK', ''),
+        'DATE'      : ('UNK', 'UTC time of file creation'),
+        'FILENAME'  : ('UNK', 'Name of the actual fits file'),
+        'SWCREATE'  : ('UNK', 'Software identification'),
+        'ORIGFILE'  : ('UNK', 'Original file name.'),
+        'PROCLEVL'  : ('UNK', 'Calibration level'),
+        'MISSPHAS'  : ('UNK', 'HERA Mission Phase ID'),
+        'OBSERVPH'  : ('UNK', 'HERA Observation ID'),
+        'OBSTARGT'  : ('UNK', 'Observation target'),
+        'DATE-OB'   : ('UNK', 'UTC time of observation'),
+        'OBJECT'    : ('UNK', 'Observation object'),
+        'SC_CLK'    : ('UNK', 'SC clock Hera instrument format'),
+        'SPICE_MK'  : ('UNK', 'SPICE metakernel'),
+        'SPICEVER'  : ('UNK', 'SPICE dataset version'),
+        'SPICECLK'  : ('UNK', 'SC clock SPICE format'),
+        'SUN_POSX'  : ('UNK', 'Sun position vector X [km]'),
+        'SUN_POSY'  : ('UNK', 'Sun position vector Y [km]'),
+        'SUN_POSZ'  : ('UNK', 'Sun position vector Z [km]'),
+        'SOLAR_D'   : ('UNK', 'Solar distance'),
+        'EARTPOSX'  : ('UNK', 'Earth position vector X [km]'),
+        'EARTPOSY'  : ('UNK', 'Earth position vector Y [km]'),
+        'EARTPOSZ'  : ('UNK', 'Earth position vector Z [km]'),
+        'EARTH_D'   : ('UNK', 'Earth distance'),
+        'TARGET'    : ('UNK', 'Observation target'),
+        'TRG_POSX'  : ('UNK', 'Target position vector X [km]'),
+        'TRG_POSY'  : ('UNK', 'Target position vector Y [km]'),
+        'TRG_POSZ'  : ('UNK', 'Target position vector Z [km]'),
+        'TRG_DIST'  : ('UNK', 'Target distance'),
+        'SC_QUATW'  : ('UNK', 'Spacecraft quaternion (W)'),
+        'SC_QUATX'  : ('UNK', 'Spacecraft quaternion (X)'),
+        'SC_QUATY'  : ('UNK', 'Spacecraft quaternion (Y)'),
+        'SC_QUATZ'  : ('UNK', 'Spacecraft quaternion (Z)'),
+        'CAM_RA'    : ('UNK', 'Camera axis RA [deg]'),
+        'CAM_DEC'   : ('UNK', 'Camera axis DEC [deg]'),
+        'CAM_NAZ'   : ('UNK', 'Camera axis north azimuth [deg]'),
+        'SOL_ELNG'  : ('UNK', 'Solar elongation'),
+        'CALPHASE'  : ('RAW', 'Calibration phase'),
+        'CHANNELS'  : ('UNK', 'Channels in this file'),
+        '0_CCDTMP' : ('UNK', 'VIS detector temperature [DN]'),
+        '0_FPI1'    : ('UNK', 'VIS FPI 1 temperature [DN]'),
+        '0_FPI2'    : ('UNK', 'VIS FPI 2 temperature [DN]'),
+        '1_CCDTMP' : ('UNK', 'NIR1 detector temperature [DN]'),
+        '1_FPI1'    : ('UNK', 'NIR1 FPI 1 temperature [DN]'),
+        '1_FPI2'    : ('UNK', 'NIR1 FPI 2 temperature [DN]'),
+        '2_CCDTMP' : ('UNK', 'NIR2 detector temperature [DN]'),
+        '2_FPI1'    : ('UNK', 'NIR2 FPI 1 temperature [DN]'),
+        '2_FPI2'    : ('UNK', 'NIR2 FPI 2 temperature [DN]'),
+        '3_CCDTMP' : ('UNK', 'SWIR detector temperature [DN]'),
+        '3_FPI1'    : ('UNK', 'SWIR FPI 1 temperature [DN]'),
+        '3_FPI2'    : ('UNK', 'SWIR FPI 2 temperature [DN]'),
     }
-
-    return metadata
-
-def collect_instrument_metadata(
-        telemetry_path: Path, 
-        channel: str,
-        object: str
-    ) -> Dict[str, Tuple[str, str]]:
-    """
-    Collects instrument metadata.
-
-    Parameters:
-        telemetry_path (Path): Path object to the telemetry file
-        channel (str): Channel information to look for
-        object (str): Name for the observed object
-    
-    Returns:
-         Dict[header_keyword, Tuple(value, comment)]
-    """
-    metadata = {
-        'DATE-OB' : ('UNK', 'UTC time of observation'),
-        'OBJECT': (object, 'Observation object'),
-        'SC_CLK': ('UNK', 'SC clock Hera instrument format'),
-        'ERRORFLG': ('UNK', 'Error flags for instrument')
-    }
-
-    # Load telemetry file
-    try:
-        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
-        return metadata
-    
-    # DATE-OB
-    try:
-        acq_date = telemetry_data.get('ACQ_DATE', None)
-        if acq_date:
-            dt = datetime.strptime(acq_date, "%a %b %d %H:%M:%S %Y")
-            metadata['DATE-OB'] = (dt.strftime("%Y-%m-%dT%H:%M:%S.000"), 'UTC time of observation')
-        else:
-            print(f"[WARNING] 'ACQ_DATE' missing in telemetry file.")
-    except Exception as e:
-        print(f"[WARNING] Failed to parse 'ACQ_DATE': {e}")
-
-    # Channel specific telemetry
-    channel_specific_telemetry = telemetry_data.get(channel, {})
-
-    try: 
-        fault = channel_specific_telemetry['FAULT']
-        metadata['ERRORFLG'] = (fault, 'Error flags for instrument')
-    except KeyError:
-        print(f"[WARNING] 'FAULT' missing for channel '{channel}' in telemetry.")
-
-    return metadata
-    
-def collect_instrument_specific_metadata(
-        telemetry_path: Path, 
-        config_path: Path, 
-        channel: str,
-    ) -> Dict[str, Tuple[str, str]]:
-    """
-    Collects instrument specific metadata.
-
-    Parameters:
-        telemetry_path (Path): Path object to the telemetry file
-        config_path (Path): Path object to the config file
-        channel (str): Channel information to look for
-    
-    Returns:
-        Dict[header_keyword, Tuple(value, comment)]
-    """
-
-    metadata = {}
-    try:
-        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
-        return metadata
-    
-    try: 
-        config_data = json.loads(config_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
-
-    #### Impelement here the ASPECT specific metadata
 
     return metadata
 
@@ -428,21 +388,160 @@ def collect_spice_metadata(
 
     return spice_metadata
 
-def collect_calibration_metadata() -> Dict[str, Tuple[str, str]]:
+def check_order(sp: float, channel: str) -> str:
     """
-    Collects instrument specific metadata.
+    Checks the order of the acquisition. The order is either high or low based on the third frame's setpoint reading.
 
     Parameters:
+        sp (float): Setpoint value
+        channel (str): channel name
     
+    Returns: 
+        str: high / low 
+    """
+    match channel:
+        case 'VIS' | 'NIR1':
+            if sp > 19000:
+                return 'HIGH'
+            else:
+                return 'LOW'
+        case 'NIR2':
+            if sp > 20000:
+                return 'HIGH'
+            else:
+                return 'LOW'
+        case 'SWIR':
+            return ''
+
+def collect_instrument_metadata(telemetry_path: Path, channel: str) -> Dict[str, str]:
+    """
+    Collect image specific metadata
+
+    Parameters: 
+        telemetry_path (Path): Path object to the telemetry JSON file
+        channel (str): Instrument channel
+
     Returns:
         Dict[header_keyword, Tuple(value, comment)]
     """
+    meta_data = {}
+    meta_data['CHANNELS'] = channel
 
-    metadata = {}
+    channels = list(reverse_channel_map.keys())
+    # Load telemetry file
 
-    #### Impelement here the ASPECT calibration
+    try:
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+        channel_specific_telemetries = {
+            channel: telemetry_data.get(channel, {})
+            for channel in channels
+        }
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
 
-    return metadata
+    try:
+        acq_date = telemetry_data.get('ACQ_DATE', None)
+        if acq_date:
+            dt = datetime.strptime(acq_date, "%a %b %d %H:%M:%S %Y")
+            meta_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+        else:
+            print(f"[WARNING] 'ACQ_DATE' missing in telemetry file.")
+    except Exception as e:
+        print(f"[WARNING] Failed to parse 'ACQ_DATE': {e}")
+
+    for ch in channels:
+        channel_specific_telemetry = channel_specific_telemetries[ch]
+        ch_id = reverse_channel_map[ch]
+        try: 
+            det_temp = channel_specific_telemetry['DET_TEMP']
+            meta_data[f'{ch_id}_CCDTMP'] = str(det_temp)
+        except KeyError:
+            print(f"[WARNING] 'DET_TEMP' missing for channel '{ch}' in telemetry.")
+            meta_data[f'{ch_id}_CCDTMP'] = 'UNK'
+        try:
+            fpi_temp1 = channel_specific_telemetry['FPI_TEMP1']
+            meta_data[f'{ch_id}_FPI1'] = str(fpi_temp1)
+        except KeyError:
+            (f"[WARNING] FPI temperature 1 missing for channel '{ch}'.")
+            meta_data[f'{ch_id}_FPI1'] = 'UNK'
+        try:
+            fpi_temp2 = channel_specific_telemetry['FPI_TEMP2']
+            meta_data[f'{ch_id}_FPI2'] = str(fpi_temp2)
+        except KeyError:
+            (f"[WARNING] FPI temperature 2 missing for channel '{ch}'.")
+            meta_data[f'{ch_id}_FPI2'] = 'UNK'
+
+    return meta_data
+
+def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_number_string: str) -> Dict[str, Tuple[str, str]]:
+    """
+    Collect instrument specific metadata from config.json file. 
+    This includes Exposure times and setpoint values. Also calculate the order of acquisition.
+
+    Parameters: 
+        config_path (Path): Path object to the config JSON file
+        channel (str): Instrument channel
+        frame_number_string (str): All frame numebr e.g. '000', '001' as a comma-separated string.
+
+    Returns:
+        Dict[key, (value, comment)]
+    """
+
+    meta_data = {}
+    channel_id = reverse_channel_map[channel]
+    meta_data[f'{channel_id}_FRAMES'] = (frame_number_string, f'{channel} frames')
+
+    try: 
+        config_data = json.loads(config_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
+
+    #read SP values for each image
+    try:
+        match channel:
+            case 'VIS':
+                taskFile = config_data['visTaskFile']
+            case 'NIR1':
+                taskFile = config_data['nir1TaskFile']
+            case 'NIR2':
+                taskFile = config_data['nir2TaskFile']
+            case 'SWIR':
+                taskFile = config_data['swirTaskFile']
+    except KeyError as e:
+        print(f"[WARNING] Missing task file entry for channel '{channel}' in config.json'")
+
+    try:
+        #Extract sp values from taskValues
+        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
+        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
+        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
+        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
+        #Extract exposure times
+        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
+        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
+        sp1 = ','.join(str(x) for x in sp1Values)
+        sp2 = ','.join(str(x) for x in sp2Values)
+        sp3 = ','.join(str(x) for x in sp3Values)
+        #Check the order based on SP1 index 3
+        if len(sp1Values) > 3:
+            order = check_order(sp1Values[3], channel)
+        else:
+            print(f"[WARNING] Not enough Setpoint values to determine order.")
+            order = 'UNK'
+
+    except Exception as e:
+        print(f'[WARNING] Failed to parse task file values: {e}')
+        sp1 = sp2 = sp3 = 'UNK'
+        exposureTimes = 'UNK'
+        order = 'UNK'
+    
+    meta_data[f'{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
+    meta_data[f'{channel_id}_EXPOS'] = (str(exposureTimes), f'{channel} Exposure time(s) [DN]')
+    meta_data[f'{channel_id}_SP1'] = (str(sp1), f'{channel} setpoints 1 [DN]')
+    meta_data[f'{channel_id}_SP2'] = (str(sp2), f'{channel} setpoints 2 [DN]')
+    meta_data[f'{channel_id}_SP3'] = (str(sp3), f'{channel} setpoints 3 [DN]')
+
+    return meta_data
 
 def decompress_jp2(input_path: str | Path, output_dir: str | Path) -> Path:
     """
@@ -514,129 +613,7 @@ def diff_decode(image_cube: np.ndarray, offsets: list[int], output_dir: str, cha
 
     return decoded_cube
 
-def check_order(sp: float, channel: str) -> str:
-    """
-    Checks the order of the acquisition. The order is either high or low based on the third frame's setpoint reading.
-
-    Parameters:
-        sp (float): Setpoint value
-        channel (str): channel name
-    
-    Returns: 
-        str: high / low 
-    """
-    match channel:
-        case 'VIS' | 'NIR1':
-            if sp > 19000:
-                return 'HIGH'
-            else:
-                return 'LOW'
-        case 'NIR2':
-            if sp > 20000:
-                return 'HIGH'
-            else:
-                return 'LOW'
-        case 'SWIR':
-            return ''
-
-# Read metadata from config file
-def collect_image_metadata(telemetry_path: Path, config_path: Path, channel: str, frame_number_string: str) -> Dict[str, Tuple[str, str]]:
-    """
-    Collect image specific metadata
-
-    Parameters: 
-        config_path (Path): Path object to the config file
-        channel (str): Instrument channel
-
-    Returns:
-        Dict[header_keyword, Tuple(value, comment)]
-    """
-    channel_id = reverse_channel_map[channel]
-    meta_data = {}
-    meta_data['CHANNEL'] = (channel, f'Instrument channel [{channel_id}]')
-    meta_data[f'{channel_id}_FRAMES'] = (frame_number_string, f'{channel} frames')
-
-    # Load telemetry file
-    try:
-        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
-        channel_specific_telemetry = telemetry_data.get(channel, {})
-    except Exception as e:
-        print(f"[WARNING] Failed to read or parse telemetry file '{telemetry_path}': {e}")
-
-    try: 
-        det_temp = channel_specific_telemetry['DET_TEMP']
-        meta_data[f'{channel_id}_CCDTMP'] = (str(det_temp), 'Detector temp [DNs]')
-    except KeyError:
-        print(f"[WARNING] 'DET_TEMP' missing for channel '{channel}' in telemetry.")
-        meta_data[f'{channel_id}_CCDTMP'] = ('UNK', 'Detector temp [DNs]')
-
-    try:
-        fpi_temp1 = channel_specific_telemetry['FPI_TEMP1']
-        meta_data[f'{channel_id}_FPI1'] = (str(fpi_temp1), 'FPI temperature 1')
-    except KeyError:
-        (f"[WARNING] FPI temperature 1 missing for channel '{channel}'.")
-        meta_data[f'{channel_id}_FPI1'] = ('UNK', 'FPI temperature 1')
-    
-    try:
-        fpi_temp2 = channel_specific_telemetry['FPI_TEMP2']
-        meta_data[f'{channel_id}_FPI2'] = (str(fpi_temp2), 'FPI temperature 2')
-    except KeyError:
-        (f"[WARNING] FPI temperature 2 missing for channel '{channel}'.")
-        meta_data[f'{channel_id}_FPI2'] = ('UNK', 'FPI temperature 2')
-    
-    try: 
-        config_data = json.loads(config_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
-    
-    #read SP values for each image
-    try:
-        match channel:
-            case 'VIS':
-                taskFile = config_data['visTaskFile']
-            case 'NIR1':
-                taskFile = config_data['nir1TaskFile']
-            case 'NIR2':
-                taskFile = config_data['nir2TaskFile']
-            case 'SWIR':
-                taskFile = config_data['swirTaskFile']
-    except KeyError as e:
-        print(f"[WARNING] Missing task file entry for channel '{channel} in config.json'")
-
-    try:
-        #Extract sp values from taskValues
-        taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
-        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
-        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
-        #Extract exposure times
-        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
-        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
-        sp1 = ','.join(str(x) for x in sp1Values)
-        sp2 = ','.join(str(x) for x in sp2Values)
-        sp3 = ','.join(str(x) for x in sp3Values)
-        #Check the order based on SP1 index 3
-        if len(sp1Values) > 3:
-            order = check_order(sp1Values[3], channel)
-        else:
-            print(f"[WARNING] Not enough Setpoint values to determine order.")
-            order = 'UNK'
-
-    except Exception as e:
-        print(f'[WARNING] Failed to parse task file values: {e}')
-        sp1 = sp2 = sp3 = 'UNK'
-        exposureTimes = 'UNK'
-        order = 'UNK'
-    
-    meta_data[f'{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
-    meta_data[f'{channel_id}_EXPOS'] = (str(exposureTimes), 'Exposuretime(s) [DNs].')
-    meta_data[f'{channel_id}_SP1'] = (str(sp1), 'Setpoint 1')
-    meta_data[f'{channel_id}_SP2'] = (str(sp2), 'Setpoint 2')
-    meta_data[f'{channel_id}_SP3'] = (str(sp3), 'Setpoint 3')
-
-    return meta_data
-
-def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
+def det_temp_conversion(value: float, channel: str) -> Tuple[str, str]:
     """
     Converts the 'DET_TEMP' entries from telemetry to Celcius and Kelvin. Not available for NIR-channels
 
@@ -649,15 +626,21 @@ def det_temp_conversion(value: float, channel: str) -> Tuple[float, float]:
     """
     match channel:
         case 'VIS':
+            if value == 0:
+                return ('UNK', 'UNK')
             c = value * 0.6522 - 295.87
-            return (c, c + kelvin)
-        case 'NIR1': return (value, value)
-        case 'NIR2': return (value, value)
+            k = c + kelvin
+            return (f'{c:.2f}', f'{k:.2f}')
+        case 'NIR1': return ('N/A', 'N/A')
+        case 'NIR2': return ('N/A', 'N/A')
         case 'SWIR':
+            if value == 0:
+                return ('UNK', 'UNK')
             c = (-6e-11) * value**3 + 3e-6 * value**2 - 0.0188 * value + 17.291
-            return (c, c + kelvin)
+            k = c + kelvin
+            return (f'{c:.2f}', f'{k:.2f}')
 
-def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[float, float]:
+def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[str, str]:
     """
     Converts the FPI temperatures to Celcius and Kelvin. Not available for VIS-channel
 
@@ -670,13 +653,16 @@ def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[float, flo
     """
     match channel:
         case 'VIS':
-            return (value, value)
+            return ('N/A', 'N/A')
         case ('NIR1' | 'NIR2' | 'SWIR'):
+            if value == 0:
+                return ('UNK', 'UNK')
             if fpi == 1:
                 c = -0.034 * value + 110.93
             else:
                 c = -0.026 * value + 81.01
-            return (c, c + kelvin)
+            k = c + kelvin
+            return (f'{c:.2f}', f'{k:.2f}')
 
 def exposure_conversion(value: float, channel: str) -> float:
     """
@@ -763,56 +749,51 @@ def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
 def combine_primary_headers(headers: list[Header]) -> Header:
     if not headers: 
         raise ValueError('No headers provided for combination')
+    if len(headers) == 1:
+        print(f"[WARNING] Only one header to combine in level 2.")
+        return headers[0]
     
     combined_header = headers[0].copy()
     combined_header['ORIGFILE'] = ('dc_X_exp_XXX.bin', 'Original file name.')
     combined_header['PROCLEVL'] = ('2B', 'Calibration level')
 
-    return combined_header
-
-def combine_image_headers(headers: List[Header]) -> Header:
-    if not headers: 
-        raise ValueError('No headers provided for combination')
-    if len(headers) == 1:
-        print(f"[WARNING] Only one header to combine in level 2.")
-        return headers[0]
-    
-    def copy_header_key(source: Header, target: Header, key: str):
+    def copy_header_key(source: Header, target: Header, key: str, id: int):
         if key in source:
             value = source[key]
             comment = source.comments[key]
-            target[key] = (value, comment)
+            if key in target:
+                target[key] = (value, comment)
+            else:
+                insert_idx = target.index(f'{id}_FPI2')
+                target.insert(insert_idx, (key, value, comment), after=True)
         else:
-            print(f"[INFO] Key '{key}' not found in source header; skipping.")
+            channel = source.get('CHANNELS')
+            print(f"[INFO] Key '{key}' not found in source '{channel}' header; skipping.")
+
     
-    combined_header = headers[0].copy()
     try:
-        channel_0 = combined_header.get('CHANNEL')
+        channel_0 = combined_header.get('CHANNELS')
         channels = [channel_0]
         for hdr in headers[1:]:
-            channel = hdr.get('CHANNEL')
+            channel = hdr.get('CHANNELS')
             channels.append(channel)
             channel_id = reverse_channel_map[channel]
-            copy_header_key(hdr, combined_header, f'{channel_id}_frames')
-            copy_header_key(hdr, combined_header, f'{channel_id}_CCDTMP')
-            copy_header_key(hdr, combined_header, f'{channel_id}_FPI1')
-            copy_header_key(hdr, combined_header, f'{channel_id}_FPI2')
-            copy_header_key(hdr, combined_header, f'{channel_id}_ORDER')
-            copy_header_key(hdr, combined_header, f'{channel_id}_EXPOS')
-            copy_header_key(hdr, combined_header, f'{channel_id}_SP1')
-            copy_header_key(hdr, combined_header, f'{channel_id}_SP2')
-            copy_header_key(hdr, combined_header, f'{channel_id}_SP3')
-            copy_header_key(hdr, combined_header, f'{channel_id}_WL')
-
+            copy_header_key(hdr, combined_header, f'{channel_id}_WL', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_SP3', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_SP2', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_SP1', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_EXPOS', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_ORDER', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_frames', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_CCDTMP', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_FPI1', channel_id)
+            copy_header_key(hdr, combined_header, f'{channel_id}_FPI2', channel_id)
         channels_string = ','.join(channels)
-        channel_idx = combined_header.index('CHANNEL')
-        combined_header.insert(channel_idx, ('CHANNELS', channels_string, 'Instrument channels'))
-        del combined_header['CHANNEL']
+        combined_header['CHANNLES'] = (channels_string, 'Instrument channels')
     except Exception as e:
         print(f"[WARNING] Combining headers failed: {e}")
         print(f'Returning the first header.')
         headers[0]
-    
     return combined_header
 
 def append_header(hdu: ImageHDU, dict: Dict[str, Any]) -> ImageHDU:
@@ -836,22 +817,26 @@ def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
     # Convert to 8-bit integer
     return normalized.astype(np.uint8)
 
-def convert_to_float64(hdul: HDUList) -> HDUList:
+def convert_to_float64(hdul: HDUList, index: int = 0) -> HDUList:
     # Replace the .data with a float64
-    for i, hdu in enumerate(hdul):
-        if hdu.data is not None and np.issubdtype(hdu.data.dtype, np.number):
-            hdu.data = hdu.data.astype(np.float64)
-            if 'BITPIX' in hdu.header:
-                hdu.header['BITPIX'] = -64
+    hdu = hdul[index]
+    if hdu.data is not None and np.issubdtype(hdu.data.dtype, np.number):
+        hdu.data = hdu.data.astype(np.float64)
+        if 'BITPIX' in hdu.header:
+            hdu.header['BITPIX'] = -64
+    else:
+        print(f'[WARNING] HDU data is None or not convertable to float64')
     return hdul
 
-def convert_to_float32(hdul: HDUList) -> HDUList:
+def convert_to_float32(hdul: HDUList, index: int = 0) -> HDUList:
     # Replace the data with a float32 
-    for i, hdu in enumerate(hdul):
-        if hdu.data is not None and np.issubdtype(hdu.data.dtype, np.number):
-            hdu.data = hdu.data.astype(np.float32)
-            if 'BITPIX' in hdu.header:
-                hdu.header['BITPIX'] = -32
+    hdu = hdul[index]
+    if hdu.data is not None and np.issubdtype(hdu.data.dtype, np.number):
+        hdu.data = hdu.data.astype(np.float32)
+        if 'BITPIX' in hdu.header:
+            hdu.header['BITPIX'] = -32
+    else:
+        print(f'[WARNING] HDU data is None or not convertable to float32')
     return hdul
 
 def extract_cds(image: np.ndarray) -> Tuple[np.ndarray, List[List[int]]]:
@@ -907,7 +892,6 @@ def read_cds(column: np.ndarray, row_inx: int, col_inx: int, count: int ) -> np.
     else:
         return column[-col_inx: col_inx + count]
     
-
 def laplacian(img: np.ndarray) -> np.ndarray:
 
     # Check if the image was loaded successfully
@@ -1011,7 +995,6 @@ def cropND(img: np.ndarray, bounding: tuple[int, int]) -> np.ndarray:
     return img[slices]
 
 
-print()
 """
 Testing functions that can be removed 
 """
@@ -1146,7 +1129,7 @@ def update_fits_exposure(path, save_as=None):
         'SWIR': 0.02
     }
     with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
-        channel = hdul[1].header.get('CHANNEL')
+        channel = hdul[0].header.get('CHANNEL')
         for hdu in hdul:
             if 'EXPOSURE' in hdu.header:
                 print(f"Old EXPOSURE: {hdu.header['EXPOSURE']}")
@@ -1167,7 +1150,7 @@ def update_fits_wl(path, save_as=None):
         'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
     }
     with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
-        channel = hdul[1].header.get('CHANNEL')
+        channel = hdul[0].header.get('CHANNEL')
         for hdu in hdul:
             if 'WAVELEN' in hdu.header:
                 print(f"Old WL: {hdu.header['WAVELEN']}")

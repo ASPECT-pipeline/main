@@ -4,7 +4,7 @@ from astropy.io import fits
 from pathlib import Path
 from typing import List, Tuple
 import levels_012.modules.utilities as utilities
-from config import spice_mk, channel_map, software, missphase, observph, target, object, sc_clock_seconds, sc_clock_offset
+from config import spice_mk, channel_map, reverse_channel_map, INSTRUME, ORIGIN, SWCREATE, MISSPHAS, OBSERVPH, OBSTARGT, OBJECT, SC_CLK, TARGET
 import json
 import re
 
@@ -54,50 +54,58 @@ def convert_to_fits(
     dir_path = Path(dir_path)
     output_dir = Path(output_dir)
 
-    acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(dir_path)
+    acq_dir, telemetry_path, config_path = utilities.get_acq_tel_con(dir_path)
 
     orig_file_name, files = channel_info
 
-    # List of HDU blocks
-    HDUs = []
-
+    
     # Primary HDU
     primary_hdu = fits.PrimaryHDU()
     primary_header = primary_hdu.header
 
-    primary_header['EXTEND'] = (True, "There are extensions following this primary HDU")
+    # Get metadata template
+    metadata_temp = utilities.get_header_template()
+    for key, (value, comment) in metadata_temp.items():
+        primary_header.append((key, value, comment))
 
-    # Append high level primary metadata
-    primary_metadata = utilities.collect_primary_metadata(swcreate=software,orig_file=orig_file_name, missphas=missphase, observph=observph, obstargt=target)
-    for key, (value, comment) in primary_metadata.items():
-        primary_header.append((key, value, comment))
-    
-    # Append instrument metadata
-    instrument_metadata = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, object=object)
-    for key, (value, comment) in instrument_metadata.items():
-        primary_header.append((key, value, comment))
+    date = utilities.get_current_utc_time_str()
+
+    # Add manual input data
+    comment = primary_header.comments['INSTRUME'] 
+    primary_header['INSTRUME'] = (INSTRUME, comment)
+    comment = primary_header.comments['ORIGIN'] 
+    primary_header['ORIGIN'] = (ORIGIN, comment)
+    comment = primary_header.comments['DATE'] 
+    primary_header['DATE'] = (date, comment)
+    comment = primary_header.comments['SWCREATE'] 
+    primary_header['SWCREATE'] = (SWCREATE, comment)
+    comment = primary_header.comments['ORIGFILE'] 
+    primary_header['ORIGFILE'] = (orig_file_name, comment)
+    comment = primary_header.comments['PROCLEVL'] 
+    primary_header['PROCLEVL'] = ('0A', comment)
+    comment = primary_header.comments['MISSPHAS'] 
+    primary_header['MISSPHAS'] = (MISSPHAS, comment)
+    comment = primary_header.comments['OBSERVPH'] 
+    primary_header['OBSERVPH'] = (OBSERVPH, comment)
+    comment = primary_header.comments['OBSTARGT'] 
+    primary_header['OBSTARGT'] = (OBSTARGT, comment)
+    comment = primary_header.comments['OBJECT'] 
+    primary_header['OBJECT'] = (OBJECT, comment)
+    comment = primary_header.comments['SC_CLK'] 
+    primary_header['SC_CLK'] = (SC_CLK, comment)
+    comment = primary_header.comments['TARGET'] 
+    primary_header['TARGET'] = (TARGET, comment)
 
     # Append spice kernel metadata
-    spice_metadata = utilities.collect_spice_metadata(telemetry_path=telemetry_path, mk=spice_mk, target=target)
+    spice_metadata = utilities.collect_spice_metadata(telemetry_path=telemetry_path, mk=spice_mk, target=TARGET)
     for key, (value, comment) in spice_metadata.items():
-        primary_header.append((key, value, comment))
-
-    # Append calibration metadata
-    calibration_metadata = utilities.collect_calibration_metadata()
-    for key, (value, comment) in calibration_metadata.items():
-        primary_header.append((key, value, comment))
-
+        primary_header[key] = (value, comment)
+    
     # Add comments to help the readability
     primary_header.insert('OBSTARGT',('COMMENT', ' - - - - - - - - Instrument data - - - - - - - - '), after=True)
     primary_header.insert('SPICE_MK',('COMMENT', ' - - - - - - - - SPICE data - - - - - - - - '), after=False)
     primary_header.insert('SOL_ELNG',('COMMENT', ' - - - - - - - - Calibration specific data - - - - - - - - '), after=True)
     
-    # Generate FITS file name 
-    utc_time = primary_header['DATE-OB']
-    image_number = utilities.sc_clock_to_base32(sc_seconds=sc_clock_seconds, offset=sc_clock_offset)
-    fits_name = utilities.form_fits_name(channel, image_number, utc_time, '0A')
-    primary_header['FILENAME'] = fits_name
-
     """
     Image data
     VIS, NIR1, NIR2 -> ImageHDU extension
@@ -105,12 +113,13 @@ def convert_to_fits(
     """
     if channel == 'SWIR':
         # BinaryTable HDU
-        cols = []
+        values = []
         frame_numbers = []
         for i, bin_file in enumerate(files):
             match = re.search(r'exp_(\d{3})', bin_file)
             if match:
-                frame_numbers.append(match.group(1))
+                frame = match.group(1) # 000, 001, ...
+                frame_numbers.append(frame)
             else:
                 raise ValueError(f'Unknown frame number. The filename is expectected to contain the frame number after exp_.')
             file_path = Path(acq_dir) / bin_file
@@ -120,14 +129,12 @@ def convert_to_fits(
                 if len(bin_data) != 4: 
                     raise ValueError(f'SWIR file {file_path} does not contain excatly 4 bytes.')
                 value = int.from_bytes(bin_data, 'big' , signed=False)
-                value = np.int32(value)
+                values.append(value)
             except Exception as e:
                 raise IOError(f"Error reading binary file {file_path}: {e}") from e
-            col = fits.Column(name=f'SWIR_{i}', format='E', array=[value]) # J for 32-bit, I for 16-bit integers
-            cols.append(col)
-
-        # Create binary table
-        hdu = fits.BinTableHDU.from_columns(cols)
+        
+        array = np.array(values, dtype=np.uint32)
+        primary_hdu.data = array
     else:
         # Image HDU
         if channel == 'VIS':
@@ -136,7 +143,7 @@ def convert_to_fits(
         elif channel == 'NIR1' or channel == 'NIR2':
             height = 518
             width = 648
-            if missphase == 'SIMULATE':
+            if MISSPHAS == 'SIMULATE':
                 height = 512
                 width = 640
         else: 
@@ -177,26 +184,48 @@ def convert_to_fits(
 
             data_cube = utilities.diff_decode(data_cube, diff_offsets.get(channel), diff_decoded_output_dir, channel, frame_numbers)
 
-        hdu = fits.ImageHDU(data_cube)
-    # Add metadata to fits extension header
+        primary_hdu.data = data_cube
 
+    # Append instrument metadata
     frame_number_string = ','.join(frame_numbers)
-    data_header = hdu.header
-    image_data = utilities.collect_image_metadata(telemetry_path=telemetry_path, config_path=config_path, channel=channel, frame_number_string=frame_number_string)
-    for key, (value, comment) in image_data.items():
-        card_length = len(key) + len(value) + len(comment) + 4
-        if card_length <= 80:
-            data_header.append((key, value, comment))
+    image_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel)
+    for i, (key, value) in enumerate(image_data.items()):
+        if key in primary_header:
+            comment = primary_header.comments[key]
+            card_length = len(key) + len(value) + len(comment) + 4
+            if card_length <= 80:
+                primary_header[key] = (value, comment)
+            else:
+                primary_header[key] = (value, '')
         else:
-            data_header.append((key, value, ''))
-    
-    HDUs.insert(0, primary_hdu) # insert the primary HDU to first
-    HDUs.append(hdu) # append the data HDUx
+            print(f"[WARNING] key '{key}' not found in header")
+    primary_header.insert('CHANNELS',('COMMENT', ' - - - - - - - - Instrument specific data - - - - - - - - '), after=False)
+
+    # Add instrument specific metadata this only for one channel at this point.
+    channel_index = reverse_channel_map[channel]
+    image_specific_data = utilities.collect_instrument_specific_metadata(config_path=config_path, channel=channel, frame_number_string=frame_number_string)
+    inset_index = primary_header.index(f'{channel_index}_FPI2')
+    for i, (key, (value, comment)) in enumerate(image_specific_data.items()):
+        if key in primary_header:
+                primary_header[key] = (value, comment)
+        else:
+            card_length = len(key) + len(value) + len(comment) + 4
+            if card_length <= 80:
+                primary_header.insert(inset_index + i, (key, value, comment), after=True)
+            else:
+                primary_header.insert(inset_index + i, (key, value, ''), after=True)
+    # Generate FITS file name 
+    utc_time = primary_header.get('DATE-OB')
+    sc_clock = primary_header.get('SC_CLK')
+    if sc_clock in (None, 'UNK'):
+        sc_clock = 0
+    image_number = utilities.sc_clock_to_base32(sc_seconds=sc_clock)
+    fits_name = utilities.form_fits_name(channel, image_number, utc_time, '0A')
+    primary_header['FILENAME'] = fits_name
+
     # Create a FITS file 
     file_name = fits_name
     fits_file = os.path.join(output_dir, file_name)
-    hdu_list = fits.HDUList(HDUs)
-    hdu_list.writeto(fits_file, overwrite=True)
-
+    primary_hdu.writeto(fits_file, overwrite=True)
 
     return fits_file

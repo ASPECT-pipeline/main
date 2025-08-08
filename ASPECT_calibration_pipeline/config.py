@@ -2,21 +2,30 @@
 This file contains values for the pipeline. Modify the values to match your usecase.
 """
 # INPUT path for the acquisition data
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_106"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_104"
+
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
 
 # OUTPUT path where the results are saved
 output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
+
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated_20270323_McEwen"
 
 
 # Is the data differetially encoded
 differential: bool = False
 
 # Meta data
-software: str = 'ASPECTCAL v1.0'
-missphase: str = 'in-flight dark'
-observph: str = '106'
-target: str = 'DIDYMOS'
-object: str = 'Dark'
+INSTRUME:   str = 'ASPECT'              # Camera ID
+ORIGIN:     str = 'ESA-HERA'                
+SWCREATE:   str = 'ASPECTCAL'           # Software identification
+MISSPHAS:   str = 'SIMULATE'            # Hera mission phase ID
+OBSERVPH:   str = 'v2'                  # Hera observation ID
+OBSTARGT:   str = 'DIDYMOS'             # Observation target
+OBJECT:     str = 'DARK'                # Observed object
+TARGET:     str = 'DIDYMOS'             # Observed target (SPICE)
+SC_CLK:     str = 'UNK'                 # Spacecraft clock Hera instrument format: '13480572:349872'
+
 sc_clock_seconds: int = 0 # Spacecraft clock in seconds
 sc_clock_offset: int = 0  # Offset of sc_clock
 
@@ -27,14 +36,20 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 # Adjust this to point to the metakernel to be used for FITS header data
 spice_mk = spice_mk_plan
 
-# INSTRUMENT DATA
-instrument = 'vis-nir1-nir2' 
-
 pipeline = '1-2' # Separate with '-' e.g. '1-2-3'
+
+# Data analysis for level-3 
+instrument = 'vis-nir1-nir2' 
 
 models = 'C'
 
 initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
+
+
+"""
+Constants do not change unless you know what your are modifying.
+"""
+
 
 channel_map = {
     0 : 'VIS',
@@ -50,6 +65,5 @@ reverse_channel_map = {
     'SWIR' : 3
 }
 
-# CONSTANTS
 
 kelvin: float = 273.15

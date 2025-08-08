@@ -16,31 +16,33 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
     """
 
     # Data from fits file
-    img_HDU = hdul[1] # Contains the image cube (or swir readings)
-    img_data = img_HDU.data
-    img_header = img_HDU.header # Image HDU header
-    channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
+    hdu = hdul[0]
+    header = hdu.header
+    data = hdu.data
+    channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
 
-    if channel == 'SWIR':
-        return hdul
-    else:
+    try:
+        if channel == 'SWIR':
+            return hdul
+        else:
 
-        width = img_header.get('NAXIS1')
-        height = img_header.get('NAXIS2')
+            width = header.get('NAXIS1')
+            height = header.get('NAXIS2')
 
-        # Place holder for the darkframe
-        darkFrame = np.zeros((height, width), dtype=hdul[1].data.dtype)
+            # Place holder for the darkframe
+            darkFrame = np.zeros((height, width), dtype=hdul[0].data.dtype)
 
-        # To store the calibrated datacube
-        new_data_cube = img_HDU.data.astype(np.float64, copy=True)
+            # To store the calibrated datacube
+            new_data_cube = hdu.data.astype(np.float64, copy=True)
 
-        # Loop over the 2D images inside the extension
-        for i, image in enumerate(img_data):
-            # Subtract the dark frame from image
-            new_data_cube[i] = image - darkFrame
+            # Loop over the 2D images inside the extension
+            for i, image in enumerate(data):
+                # Subtract the dark frame from image
+                new_data_cube[i] = image - darkFrame
 
-        # Add the modified image_HDU to the new HDU list
-        image_hdu = fits.ImageHDU(data=new_data_cube, header=img_header)
-        hdul[1] = image_hdu
-
+            # Add the modified image_HDU to the new HDU list
+            data = new_data_cube
+            return hdul
+    except Exception as e:
+        print(f'[WARNING] Dark subtraction failed: {e}')
         return hdul

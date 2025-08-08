@@ -11,7 +11,7 @@ import levels_012.modules.flatField as flatField
 import levels_012.modules.badPixels as badPixels
 import levels_012.modules.radiometric as radiometric
 import levels_012.modules.mergeFits as mergeFits
-from config import observph, missphase
+from config import MISSPHAS
 """
     The main program to execute the data processing pipeline.
 
@@ -84,7 +84,7 @@ def calibration_pipeline(
         )
     
     print(f'New fits file created: {fits_file}')
-    print(f'---------- LEVEL 0 COMPLETED ----------')
+    print(f'---------- LEVEL 0A COMPLETED ----------')
 
     # Process the calibration steps
 
@@ -166,13 +166,14 @@ def pipeline_levels_01(
     input_dir = utilities.verify_directory_path(input_dir)
     output_dir = utilities.verify_directory_path(output_dir)
 
-    acq_dir, meta_dir, telemetry_path, config_path = utilities.verify_acquisition_directory(input_dir)
+    acq_dir = utilities.verify_acquisition_directory(input_dir)
 
     print('Separating acquisition directory into channel specific files.')
     channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]
     channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
     print(f'Channels found: {channel_names}.')
     for channel in channel_names:
+        print()
         print(f'Calibrating channel: {channel}')
         channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames_belongs_this_channels]]
         calibrated_fits_file = calibration_pipeline(input_dir=input_dir, 
@@ -181,7 +182,7 @@ def pipeline_levels_01(
                                                     channel_info=channel_info,
                                                     differential=differential
                                                     )
-        if missphase == 'SIMULATE':
+        if MISSPHAS == 'SIMULATE':
             utilities.update_fits_exposure(calibrated_fits_file, None)
             utilities.update_fits_wl(calibrated_fits_file, None)
 

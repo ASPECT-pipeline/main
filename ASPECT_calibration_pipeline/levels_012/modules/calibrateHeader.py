@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from astropy.io import fits
 import levels_012.modules.utilities as utilities
-from config import reverse_channel_map
+from config import reverse_channel_map, channel_map
 
 """
 
@@ -12,14 +12,15 @@ Helper functions
 """
 
 def convert_detector_temp(header, channel, channel_id):
-    try:
-        original = header.get(f'{channel_id}_CCDTMP')
-        if original and original != 'UNK':
-            c, k = utilities.det_temp_conversion(float(original),channel)
-            return(f'{channel_id}_CCDTMP', f'{k:.2f}', f'Detector temp [K] ({c:.2f} [C])')
-    except Exception as e:
-        print(f"[WARNING] {channel} CCDTMP conversion failed: {e}")
-    return (f'{channel_id}_CCDTMP', 'UNK', "Detector temp [K] ('UNK' [C])")
+        try:
+            original = header.get(f'{channel_id}_CCDTMP')
+            if original and original != 'UNK':
+                c, k = utilities.det_temp_conversion(float(original),channel)
+                return(f'{channel_id}_CCDTMP', f'{k}', f'Detector temp [K] ({c} [C])')
+        except Exception as e:
+            print(f"[WARNING] {channel_id} CCDTMP conversion failed: {e}")
+        return (f'{channel_id}_CCDTMP', 'UNK', "Detector temp [K] ('UNK' [C])") 
+
 
 def convert_fpi_temp(header, channel, channel_id, suffix):
     try:
@@ -29,10 +30,10 @@ def convert_fpi_temp(header, channel, channel_id, suffix):
                 c, k = utilities.fpi_temp_conversion(float(original), channel, 1)
             else:
                 c, k = utilities.fpi_temp_conversion(float(original), channel, 2)
-            return (f'{channel_id}_{suffix}', f'{k:.2f}', f'{suffix} temp [K] ({c:.2f} [C])')
+            return(f'{channel_id}_{suffix}', f'{k}', f'{suffix} temp [K] ({c} [C])')
     except Exception as e:
         print(f"[WARNING] {channel} {suffix} conversion failed: {e}")
-    return (f'{channel_id}_{suffix}', 'UNK', f"{suffix} temp [K] ('UNK' [C])")
+    return (f'{channel_id}_{suffix}', 'UNK', f"{suffix} temp [K] ('UNK' [C])") 
 
 def convert_exposure_times(header, channel, channel_id):
     try:
@@ -74,50 +75,58 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
     with fits.open(fits_path) as hdul:
 
         # Data from fits file
-        primary_hdu = hdul[0].copy()
-        primary_header = primary_hdu.header
-        img_HDU = hdul[1].copy() # Contains the image cube (or swir readings)
-        img_header = img_HDU.header # Image HDU header
-
-        # Create new list of HDU's and append the cube to it
-        HDUs = [primary_hdu]
+        new_hdul = fits.HDUList([hdu.copy() for hdu in hdul])
+        hdu = new_hdul[0]
+        header = hdu.header
 
         try:
-            channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
-            channel_id = reverse_channel_map[channel]
-            order = img_header.get(f'{channel_id}_ORDER')
+            channel_ids = list(channel_map.keys())
 
+            for channel_id in channel_ids:  
+                channel = channel_map[channel_id] # Channel (VIS, NIR1, NIR2, SWIR)
+                order = header.get(f'{channel_id}_ORDER')
+
+                # To run conversions
+                keys = [
+                    convert_detector_temp(header, channel, channel_id),
+                    convert_fpi_temp(header, channel, channel_id, 'FPI1'),
+                    convert_fpi_temp(header, channel, channel_id, 'FPI2'),
+                ]
+
+                for key, value, comment in keys:
+                    card_length = len(key) + len(value) + len(comment) + 4
+                    if card_length <= 80:
+                        header[key] = (value, comment)
+                    else:
+                        header[key] = (value, '')
+            
+            channel = header.get('CHANNELS')
+            channel_id = reverse_channel_map.get(channel)
             # To run conversions
             keys = [
-                convert_detector_temp(img_header, channel, channel_id),
-                convert_fpi_temp(img_header, channel, channel_id, 'FPI1'),
-                convert_fpi_temp(img_header, channel, channel_id, 'FPI2'),
-                convert_exposure_times(img_header, channel, channel_id),
-                convert_waverlengths(img_header, channel, channel_id, order)
+                convert_exposure_times(header, channel, channel_id),
+                convert_waverlengths(header, channel, channel_id, order)
             ]
 
             for key, value, comment in keys:
                 card_length = len(key) + len(value) + len(comment) + 4
                 if card_length <= 80:
-                    img_header[key] = (value, comment)
+                    header[key] = (value, comment)
                 else:
-                    print(f' more')
-                    img_header[key] = (value, '')
+                    header[key] = (value, '')
 
         except Exception as e:
             print(f"[WARNING] Error while calibrating IMAGE HDU header: {e}")
             
-        HDUs.append(img_HDU)
 
-        hdu_list = fits.HDUList(HDUs)
         stem = fits_path.stem
         suffix = fits_path.suffix
         new_calibration_level = '1A'
         file_name = stem[:25] + new_calibration_level + suffix
-        primary_header = hdu_list[0].header
+        primary_header = header
         primary_header['FILENAME'] = file_name
         primary_header['PROCLEVL'] = new_calibration_level
         fits_file = os.path.join(output_dir, file_name)
-        hdu_list.writeto(fits_file, overwrite=True)
+        new_hdul.writeto(fits_file, overwrite=True)
 
     return(fits_file)

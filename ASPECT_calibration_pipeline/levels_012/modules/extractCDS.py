@@ -2,6 +2,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.io.fits import HDUList
 import levels_012.modules.utilities as utilities
+from config import reverse_channel_map
 
 """
     This file extracts correlated double sampling (CDS) pixels surrounding the NIR images, storing them into a separate BinaryTableHDU.
@@ -27,50 +28,55 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
     """
 
     # Data from fits file
-    img_HDU = hdul[1] # Contains the image cube (or swir readings)
-    img_data = img_HDU.data # Image data
-    img_header = img_HDU.header # Image HDU header
-    channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
-    missphas = hdul[0].header.get('MISSPHAS')
+    hdu = hdul[0]
+    header = hdu.header
+    data = hdu.data
+    channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
+    missphas = header.get('MISSPHAS')
 
     if channel in ('VIS', 'SWIR') or missphas == 'SIMULATE':
         return hdul
     elif channel in ('NIR1', 'NIR2'): 
-        # Get image dimensions
-        width = img_header.get('NAXIS1')
-        height = img_header.get('NAXIS2')
-        slices = img_header.get('NAXIS3')
+        try:
+            # Get image dimensions
+            width = header.get('NAXIS1')
+            height = header.get('NAXIS2')
+            slices = header.get('NAXIS3')
 
-        # Empty array for cleaned data
-        cleanedData = np.zeros((slices, height - 6, width - 8), dtype=np.float64)
-        
-        # Prepare a list to hold the columns for CDS binary table
-        cds_list = []
-        # Step 4: Iterate over each slice of the cube
-        for i, image in enumerate(img_data):
-            # Extract the cds pixels from the slice
-            cleanedImage, cds = utilities.extract_cds(image)
-            cds_list.append(cds)               
-            # Append the cleanedImage to the new image HDU
-            cleanedData[i, :, :] = cleanedImage.astype(np.float64)
+            # Empty array for cleaned data
+            cleaned_data = np.zeros((slices, height - 6, width - 8), dtype=np.float64)
+            
+            # Prepare a list to hold the columns for CDS binary table
+            cds_list = []
+            # Step 4: Iterate over each slice of the cube
+            for i, image in enumerate(data):
+                # Extract the cds pixels from the slice
+                cleaned_image, cds = utilities.extract_cds(image)
+                cds_list.append(cds)               
+                # Append the cleanedImage to the new image HDU
+                cleaned_data[i, :, :] = cleaned_image.astype(np.float64)
 
-        # Create Image HDU with old header
-        cleaned_cube = fits.ImageHDU(data=cleanedData, header=img_header) 
-        hdul[1] = cleaned_cube
+            # Create Image HDU with old header
+            data = cleaned_data
 
-        # Create columns for the cds pixels
-        columns = []
-        for i, col in enumerate(cds_list):
-            column = fits.Column(
-                name= f'{channel}_{i}',
-                format=f'{len(col)}J', # unsigned data
-                array=[col]
-            )
-            columns.append(column)
+            # Create columns for the cds pixels
+            channel_index = reverse_channel_map[channel]
+            frames = header.get(f'{channel_index}_FRAMES').split(',')
+            columns = []
+            for i, col in enumerate(cds_list):
+                column = fits.Column(
+                    name= f'{channel_index}_{frames[i]}',
+                    format=f'{len(col)}J', # unsigned data
+                    array=[col]
+                )
+                columns.append(column)
 
-        # Create a binary table HDU for the cds pixels
-        cds_table = fits.BinTableHDU.from_columns(columns)
-        hdul.append(cds_table)
-        return hdul
+            # Create a binary table HDU for the cds pixels
+            cds_table = fits.BinTableHDU.from_columns(columns)
+            hdul.append(cds_table)
+            return hdul
+        except Exception as e:
+            print(f'[WARNING] Exctracting diagnostics failed: {e}')
+            return hdul
     else:
-        raise ValueError(f'Channel missmatch: {channel}, Should be in (VIS, NIR1, NIR2, SWIR)')
+        raise ValueError(f'Channel missmatch in extract CDS: {channel}, Should be in (VIS, NIR1, NIR2, SWIR)')

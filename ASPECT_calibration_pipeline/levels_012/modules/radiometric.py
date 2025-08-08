@@ -23,29 +23,17 @@ def radiometric_calibration(hdul: HDUList) -> HDUList:
     """
 
     # Data from fits file
-    img_HDU = hdul[1] # Contains the image cube (or swir readings)
-    img_header = img_HDU.header # Image HDU header
-    img_data = img_HDU.data
-    channel = img_header.get('CHANNEL') # Channel (VIS, NIR1, NIR2, SWIR)
-
+    hdu = hdul[0]
+    data = hdu.data
     coefficient = 1 # Temporary coefficient for radiometric calibration
 
-    if channel == 'SWIR':
-        bin_table_data = img_data.copy() #To store the calibrated BinTable
-        for col_name in bin_table_data.names:
-            bin_table_data[col_name] = (bin_table_data[col_name] * coefficient).astype(np.float64)
-
-        new_bin_table_hdu = fits.BinTableHDU(data=bin_table_data, header=hdul[1].header)
-        hdul[1] = new_bin_table_hdu
-
-    else:
-        new_data_cube = img_data.astype(np.float64, copy=True)
+    try:
+        new_data_cube = data.astype(np.float64, copy=True)
         #loop over the 2D images inside the extension
-        for i, image in enumerate(img_data):
+        for i, image in enumerate(data):
             new_data_cube[i] = (image * coefficient).astype(np.float64) # multiply the image with the coefficient 
-        
-        image_hdu = fits.ImageHDU(data=new_data_cube, header=img_header)
-        hdul[1] = image_hdu
-
-    
-    return hdul
+        data = new_data_cube
+        return hdul
+    except Exception as e: 
+        print(f'[WARNING] Radiometric calibration failed: {e}')
+        return hdul

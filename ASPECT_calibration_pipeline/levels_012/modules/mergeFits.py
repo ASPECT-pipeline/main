@@ -57,11 +57,9 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     channels = [] # List of channels to be combined
 
     primary_header_list = []
-    image_header_list = []
     image_dict = {}
-    swir_header = None
-    swir_data = None
     cds_dict = {}
+    swir_data = None
     for file in files:
         file = Path(file)
 
@@ -75,20 +73,20 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
             channels.append(channel_name)
 
             with fits.open(file) as hdul:
-                primary_header = hdul[0].header.copy()
-                primary_header_list.append(primary_header)
-                if channel_name in ('VIS', 'NIR1', 'NIR2'):
-                    image_header = hdul[1].header.copy()
-                    image_data = hdul[1].data.copy()
-                    image_header_list.append(image_header)
-                    image_dict[channel_name] = image_data
-                else:
-                    swir_header = hdul[1].header.copy()
-                    swir_data = hdul[1].data.copy()
-                if channel_name in ('NIR1', 'NIR2') and len(hdul) > 2:
-                    cds_data = fits.BinTableHDU.from_columns(hdul[2].columns, header=hdul[2].header)
-                    cds_dict[channel_name] = cds_data
+                primary_hdu = hdul[0]
+                primary_header = primary_hdu.header
+                primary_data = primary_hdu.data
 
+                new_primary_header = primary_header.copy()
+                primary_header_list.append(new_primary_header)
+
+                if channel_name in ('VIS', 'NIR1', 'NIR2'):
+                    image_dict[channel_name] = primary_data
+                    if channel_name in ('NIR1', 'NIR2'):
+                        if 1 < len(hdul):
+                            cds_dict[channel_name] = hdul[1] 
+                else:
+                    swir_data = primary_data
         except (IndexError, ValueError) as e:
             print(f"Error: {e}")
         except KeyError:
@@ -97,65 +95,71 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     if len(channels) == 1:
         print(f'More than one channel needed to combine.')
         return files[0]
-    print(f"Combining channels {channels}")
-    # Create new list of HDU's and append the primary HDU, new image HDU and other extensions.
-    HDUs = []
-    new_primary_header = utilities.combine_primary_headers(primary_header_list)
-    new_primary_HDU = fits.PrimaryHDU(header=new_primary_header)
-    HDUs.append(new_primary_HDU)
-
-    new_image_header = utilities.combine_image_headers(image_header_list)
-
-    new_image_data = []
-    nir1_data = image_dict['NIR1']
-    nir2_data = image_dict['NIR2']
-
-    if 'VIS' in channels:
-        print('Aligning VIS channel to NIR grid..')
-        vis_data = image_dict['VIS']
-
-        # Align vis channel based on first images of vis and nir1
-        vis_image = vis_data[0]
-        nir_image = nir1_data[0]
-
-        transforamtion_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
-        for frame in vis_data:
-            # Convert to little-endian float32 for OpenCV
-            little_endian = np.ascontiguousarray(frame.astype('<f4'))
-            wrapped = cv2.warpPerspective(little_endian, transforamtion_matrix, (640, 512), flags=cv2.INTER_LINEAR )
-
-            # Convert back to big_endian float32
-            big_endian = np.ascontiguousarray(wrapped.astype('>f4'))
-            new_image_data.append(big_endian)
-
-    for frame in nir1_data:
-            new_image_data.append(frame)
-        
-    for frame in nir2_data:
-        new_image_data.append(frame)
-
-
-    data_cube = np.stack(new_image_data, axis=0)
-
-    # Add data to the data cube
-    new_image_HDU = fits.ImageHDU(header=new_image_header, data=data_cube)
-    HDUs.append(new_image_HDU)
-    if 'SWIR' in channels:
-        new_swir_HDU = fits.BinTableHDU.from_columns(columns=swir_data, header=swir_header)
-        HDUs.append(new_swir_HDU)
     
+    print(f"Combining channels {channels}")
+
+    # New header
+    new_primary_header = utilities.combine_primary_headers(primary_header_list)
+
+    # Combine imaging channels
+    image_channels = [ch for ch in channels if ch != "SWIR"]
+    if len(image_channels) == 1:
+        data = image_dict[image_channels[0]]
+        new_primary_hdu = fits.PrimaryHDU(data, new_primary_header)
+    else:
+        new_image_data = []
+
+        if 'VIS' in channels:
+            print('Aligning VIS channel to NIR grid..')
+            vis_data = image_dict['VIS']
+            nir_data = image_dict.get('NIR1', image_dict.get('NIR2'))
+            
+            # Align vis channel based on first images of vis and nir
+            vis_image = vis_data[0]
+            nir_image = nir_data[0]
+
+            transforamtion_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
+            for frame in vis_data:
+                # Convert to little-endian float32 for OpenCV
+                little_endian = np.ascontiguousarray(frame.astype('<f4'))
+                wrapped = cv2.warpPerspective(little_endian, transforamtion_matrix, (640, 512), flags=cv2.INTER_LINEAR )
+
+                # Convert back to big_endian float32
+                big_endian = np.ascontiguousarray(wrapped.astype('>f4'))
+                new_image_data.append(big_endian)
+
+        nir1_data = image_dict.get('NIR1')
+        nir2_data = image_dict.get('NIR2')
+        if nir1_data is not None and nir1_data.size > 0:
+            for frame in nir1_data:
+                new_image_data.append(frame)
+        if nir2_data is not None and nir2_data.size > 0:
+            for frame in nir2_data:
+                new_image_data.append(frame)
+
+        data_cube = np.stack(new_image_data, axis=0)
+        new_primary_hdu = fits.PrimaryHDU(data_cube, new_primary_header)
+    
+    new_hdul = [new_primary_hdu]
+    # Add data to the data cube
+    if swir_data:
+        swir_hdu = fits.ImageHDU(data=swir_data)
+        new_hdul.append(swir_hdu)
 
     # Extract HDUs containing the binary tables
     if 'NIR1' in cds_dict and 'NIR2' in cds_dict:
         nir1_hdu = cds_dict['NIR1']
-        nir2_hdu = cds_dict['NIR2'] 
-
+        nir2_hdu = cds_dict['NIR2']
         # Combine all columns from both tables
         all_columns = nir1_hdu.columns + nir2_hdu.columns
         combined_table = fits.BinTableHDU.from_columns(all_columns)
-        
-        HDUs.append(combined_table)
-    hdu_list = fits.HDUList(HDUs)
+    elif 'NIR1' in cds_dict:
+        combined_table = cds_dict['NIR1']
+    elif 'NIR2' in cds_dict:
+        combined_table = cds_dict['NIR2']
+        new_hdul.append(combined_table)
+
+    hdu_list = fits.HDUList(new_hdul)
     # File name for new fits
     file_path = Path(files[0])
     stem = file_path.stem
