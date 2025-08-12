@@ -8,7 +8,7 @@ This file contains values for the pipeline. Modify the values to match your usec
 # input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated_20270323_McEwen"
 
 
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_Autoseq_20240809/acqseq_501"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_Autoseq_20240809/acqseq_503"
 
 # OUTPUT path where the results are saved
 # output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
@@ -26,7 +26,7 @@ INSTRUME:   str = 'ASPECT'              # Camera ID
 ORIGIN:     str = 'ESA-HERA'                
 SWCREATE:   str = 'ASPECTCAL'           # Software identification
 MISSPHAS:   str = '20240809'                # Hera mission phase ID
-OBSERVPH:   str = '501'                 # Hera observation ID
+OBSERVPH:   str = '503'                 # Hera observation ID
 OBSTARGT:   str = 'DIDYMOS'             # Observation target
 OBJECT:     str = 'Didymos'                # Observed object
 TARGET:     str = 'DIDYMOS'             # Observed target (SPICE)
@@ -35,6 +35,9 @@ SC_CLK:     str = 'UNK'                 # Spacecraft clock Hera instrument forma
 sc_clock_seconds: int = 0 # Spacecraft clock in seconds
 sc_clock_offset: int = 0  # Offset of sc_clock
 
+# Adjust this to to point to the directory containing calibration files 
+calibration_directory = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/ASPECT_calibration_pipeline/files"
+
 # Adjust these to point to the locations of spice metakernels
 spice_mk_plan = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_plan.tm"
 spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_ops.tm"
@@ -42,7 +45,7 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 # Adjust this to point to the metakernel to be used for FITS header data
 spice_mk = spice_mk_ops
 
-pipeline = '1-2' # Separate with '-' e.g. '1-2-3'
+pipeline = '1' # Separate with '-' e.g. '1-2-3'
 
 # Data analysis for level-3 
 instrument = 'vis-nir1-nir2' 

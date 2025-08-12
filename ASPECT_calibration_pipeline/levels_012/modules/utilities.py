@@ -13,7 +13,6 @@ import levels_012.modules.hera_spice as hera_spice
 from datetime import datetime, timezone
 import subprocess
 from pathlib import Path
-import warnings
 from config import kelvin, channel_map, reverse_channel_map
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.patches as mpatches

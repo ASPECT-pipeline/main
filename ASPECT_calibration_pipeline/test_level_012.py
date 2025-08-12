@@ -783,19 +783,28 @@ def create_2d_fits(fits_path, index, output_dir, name):
     file_name = os.path.join(output_dir, name)
     new_hdul.writeto(file_name, overwrite=True)
 
+def create_blank_binaries(filename: str, width: int, height: int, dtype=np.uint16):
+    zeros_array = np.zeros((height, width), dtype=dtype)
+    
+    # Write to file in binary format
+    zeros_array.tofile(filename)
+    print(f"Created binary file '{filename}' of shape ({height}, {width}) and dtype {dtype}.")
+
 """
 Function calls after this
 """
+black_bin_file = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/2_bad-pixel_mask.bin')
+# create_blank_binaries(black_bin_file, 512, 640)
 
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_CPX_comp.fits'), True)
 
-read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/501/AS0_000000_240813T084402_1B.fits'), False)
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/501/AS0_000000_240813T084402_1B.fits'), False)
 
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_0A.fits'), False)
 
 
-file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/501/dc_0_exp_005.bin')
-file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_20240809/501/AS0_000000_240813T084402_1A.fits')
+file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/503/dc_0_exp_005.bin')
+file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/503/AS0_000000_240813T131257_1B.fits')
 
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_104/acq_000_decompressed/dc_1_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/104/AS1_000000_200101T014800_1A.fits'))
@@ -803,7 +812,7 @@ file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_20240
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_1B.fits'))
 
-# compare_bin_images(file_a, file_b, True, 5, (1024, 1024), visualize=True)
+compare_bin_images(file_a, file_b, True, 5, (1024, 1024), visualize=True)
 
 # update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
 
