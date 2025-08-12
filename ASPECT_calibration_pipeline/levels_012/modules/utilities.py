@@ -118,7 +118,6 @@ def get_acq_tel_con(p: Path) -> Tuple[Path, Path, Path]:
     except Exception as e:
         raise ValueError(f'Error while retrieving the acquisition directory: {e}')
 
-
 def channel_files(acq_dir: Path) -> Dict[str, Tuple[str, List[str]]]:
     """
     Separates the acquisition folder content into separate channels based on their name.
@@ -219,7 +218,7 @@ def get_header_template() -> Dict[str, Tuple[str, str]]:
         'INSTRUME'  : ('UNK', 'Camera ID'),
         'ORIGIN'    : ('UNK', ''),
         'DATE'      : ('UNK', 'UTC time of file creation'),
-        'FILENAME'  : ('UNK', 'Name of the actual fits file'),
+        'FILENAME'  : ('UNK', 'Name of the fits file'),
         'SWCREATE'  : ('UNK', 'Software identification'),
         'ORIGFILE'  : ('UNK', 'Original file name.'),
         'PROCLEVL'  : ('UNK', 'Calibration level'),
@@ -253,7 +252,7 @@ def get_header_template() -> Dict[str, Tuple[str, str]]:
         'CAM_DEC'   : ('UNK', 'Camera axis DEC [deg]'),
         'CAM_NAZ'   : ('UNK', 'Camera axis north azimuth [deg]'),
         'SOL_ELNG'  : ('UNK', 'Solar elongation'),
-        'CALPHASE'  : ('RAW', 'Calibration phase'),
+        'CALPHASE'  : ('UNK', 'Calibration phase'),
         'CHANNELS'  : ('UNK', 'Channels in this file'),
         '0_CCDTMP' : ('UNK', 'VIS detector temperature [DN]'),
         '0_FPI1'    : ('UNK', 'VIS FPI 1 temperature [DN]'),
@@ -275,7 +274,7 @@ def collect_spice_metadata(
         telemetry_path: Path, 
         mk: str | Path,  
         target: str = 'DIDYMOS', 
-        test: bool =True
+        test: bool = True
     )-> Dict[str, Tuple[str, str]]:
     """
     Collect specified spice kernel data for fits primary header.
@@ -413,13 +412,14 @@ def check_order(sp: float, channel: str) -> str:
         case 'SWIR':
             return ''
 
-def collect_instrument_metadata(telemetry_path: Path, channel: str) -> Dict[str, str]:
+def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: str) -> Dict[str, str]:
     """
     Collect image specific metadata
 
     Parameters: 
         telemetry_path (Path): Path object to the telemetry JSON file
         channel (str): Instrument channel
+        missphas (str): Mission Phase ID, if SIMULATED the temperatures and setpoints are set tot N/A
 
     Returns:
         Dict[header_keyword, Tuple(value, comment)]
@@ -471,9 +471,14 @@ def collect_instrument_metadata(telemetry_path: Path, channel: str) -> Dict[str,
             (f"[WARNING] FPI temperature 2 missing for channel '{ch}'.")
             meta_data[f'{ch_id}_FPI2'] = 'UNK'
 
+        if missphas == 'SIMULATED':
+            meta_data[f'{ch_id}_CCDTMP'] = 'N/A'
+            meta_data[f'{ch_id}_FPI1'] = 'N/A'
+            meta_data[f'{ch_id}_FPI2'] = 'N/A'
+            
     return meta_data
 
-def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_number_string: str) -> Dict[str, Tuple[str, str]]:
+def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_number_string: str, missphas: str) -> Dict[str, Tuple[str, str]]:
     """
     Collect instrument specific metadata from config.json file. 
     This includes Exposure times and setpoint values. Also calculate the order of acquisition.
@@ -482,6 +487,7 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
         config_path (Path): Path object to the config JSON file
         channel (str): Instrument channel
         frame_number_string (str): All frame numebr e.g. '000', '001' as a comma-separated string.
+        missphas (str): Mission Phase ID, if SIMULATED the temperatures and setpoints are set tot N/A
 
     Returns:
         Dict[key, (value, comment)]
@@ -540,6 +546,13 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
     meta_data[f'{channel_id}_SP1'] = (str(sp1), f'{channel} setpoints 1 [DN]')
     meta_data[f'{channel_id}_SP2'] = (str(sp2), f'{channel} setpoints 2 [DN]')
     meta_data[f'{channel_id}_SP3'] = (str(sp3), f'{channel} setpoints 3 [DN]')
+
+    if missphas == 'SIMULATED':
+        meta_data[f'{channel_id}_ORDER'] = ('N/A', 'LOW / HIGH')
+        meta_data[f'{channel_id}_EXPOS'] = ('N/A', f'{channel} Exposure time(s) [DN]')
+        meta_data[f'{channel_id}_SP1'] = ('N/A', f'{channel} setpoints 1 [DN]')
+        meta_data[f'{channel_id}_SP2'] = ('N/A', f'{channel} setpoints 2 [DN]')
+        meta_data[f'{channel_id}_SP3'] = ('N/A', f'{channel} setpoints 3 [DN]')
 
     return meta_data
 
@@ -789,7 +802,7 @@ def combine_primary_headers(headers: list[Header]) -> Header:
             copy_header_key(hdr, combined_header, f'{channel_id}_FPI1', channel_id)
             copy_header_key(hdr, combined_header, f'{channel_id}_FPI2', channel_id)
         channels_string = ','.join(channels)
-        combined_header['CHANNLES'] = (channels_string, 'Instrument channels')
+        combined_header['CHANNELS'] = (channels_string, 'Instrument channels')
     except Exception as e:
         print(f"[WARNING] Combining headers failed: {e}")
         print(f'Returning the first header.')
@@ -994,6 +1007,14 @@ def cropND(img: np.ndarray, bounding: tuple[int, int]) -> np.ndarray:
     slices = tuple(map(slice, start, end))
     return img[slices]
 
+def get_simulated_wl(channel: str) -> str:
+    wl_map = {
+        'VIS' : '675,690,705,720,735,750,765,780,795,810,825',
+        'NIR1': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
+        'NIR2': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
+        'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
+    }
+    return wl_map[channel]
 
 """
 Testing functions that can be removed 

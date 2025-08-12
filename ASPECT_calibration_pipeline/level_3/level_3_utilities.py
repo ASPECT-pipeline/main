@@ -25,10 +25,10 @@ def get_wavelengths(header: Header) -> Dict[str, List[int]]:
         Dict[channel, List[wavelengths]]
     """
     channel_keys = {
-        'VIS': 'VIS_WL',
-        'NIR1': 'NIR1_WL',
-        'NIR2': 'NIR2_WL',
-        'SWIR': 'SWIR_WL'
+        'VIS': '0_WL',
+        'NIR1': '1_WL',
+        'NIR2': '2_WL',
+        'SWIR': '3_WL'
     }
 
     wavelengths = {}

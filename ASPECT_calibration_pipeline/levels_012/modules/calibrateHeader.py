@@ -12,18 +12,24 @@ Helper functions
 """
 
 def convert_detector_temp(header, channel, channel_id):
-        try:
-            original = header.get(f'{channel_id}_CCDTMP')
-            if original and original != 'UNK':
-                c, k = utilities.det_temp_conversion(float(original),channel)
-                return(f'{channel_id}_CCDTMP', f'{k}', f'Detector temp [K] ({c} [C])')
-        except Exception as e:
-            print(f"[WARNING] {channel_id} CCDTMP conversion failed: {e}")
-        return (f'{channel_id}_CCDTMP', 'UNK', "Detector temp [K] ('UNK' [C])") 
+    try:
+        missphas = header.get('MISSPHAS')
+        if missphas == 'SIMULATED':
+            return (f'{channel_id}_CCDTMP', 'N/A', "Detector temp [K] ('N/A' [C])") 
+        original = header.get(f'{channel_id}_CCDTMP')
+        if original and original != 'UNK':
+            c, k = utilities.det_temp_conversion(float(original),channel)
+            return(f'{channel_id}_CCDTMP', f'{k}', f'Detector temp [K] ({c} [C])')
+    except Exception as e:
+        print(f"[WARNING] {channel_id} CCDTMP conversion failed: {e}")
+    return (f'{channel_id}_CCDTMP', 'UNK', "Detector temp [K] ('UNK' [C])") 
 
 
 def convert_fpi_temp(header, channel, channel_id, suffix):
     try:
+        missphas = header.get('MISSPHAS')
+        if missphas == 'SIMULATED':
+            return (f'{channel_id}_{suffix}', 'N/A', f"{suffix} temp [K] ('N/A' [C])") 
         original = header.get(f'{channel_id}_{suffix}')
         if original and original != 'UNK':
             if suffix == 'FPI1':
@@ -37,6 +43,9 @@ def convert_fpi_temp(header, channel, channel_id, suffix):
 
 def convert_exposure_times(header, channel, channel_id):
     try:
+        missphas = header.get('MISSPHAS')
+        if missphas == 'SIMULATED':
+            return (f'{channel_id}_EXPOS', 'N/A', 'Exposure time(s) [s]')
         original = header.get(f'{channel_id}_EXPOS')
         if original and original != 'UNK':
             exposure_list = list(map(int, original.split(',')))
@@ -49,6 +58,10 @@ def convert_exposure_times(header, channel, channel_id):
 
 def convert_waverlengths(header, channel, channel_id, order):
     try:
+        missphas = header.get('MISSPHAS')
+        if missphas == 'SIMULATED':
+            wavelengths = utilities.get_simulated_wl(channel)
+            return(f'{channel_id}_WL', str(wavelengths), f'[nm]')
         setpoint1 = header.get(f'{channel_id}_SP1')
         if setpoint1 and setpoint1 != 'UNK':
             values = setpoint1.split(",") # capasitance values of setpoint 1
@@ -110,10 +123,17 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
 
             for key, value, comment in keys:
                 card_length = len(key) + len(value) + len(comment) + 4
-                if card_length <= 80:
-                    header[key] = (value, comment)
+                if key in header:
+                    if card_length <= 80:
+                        header[key] = (value, comment)
+                    else:
+                        header[key] = (value, '')
                 else:
-                    header[key] = (value, '')
+                    sp3_idx = header.index(f'{channel_id}_SP3')
+                    if card_length <= 80:
+                        header.insert(sp3_idx, (key, value, comment), after=True)
+                    else:
+                        header.insert(sp3_idx, (key, value, ''), after=True)
 
         except Exception as e:
             print(f"[WARNING] Error while calibrating IMAGE HDU header: {e}")

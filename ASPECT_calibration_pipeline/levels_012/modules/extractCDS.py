@@ -34,7 +34,7 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
     channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
     missphas = header.get('MISSPHAS')
 
-    if channel in ('VIS', 'SWIR') or missphas == 'SIMULATE':
+    if channel in ('VIS', 'SWIR') or missphas == 'SIMULATED':
         return hdul
     elif channel in ('NIR1', 'NIR2'): 
         try:

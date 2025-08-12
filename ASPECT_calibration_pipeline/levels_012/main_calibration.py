@@ -136,6 +136,14 @@ def calibration_pipeline(
     print(f'New fits file created: {fits_file}')
     print(f'---------- LEVEL 1B COMPLETED ----------')
 
+    """
+    1C implementation here
+    """
+    # with fits.open(fits_file, memmap=False) as hdul:
+
+
+
+
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file
 

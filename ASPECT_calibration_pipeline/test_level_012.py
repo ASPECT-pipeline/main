@@ -33,20 +33,29 @@ def read_fits_file(path, visualise = False):
 
             if visualise:
                 data = hdu.data
-                frame, y, x = data.shape
 
-                for i in range(frame):
-                    img = data[i]
-
+                if data.ndim == 3:
+                    # Iterate over frames in a data cube
+                    for frame_idx, img in enumerate(data):
+                        plt.figure()
+                        plt.imshow(img, cmap='gray')
+                        plt.title(f'HDU {i} - Slice {frame_idx}')
+                        plt.axis('off')
+                        plt.tight_layout()
+                        plt.show()
+                        ans = input("Press Enter to see next, or 'q' to quit: ").strip().lower()
+                        if ans == 'q':
+                            break
+                elif data.ndim == 2:
+                    # Display single 2D image
                     plt.figure()
-                    plt.imshow(img, cmap='gray')
-                    plt.title(f'Slice {i}')
+                    plt.imshow(data, cmap='gray')
+                    plt.title(f'2D Image')
                     plt.axis('off')
                     plt.tight_layout()
                     plt.show()
-                    ans = input("Press Enter to see next, or 'q' to quit: ").strip().lower()
-                    if ans == 'q':
-                        break
+
+                    
 
 def visualise_fits(fitsPath, visualise:bool = True, spect:bool = True):
     name = os.path.splitext(os.path.basename(fitsPath))[0]
@@ -299,18 +308,18 @@ def update_fits_exposure(path, new_exposure, save_as=None):
 
 def update_fits_wl(path, save_as=None):
     wl_map = {
-        'VIS' : '675,690,705,720,735,750,765,780,795,810,825',
-        'NIR1': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
-        'NIR2': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
-        'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
+        '0_WL' : '675,690,705,720,735,750,765,780,795,810,825',
+        '1_WL': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
+        '2_WL': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
+        '3_WL': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
     }
     with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
-        for hdu in hdul:
-            if 'WAVELEN' in hdu.header:
-                channel = hdu.header['CHANNEL']
-                print(f"Old WL: {hdu.header['WAVELEN']}")
-                hdu.header['WAVELEN'] = wl_map[channel]
-                print(f"New WL: {hdu.header['WAVELEN']}")
+        hdu = hdul[0]
+        for key in list(wl_map.keys()):
+            if key in hdu.header:
+                print(f"Old WL: {hdu.header[key]}")
+                hdu.header[key] = wl_map[key]
+                print(f"New WL: {hdu.header[key]}")
 
         if save_as:
             hdul.writeto(save_as, overwrite=True)
@@ -494,18 +503,18 @@ def test_diff_decoding(input: str, output:str, diff:str, dtype: str = "<u2",):
 
     print(f'all files decoded')
 
-def try_read_cds(bin, fits):
+def try_read_cds(bin, fits_file):
     readBinfile(bin , 'NIR')
 
-    with fits.open(fits) as hdul:
-        bintable = hdul[2].data
+    with fits.open(fits_file) as hdul:
+        bintable = hdul[1].data
         print()
-        print(utilities.read_cds(bintable['NIR1_0'][0], 0, 0 ,1))
-        print(utilities.read_cds(bintable['NIR1_0'][0], 3, 150 ,1))
-        print(utilities.read_cds(bintable['NIR1_0'][0], 8, 1 ,1))
-        print(utilities.read_cds(bintable['NIR1_0'][0], 346, 7 ,1))
-        print(utilities.read_cds(bintable['NIR1_0'][0], 4, 100 ,5))
-        print(utilities.read_cds(bintable['NIR1_0'][0], 100, 0 ,4))
+        print(utilities.read_cds(bintable['1_000'][0], 0, 0 ,1))
+        print(utilities.read_cds(bintable['1_000'][0], 3, 150 ,1))
+        print(utilities.read_cds(bintable['1_000'][0], 8, 1 ,1))
+        print(utilities.read_cds(bintable['1_000'][0], 346, 7 ,1))
+        print(utilities.read_cds(bintable['1_000'][0], 4, 100 ,5))
+        print(utilities.read_cds(bintable['1_000'][0], 100, 0 ,4))
 
 def replace_header_values_with_unk(fits_path: Union[str, os.PathLike], keys_to_replace: List[str]) -> None:
     """
@@ -570,9 +579,9 @@ def inspect_pipeline_results(asp: str, as0: str, as1: str, vis_bin: str, nir_bin
             vis_bin_img = vis_bin_array.reshape(1024, 1024)
             nir_bin_img = nir_bin_array.reshape(512, 640)
         with fits.open(as0) as as0_hdul, fits.open(as1) as as1_hdul, fits.open(asp) as asp_hdul:
-            as0_data = as0_hdul[1].data
-            as1_data = as1_hdul[1].data
-            asp_data = asp_hdul[1].data
+            as0_data = as0_hdul[0].data
+            as1_data = as1_hdul[0].data
+            asp_data = asp_hdul[0].data
     except Exception as e:
         print(f'Error occured reading the files: {e}')
 
@@ -678,6 +687,19 @@ def inspect_pipeline_results(asp: str, as0: str, as1: str, vis_bin: str, nir_bin
     plt.axis('off')
     plt.show()
 
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(asp_data[0], cmap='gray')
+    plt.title(f'Aligned VIS')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(asp_data[12], cmap='gray')
+    plt.title(f' NIR')
+    plt.axis('off')
+    plt.suptitle('Images after Alignment')
+    plt.show()
+
     print('Visualising the results of alignment')
     legend_elements = [
         Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
@@ -765,16 +787,15 @@ def create_2d_fits(fits_path, index, output_dir, name):
 Function calls after this
 """
 
-read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'), True)
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/AS0_000000_270323T060000_0A.fits'), False)
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_CPX_comp.fits'), True)
 
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/104/AS1_000000_200101T014800_1B.fits'), False)
+read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/501/AS0_000000_240813T084402_1B.fits'), False)
 
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_0A.fits'), False)
 
 
-file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_0_exp_000.bin')
-file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/AS0_000000_270323T060000_1B.fits'))
+file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/501/dc_0_exp_005.bin')
+file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_20240809/501/AS0_000000_240813T084402_1A.fits')
 
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_104/acq_000_decompressed/dc_1_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/104/AS1_000000_200101T014800_1A.fits'))
@@ -782,8 +803,9 @@ file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulat
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_1B.fits'))
 
-# compare_bin_images(file_a, file_b, True, 0, (1024, 1024), visualize=True)
+# compare_bin_images(file_a, file_b, True, 5, (1024, 1024), visualize=True)
 
+# update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
 
 
 """ 
@@ -791,4 +813,13 @@ Python3 ASPECT_calibration_pipeline/test_level_012.py
 """
 
 
+"""
+Alignment Demo
+"""
+asp = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
+as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')
+as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS1_000000_270323T060000_1B.fits')
+vis_bin = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_0_exp_000.bin')
+nir_bin = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
 
+# inspect_pipeline_results(asp=asp,as0=as0, as1=as1, vis_bin=vis_bin,nir_bin=nir_bin)

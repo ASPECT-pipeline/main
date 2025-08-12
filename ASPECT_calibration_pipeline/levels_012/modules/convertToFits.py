@@ -96,8 +96,14 @@ def convert_to_fits(
     comment = primary_header.comments['TARGET'] 
     primary_header['TARGET'] = (TARGET, comment)
 
+    # For simulated use test time
+    if MISSPHAS == 'SIMULATED':
+        test = True
+    else:
+        test = False
+
     # Append spice kernel metadata
-    spice_metadata = utilities.collect_spice_metadata(telemetry_path=telemetry_path, mk=spice_mk, target=TARGET)
+    spice_metadata = utilities.collect_spice_metadata(telemetry_path=telemetry_path, mk=spice_mk, target=TARGET, test=test)
     for key, (value, comment) in spice_metadata.items():
         primary_header[key] = (value, comment)
     
@@ -143,7 +149,7 @@ def convert_to_fits(
         elif channel == 'NIR1' or channel == 'NIR2':
             height = 518
             width = 648
-            if MISSPHAS == 'SIMULATE':
+            if MISSPHAS == 'SIMULATED':
                 height = 512
                 width = 640
         else: 
@@ -188,7 +194,7 @@ def convert_to_fits(
 
     # Append instrument metadata
     frame_number_string = ','.join(frame_numbers)
-    image_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel)
+    image_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, missphas=MISSPHAS)
     for i, (key, value) in enumerate(image_data.items()):
         if key in primary_header:
             comment = primary_header.comments[key]
@@ -203,7 +209,7 @@ def convert_to_fits(
 
     # Add instrument specific metadata this only for one channel at this point.
     channel_index = reverse_channel_map[channel]
-    image_specific_data = utilities.collect_instrument_specific_metadata(config_path=config_path, channel=channel, frame_number_string=frame_number_string)
+    image_specific_data = utilities.collect_instrument_specific_metadata(config_path=config_path, channel=channel, frame_number_string=frame_number_string, missphas=MISSPHAS)
     inset_index = primary_header.index(f'{channel_index}_FPI2')
     for i, (key, (value, comment)) in enumerate(image_specific_data.items()):
         if key in primary_header:

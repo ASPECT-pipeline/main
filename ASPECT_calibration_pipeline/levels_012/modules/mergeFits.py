@@ -2,9 +2,9 @@ import os
 import numpy as np
 import cv2
 from astropy.io import fits
+from astropy.table import Table, hstack
 import levels_012.modules.utilities as utilities
 from pathlib import Path
-import matplotlib.pyplot as plt
 from typing import List
 from pathlib import Path
 
@@ -84,7 +84,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
                     image_dict[channel_name] = primary_data
                     if channel_name in ('NIR1', 'NIR2'):
                         if 1 < len(hdul):
-                            cds_dict[channel_name] = hdul[1] 
+                            cds_dict[channel_name] = Table(hdul[1].data, copy=True)
                 else:
                     swir_data = primary_data
         except (IndexError, ValueError) as e:
@@ -148,16 +148,14 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
 
     # Extract HDUs containing the binary tables
     if 'NIR1' in cds_dict and 'NIR2' in cds_dict:
-        nir1_hdu = cds_dict['NIR1']
-        nir2_hdu = cds_dict['NIR2']
         # Combine all columns from both tables
-        all_columns = nir1_hdu.columns + nir2_hdu.columns
-        combined_table = fits.BinTableHDU.from_columns(all_columns)
+        combined_table_astropy = hstack([cds_dict['NIR1'], cds_dict['NIR2']], join_type='exact')
+        combined_table = fits.BinTableHDU(data=combined_table_astropy.as_array())
     elif 'NIR1' in cds_dict:
-        combined_table = cds_dict['NIR1']
+        combined_table = fits.BinTableHDU(data=cds_dict['NIR2'].as_array())
     elif 'NIR2' in cds_dict:
-        combined_table = cds_dict['NIR2']
-        new_hdul.append(combined_table)
+        combined_table = fits.BinTableHDU(data=cds_dict['NIR2'].as_array())
+    new_hdul.append(combined_table)
 
     hdu_list = fits.HDUList(new_hdul)
     # File name for new fits

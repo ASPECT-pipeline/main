@@ -155,7 +155,7 @@ def query_position_distance(
         distance_au = km_to_au(distance_km)
     except Exception as e:
         print(f"Caught an exception while querying SPICE: {e}")
-        return "UNK"
+        return (['UNK', 'UNK', 'UNK'], 'UNK')
 
     return position, distance_au
 
@@ -183,22 +183,25 @@ def query_spacecraft_quaternions(
     # quat = spice.m2q(cmat)
 
     # return(quat)
+    try:
+        rot_matrix = spice.pxform(ref, frame_name, et)
 
-    rot_matrix = spice.pxform(ref, frame_name, et)
+        X = (1, 0, 0)
+        Y = (0, 1, 0)
+        Z = (0, 0, 1)
 
-    X = (1, 0, 0)
-    Y = (0, 1, 0)
-    Z = (0, 0, 1)
+        rotated_X = np.dot(X, rot_matrix)
+        rotated_Y = np.dot(Y, rot_matrix)
+        rotated_Z = np.dot(Z, rot_matrix)
 
-    rotated_X = np.dot(X, rot_matrix)
-    rotated_Y = np.dot(Y, rot_matrix)
-    rotated_Z = np.dot(Z, rot_matrix)
+        rotation_matrix = np.column_stack((rotated_X, rotated_Y, rotated_Z))
+        r = R.from_matrix(rotation_matrix)
+        quaternion = r.as_quat() # returns (x, y, z, w) format
 
-    rotation_matrix = np.column_stack((rotated_X, rotated_Y, rotated_Z))
-    r = R.from_matrix(rotation_matrix)
-    quaternion = r.as_quat() # returns (x, y, z, w) format
-
-    return quaternion
+        return quaternion
+    except Exception as e:
+        print(f"Caught an exception while querying SPICE: {e}")
+        return ['UNK', 'UNK', 'UNK', 'UNK']
 
 def get_boresight_vector(inst_id: int) -> np.ndarray:
     """
@@ -258,7 +261,7 @@ def query_camera_pointing_info(
     
     except Exception as e:
         print(f"Caught an exception while querying SPICE: {e}")
-        return "UNK"
+        return "UNK", 'UNK', 'UNK'
 
 def query_camera_solar_elongation(
     camera_frame: str = 'MILANI_NAVCAM',

@@ -2,27 +2,33 @@
 This file contains values for the pipeline. Modify the values to match your usecase.
 """
 # INPUT path for the acquisition data
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_104"
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_104"
 
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated_20270323_McEwen"
+
+
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_Autoseq_20240809/acqseq_501"
 
 # OUTPUT path where the results are saved
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
+# output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
 
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated_20270323_McEwen"
+# output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated_20270323_McEwen"
+
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_20240809"
 
 
 # Is the data differetially encoded
-differential: bool = False
+differential: bool = True
 
 # Meta data
 INSTRUME:   str = 'ASPECT'              # Camera ID
 ORIGIN:     str = 'ESA-HERA'                
 SWCREATE:   str = 'ASPECTCAL'           # Software identification
-MISSPHAS:   str = 'SIMULATE'            # Hera mission phase ID
-OBSERVPH:   str = 'v2'                  # Hera observation ID
+MISSPHAS:   str = '20240809'                # Hera mission phase ID
+OBSERVPH:   str = '501'                 # Hera observation ID
 OBSTARGT:   str = 'DIDYMOS'             # Observation target
-OBJECT:     str = 'DARK'                # Observed object
+OBJECT:     str = 'Didymos'                # Observed object
 TARGET:     str = 'DIDYMOS'             # Observed target (SPICE)
 SC_CLK:     str = 'UNK'                 # Spacecraft clock Hera instrument format: '13480572:349872'
 
@@ -34,7 +40,7 @@ spice_mk_plan = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels
 spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_ops.tm"
 
 # Adjust this to point to the metakernel to be used for FITS header data
-spice_mk = spice_mk_plan
+spice_mk = spice_mk_ops
 
 pipeline = '1-2' # Separate with '-' e.g. '1-2-3'
 

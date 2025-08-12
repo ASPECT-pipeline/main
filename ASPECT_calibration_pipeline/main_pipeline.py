@@ -58,7 +58,7 @@ def main_pipeline():
     if '3' in pipeline_steps:
         print(f'Executing pipeline level 3')
         if level_3_input is not None and Path(level_3_input).is_file():
-            level_3_output = main_level_3.level3(fits_file=level_3_input, instrument=instrument, models=models, initGuess=initGuess)
+            level_3_output = main_level_3.level3(fits_file=level_3_input,output_dir=output_dir, instrument=instrument, models=models, initGuess=initGuess)
         else:
             raise FileNotFoundError(f"Level 3 expects a FITS file with '_2B.fits' ending, but got: {level_3_input}")
 

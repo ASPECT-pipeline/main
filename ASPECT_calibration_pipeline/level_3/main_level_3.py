@@ -1,5 +1,6 @@
 from astropy.io import fits
 import numpy as np
+from pathlib import Path
 from level_3.modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
 from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, get_wavelengths, validate_wl, validate_instrument)
 from level_3.modules.NN_evaluate import evaluate
@@ -37,34 +38,37 @@ Parameters:
 
 """
 
-def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool = False, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, initGuess: list[list[float]] = [[0.1, 950, 150], [0.01, 1250, 50]], test_with_simulated:bool = False):
+def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool = False, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, initGuess: list[list[float]] = [[0.1, 950, 150], [0.01, 1250, 50]], test_with_simulated:bool = False):
 
     """
-    Execute the steps 3A, 3B, 3C
-    """
-    # Start by extracting the asteroid spectras from the data cube
+    Execute the steps 3A, 3B, 3C. Opens the FITS file containing the combined data product. Performs data filtering (if applied) and desired analysis algoritms defined in models parameter.
 
-    # Extract relevant metadata
+    Parameters:
+        fits_file (str) : file path to the fits file with strucutre as output from level 2B. 
+        isntrument (str) : defines which channels are included inthe analysis.
+        data_filtering (bool) : are connecting NIR segments, removing outliers, and smoothing applied
+        models (str) : which analysis are applied C = Composition, T = Taxonomy, M = MGM
+        nir_overlap (int) : What is the wavelength in nm where NIR1 and NIR2 overlap.
+        z_thresh (int) : threshold for removing outliers
+        initGuess (list[list[float]]) : initial guesses for MGM
+
+    Returns:
+
+    """
+    
+
+    fits_file = Path(fits_file)
+    output_dir = Path(output_dir)
     with fits.open(fits_file) as hdul:
         primary_hdu = hdul[0]
-        img_HDU = hdul[1]
-        img_header = img_HDU.header
-        img_cube = img_HDU.data
+        primary_header = primary_hdu.header
+        primary_data = primary_hdu.data
 
-        # print(repr(primary_hdu.header))
-        # print(repr(img_header))
-
-
-        # Wavelenghts
-        # vis_wl = np.array([int(x.strip()) for x in img_header.get('V_WL').split(",") if x.strip()], dtype=int)
-        # nir1_wl = np.array([int(x.strip()) for x in img_header.get('N1_WL').split(",") if x.strip()], dtype=int)
-        # nir2_wl = np.array([int(x.strip()) for x in img_header.get('N2_WL').split(",") if x.strip()], dtype=int)
-        # swir_wl = np.array([int(x.strip()) for x in img_header.get('S_WL').split(",") if x.strip()], dtype=int)
-        # all_wl = np.concatenate([vis_wl, nir1_wl, nir2_wl, swir_wl])
+        black_frame = np.zeros_like(primary_data[0]) # Used for analysis results
 
     validate_instrument(instrument)
         
-    wavelengths = get_wavelengths(img_header)
+    wavelengths = get_wavelengths(primary_header)
     validate_wl(wavelengths, instrument)
     
     all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
@@ -95,12 +99,9 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
             end_idx = len(all_wl)
             stem = 'ASPECT-nir1-nir2-swir-2348'
 
-    # print(f'Instrument wl: {instrument_wl}, lenght: {len(instrument_wl)}')
-    # print(f'stem: {stem}')
-
     # Extract the spectrums from data cube
     print(f'Extracting asteroid spectras')
-    combined = extract_asteroid(img_cube, mask_index=0)
+    combined = extract_asteroid(primary_data, mask_index=0)
 
     coords, spectras = zip(*combined)
     coords = np.array(coords) 
@@ -195,6 +196,7 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
         # show_mgm_figures(figs)
     
     if 'C' in model:
+        
         print('Composition analysis with Neural Network')
         model_subdir = os.path.join('composition', stem)
         model_name = ""
@@ -203,9 +205,49 @@ def level3( fits_file:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool
 
         print('Composition analysis:')
         print(f'Length of compositions {len(composition)}')
-        print(composition[45000:45005])
+        print(f'composition[0] {composition[0]}')
+        ol_frame = black_frame.copy()
+        opx_frame = black_frame.copy()
+        cpx_frame = black_frame.copy()
 
-        visualise_composition(img_cube[0],composition, coords)
+        for i, result in enumerate(composition):
+            result = composition[i]
+            coordinate = coords[i]
+            ol_frame[coordinate[0]][coordinate[1]] = result[0]
+            opx_frame[coordinate[0]][coordinate[1]] = result[1]
+            cpx_frame[coordinate[0]][coordinate[1]] = result[2]
+
+        stem = fits_file.stem
+        suffix = fits_file.suffix
+        calibration_lvl = '3C'
+        primary_header['PROCLEVL'] = calibration_lvl
+
+        print('Writing results into files')
+        #Olivine
+        ol_file_name = stem[:25] + calibration_lvl + '_OL_comp' + suffix
+        primary_header['FILENAME'] = ol_file_name
+        ol_hdu = fits.PrimaryHDU(data=ol_frame, header=primary_header)
+        fits_file = os.path.join(output_dir, ol_file_name)
+        ol_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+
+        #Orthopyroxene
+        opx_file_name = stem[:25] + calibration_lvl + '_OPX_comp' + suffix
+        primary_header['FILENAME'] = opx_file_name
+        opx_hdu = fits.PrimaryHDU(data=opx_frame, header=primary_header)
+        fits_file = os.path.join(output_dir, opx_file_name)
+        opx_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+
+        #Clinopyroxene
+        cpx_file_name = stem[:25] + calibration_lvl + '_CPX_comp' + suffix
+        primary_header['FILENAME'] = cpx_file_name
+        cpx_hdu = fits.PrimaryHDU(data=cpx_frame, header=primary_header)
+        fits_file = os.path.join(output_dir, cpx_file_name)
+        cpx_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+        
+        # visualise_composition(primary_data[0],composition, coords)
     if 'T' in model:
         model_subdir = os.path.join('taxonomy', stem)
         model_name = ""
