@@ -11,6 +11,7 @@ import levels_012.modules.flatField as flatField
 import levels_012.modules.badPixels as badPixels
 import levels_012.modules.radiometric as radiometric
 import levels_012.modules.mergeFits as mergeFits
+import levels_012.modules.reflectance as reflectance
 from config import MISSPHAS
 """
     The main program to execute the data processing pipeline.
@@ -139,10 +140,26 @@ def calibration_pipeline(
     """
     1C implementation here
     """
-    # with fits.open(fits_file, memmap=False) as hdul:
+    with fits.open(fits_file, memmap=False) as hdul:
+     # Convert the data to float64 for calibration
+        hdul = utilities.convert_to_float64(hdul)
 
+        hdul = reflectance.reflectance_calibration(hdul, fwhm_nm=30)
 
+        hdul = utilities.convert_to_float32(hdul)
 
+        stem = fits_file.stem
+        suffix = fits_file.suffix
+        new_calibration_level = '1C'
+        file_name = stem[:25] + new_calibration_level + suffix
+        primary_header = hdul[0].header
+        primary_header['FILENAME'] = file_name
+        primary_header['PROCLEVL'] = new_calibration_level
+
+    fits_file = Path(output_dir) / file_name
+    hdul.writeto(fits_file, overwrite=True)
+    print(f'New fits file created: {fits_file}')
+    print(f'---------- LEVEL 1C COMPLETED ----------')
 
     #Return radiometrically calibrated FITS file (end of level 1)
     return fits_file

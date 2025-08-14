@@ -8,6 +8,8 @@ absl-py==2.3.0
     # via
     #   tensorboard
     #   tensorflow
+asciitree==0.3.3
+    # via zarr
 astropy==6.1.7
     # via -r requirements.in
 astropy-iers-data==0.2025.6.9.0.39.3
@@ -19,7 +21,13 @@ astunparse==1.6.3
 cachetools==5.5.2
     # via google-auth
 certifi==2025.4.26
-    # via requests
+    # via
+    #   netcdf4
+    #   requests
+cftime==1.6.4.post1
+    # via
+    #   netcdf4
+    #   xarray
 charset-normalizer==3.4.2
     # via requests
 contourpy==1.3.2
@@ -34,10 +42,14 @@ exceptiongroup==1.3.0
     # via ipython
 executing==2.2.0
     # via stack-data
+fasteners==0.20
+    # via zarr
 flatbuffers==25.2.10
     # via tensorflow
 fonttools==4.58.2
     # via matplotlib
+fsspec==2025.7.0
+    # via xarray
 gast==0.4.0
     # via tensorflow
 google-auth==2.40.3
@@ -52,9 +64,12 @@ grpcio==1.72.1
     # via
     #   tensorboard
     #   tensorflow
+h5netcdf==1.6.4
+    # via xarray
 h5py==3.8.0
     # via
     #   -r requirements.in
+    #   h5netcdf
     #   tensorflow
 idna==3.10
     # via requests
@@ -94,10 +109,15 @@ ml-dtypes==0.5.1
     # via
     #   jax
     #   jaxlib
+netcdf4==1.7.2
+    # via xarray
+numcodecs==0.13.1
+    # via zarr
 numpy==1.23.5
     # via
     #   -r requirements.in
     #   astropy
+    #   cftime
     #   contourpy
     #   h5py
     #   jax
@@ -105,6 +125,8 @@ numpy==1.23.5
     #   keras-tuner
     #   matplotlib
     #   ml-dtypes
+    #   netcdf4
+    #   numcodecs
     #   opencv-python
     #   pandas
     #   patsy
@@ -117,6 +139,8 @@ numpy==1.23.5
     #   statsmodels
     #   tensorboard
     #   tensorflow
+    #   xarray
+    #   zarr
 oauthlib==3.2.2
     # via requests-oauthlib
 opencv-python==4.10.0.84
@@ -130,16 +154,20 @@ opt-einsum==3.4.0
 packaging==25.0
     # via
     #   astropy
+    #   h5netcdf
     #   keras-tuner
     #   matplotlib
+    #   pooch
     #   statsmodels
     #   tensorflow
     #   tensorflow-addons
+    #   xarray
 pandas==1.5.3
     # via
     #   -r requirements.in
     #   seaborn
     #   statsmodels
+    #   xarray
 parso==0.8.4
     # via jedi
 patsy==1.0.1
@@ -148,6 +176,10 @@ pexpect==4.9.0
     # via ipython
 pillow==11.2.1
     # via matplotlib
+platformdirs==4.3.8
+    # via pooch
+pooch==1.8.2
+    # via xarray
 prompt-toolkit==3.0.51
     # via ipython
 protobuf==3.20.3
@@ -184,6 +216,7 @@ pyyaml==6.0.2
 requests==2.32.3
     # via
     #   keras-tuner
+    #   pooch
     #   requests-oauthlib
     #   tensorboard
 requests-oauthlib==2.0.0
@@ -199,6 +232,7 @@ scipy==1.11.1
     #   jaxlib
     #   scikit-learn
     #   statsmodels
+    #   xarray
 seaborn==0.12.2
     # via -r requirements.in
 shapely==2.0.1
@@ -260,6 +294,10 @@ wheel==0.45.1
     #   tensorboard
 wrapt==1.14.1
     # via tensorflow
+xarray[io]==2024.3.0
+    # via -r requirements.in
+zarr==2.18.2
+    # via xarray
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

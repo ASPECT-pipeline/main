@@ -16,6 +16,12 @@ from typing import List, Union
 import level_3.mgm as mgm
 from level_3.test_utilities import show_mgm_figures
 import level_3.level_3_utilities as level_3_utilities
+import xarray as xr
+import cftime 
+from datetime import datetime
+import cftime
+from functools import lru_cache
+from levels_012.modules.reflectance import reflectance_calibration
 
 
 def read_fits_file(path, visualise = False):
@@ -790,13 +796,307 @@ def create_blank_binaries(filename: str, width: int, height: int, dtype=np.uint1
     zeros_array.tofile(filename)
     print(f"Created binary file '{filename}' of shape ({height}, {width}) and dtype {dtype}.")
 
+
+# SOlar irradiace functions 
+def _extract_years(time_da: xr.DataArray) -> np.ndarray:
+    """Return an int array of years from an xarray time coordinate, robust to datetime64, cftime, or numeric."""
+    # Case A: datetime64 -> use .dt.year
+    if np.issubdtype(time_da.dtype, np.datetime64):
+        return time_da.dt.year.values.astype(int)
+
+    vals = time_da.values
+
+    # Case B: object array of cftime datetimes -> read .year per element
+    if vals.dtype == object and len(vals) and isinstance(vals.flat[0], cftime.datetime):
+        return np.array([t.year for t in vals], dtype=int)
+
+    # Case C: numeric times -> decode via units/calendar, then read .year
+    units = time_da.attrs.get("units", None)
+    cal = time_da.attrs.get("calendar", "standard")
+    if units is None:
+        # Fall back: just treat as year numbers already
+        return np.array(vals, dtype=int)
+    decoded = cftime.num2date(vals, units=units, calendar=cal)
+    return np.array([t.year for t in decoded], dtype=int)
+
+def solar_irradiance_1au_at_wavelength(
+    nc_path: str,
+    wl_nm: float,
+    year: int | None = None,
+    return_uncertainty: bool = True,
+):
+    """
+    Get F_sun(λ) at 1 AU from a NetCDF file, at a specific wavelength (nm).
+    Works even when 'time' uses cftime or remains numeric.
+    """
+    ds = xr.open_dataset(nc_path)
+
+    # Variables
+    ssi = ds["SSI"]                  # (time, wavelength), W m^-2 nm^-1
+    wl  = ds["wavelength"].astype(float)
+
+    # Mask missing values (-99) if present
+    mv = ssi.attrs.get("missing_value", None)
+    if mv is not None:
+        ssi = ssi.where(ssi != mv)
+
+    # Choose time slice
+    if year is None:
+        spec = ssi.mean(dim="time", skipna=True)
+        idx = None  # not used
+    else:
+        years_all = _extract_years(ds["time"])
+        # Clamp requested year to available range
+        y_min, y_max = int(years_all.min()), int(years_all.max())
+        y_req = int(np.clip(year, y_min, y_max))
+        # Nearest year index
+        idx = int(np.argmin(np.abs(years_all - y_req)))
+        spec = ssi.isel(time=idx)
+
+    # Interpolate SSI to requested wavelength
+    F = spec.interp(wavelength=wl_nm, kwargs={"fill_value": np.nan}).item()
+
+    if not return_uncertainty:
+        return F
+
+    # Uncertainty if available
+    if "SSI_UNC" in ds:
+        unc = ds["SSI_UNC"]
+        mv_unc = unc.attrs.get("missing_value", None)
+        if mv_unc is not None:
+            unc = unc.where(unc != mv_unc)
+        unc_spec = unc.mean(dim="time", skipna=True) if year is None else unc.isel(time=idx)
+        F_unc = unc_spec.interp(wavelength=wl_nm, kwargs={"fill_value": np.nan}).item()
+    else:
+        F_unc = np.nan
+
+    return F, F_unc
+
+def _years_from_time(time_da: xr.DataArray) -> np.ndarray:
+    """Return integer years robustly (datetime64, cftime, or numeric)."""
+    if np.issubdtype(time_da.dtype, np.datetime64):
+        return time_da.dt.year.values.astype(int)
+    vals = time_da.values
+    if vals.dtype == object and vals.size and isinstance(vals.flat[0], cftime.datetime):
+        return np.array([t.year for t in vals], dtype=int)
+    units = time_da.attrs.get("units", None)
+    cal = time_da.attrs.get("calendar", "standard")
+    if units is None:
+        return np.array(vals, dtype=int)
+    decoded = cftime.num2date(vals, units=units, calendar=cal)
+    return np.array([t.year for t in decoded], dtype=int)
+
+def load_spectrum(nc_path: str, mode: str = "mean", year: int | None = None):
+    """
+    Returns (wavelength_nm, Fsun_1AU) where Fsun is in W m^-2 nm^-1.
+    mode: "mean" (time-mean) or "nearest_year" (pick nearest to 'year').
+    """
+    ds = xr.open_dataset(nc_path)
+    ssi = ds["SSI"]                     # (time, wavelength), W m^-2 nm^-1
+    wl  = ds["wavelength"].astype(float)
+
+    # Mask missing values (-99) if defined
+    mv = ssi.attrs.get("missing_value", None)
+    if mv is not None:
+        ssi = ssi.where(ssi != mv)
+
+    if mode == "mean" or year is None:
+        spec = ssi.mean(dim="time", skipna=True)
+        label = "Time-mean SSI"
+    elif mode == "nearest_year":
+        years = _years_from_time(ds["time"])
+        idx = int(np.argmin(np.abs(years - int(year))))
+        spec = ssi.isel(time=idx)
+        label = f"SSI (nearest year: {years[idx]})"
+    else:
+        raise ValueError("mode must be 'mean' or 'nearest_year'.")
+
+    return wl.values, spec.values, label, ds  # return ds to reuse uncertainty if you want
+
+def plot_ssi(nc_path: str, mode: str = "mean", year: int | None = None,
+             wl_range: tuple[float, float] | None = None,
+             show_uncertainty: bool = True):
+    wl, F, label, ds = load_spectrum(nc_path, mode=mode, year=year)
+
+    # Optional: plot ±1σ band if available
+    F_lo = F_hi = None
+    if show_uncertainty and "SSI_UNC" in ds:
+        unc = ds["SSI_UNC"]
+        mv_unc = unc.attrs.get("missing_value", None)
+        if mv_unc is not None:
+            unc = unc.where(unc != mv_unc)
+        if mode == "mean" or year is None:
+            unc_spec = unc.mean(dim="time", skipna=True).values
+        else:
+            years = _years_from_time(ds["time"])
+            idx = int(np.argmin(np.abs(years - int(year))))
+            unc_spec = unc.isel(time=idx).values
+        F_lo = F - unc_spec
+        F_hi = F + unc_spec
+
+    # Make the plot
+    plt.figure()
+    plt.plot(wl, F, linewidth=1)
+    if F_lo is not None and F_hi is not None:
+        plt.fill_between(wl, F_lo, F_hi, alpha=0.2)
+
+    if wl_range is not None:
+        plt.xlim(*wl_range)
+
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Solar spectral irradiance at 1 AU (W m$^{-2}$ nm$^{-1}$)")
+    plt.title(label)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def _open_nc(nc_path: str):
+    """Try common xarray engines; raise if none work."""
+    last_err = None
+    for eng in ("netcdf4", "h5netcdf", "scipy"):
+        try:
+            return xr.open_dataset(nc_path, engine=eng, decode_times=False)
+        except Exception as e:
+            last_err = e
+    raise RuntimeError(f"Could not open {nc_path} with netcdf4/h5netcdf/scipy: {last_err}")
+
+def _years_from_time(time_da: xr.DataArray) -> np.ndarray:
+    """Robustly extract integer years from an xarray time coordinate."""
+    # If times are numeric "days since ...", decode with cftime:
+    vals = np.asarray(time_da.values)
+    units = time_da.attrs.get("units", None)
+    cal   = time_da.attrs.get("calendar", "standard")
+    if units is not None:
+        decoded = cftime.num2date(vals, units=units, calendar=cal)
+        return np.array([t.year for t in decoded], dtype=int)
+    # Fallback: treat as already-years
+    return vals.astype(int)
+
+def make_dense_ssi_table(
+    nc_path: str,
+    out_csv: str,
+    *,
+    wl_min: float = 300.0,
+    wl_max: float = 2000.0,
+    step_nm: float = 1.0,
+    mode: str = "mean",          # "mean" or "nearest_year"
+    year: int | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Create a dense table of SSI at 1 AU, sampled every 'step_nm' from wl_min..wl_max.
+    Writes a CSV with columns: wavelength_nm,Fsun_1AU_Wm2_per_nm
+    Returns (wl_grid, F_grid).
+    """
+    ds  = _open_nc(nc_path)
+    ssi = ds["SSI"]  # (time, wavelength) in W m^-2 nm^-1
+
+    # Mask file's missing values (-99 or _FillValue)
+    mv = ssi.attrs.get("missing_value", ssi.attrs.get("_FillValue", None))
+    if mv is not None:
+        ssi = ssi.where(ssi != mv)
+
+    # Choose spectrum
+    if mode == "mean" or year is None:
+        spec = ssi.mean(dim="time", skipna=True)
+        picked_year = None
+    else:
+        years = _years_from_time(ds["time"])
+        idx   = int(np.argmin(np.abs(years - int(year))))
+        spec  = ssi.isel(time=idx)
+        picked_year = int(years[idx])
+
+    wl_src = ds["wavelength"].astype(float).values
+    F_src  = spec.values
+
+    # Build dense grid and interpolate
+    wl_grid = np.arange(wl_min, wl_max + 1e-12, step_nm, dtype=float)
+    F_grid  = np.interp(wl_grid, wl_src, F_src, left=np.nan, right=np.nan)
+
+    # Write CSV with a few metadata lines
+    header = [
+        f"# source_nc={Path(nc_path).name}",
+        f"# mode={mode}",
+        f"# year={picked_year if picked_year is not None else 'time-mean'}",
+        "# units=Fsun_1AU in W m^-2 nm^-1; wavelength in nm",
+        f"# generated_on={datetime.utcnow().isoformat(timespec='seconds')}Z",
+        "wavelength_nm,Fsun_1AU_Wm2_per_nm",
+    ]
+    rows = [f"{w:.6f},{f:.8e}" for w, f in zip(wl_grid, F_grid)]
+    Path(out_csv).write_text("\n".join(header + rows))
+    return wl_grid, F_grid
+
+def _load_ssi_csv(csv_path: str) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Load dense SSI table created earlier.
+    Ignores lines starting with '#'.
+    Returns (wavelength_nm, Fsun_1AU_Wm2_per_nm).
+    """
+    data = np.loadtxt(csv_path, delimiter=",", comments="#", dtype=float)
+    if data.ndim == 1:  # single row case
+        data = data[None, :]
+    wl = data[:, 0]
+    F  = data[:, 1]
+    return wl, F
+
+def print_ssi_value(csv_path: str, wl_nm: float, mode: str = "nearest") -> float:
+    """
+    Read and print SSI(λ) at 1 AU from the CSV for a given wavelength.
+    
+    Parameters
+    ----------
+    csv_path : str
+        Path to the dense SSI CSV (columns: wavelength_nm,Fsun_1AU_Wm2_per_nm).
+    wl_nm : float
+        Target wavelength in nm.
+    mode : {"nearest","interp","exact"}
+        Lookup mode:
+          - "nearest": pick closest wavelength in the file (default)
+          - "interp" : linear interpolation
+          - "exact"  : require exact match (within 1e-9 nm)
+    
+    Returns
+    -------
+    float
+        SSI at 1 AU in W m^-2 nm^-1 (NaN if not found/invalid).
+    """
+    wl, F = _load_ssi_csv(csv_path)
+    wl_nm = float(wl_nm)
+
+    if mode == "exact":
+        idx = np.where(np.isclose(wl, wl_nm, rtol=0, atol=1e-9))[0]
+        if idx.size == 0:
+            val = np.nan
+            print(f"No exact wavelength {wl_nm:g} nm in file.")
+        else:
+            val = float(F[idx[0]])
+            print(f"SSI(1 AU) at {wl_nm:g} nm = {val:.8e} W m^-2 nm^-1  [exact match]")
+
+    elif mode == "interp":
+        if wl_nm < wl.min() or wl_nm > wl.max():
+            val = np.nan
+            print(f"{wl_nm:g} nm is outside the table range [{wl.min():.3f}, {wl.max():.3f}] nm.")
+        else:
+            val = float(np.interp(wl_nm, wl, F))
+            print(f"SSI(1 AU) at {wl_nm:g} nm = {val:.8e} W m^-2 nm^-1  [linear interp]")
+
+    else:  # "nearest"
+        idx = int(np.argmin(np.abs(wl - wl_nm)))
+        val = float(F[idx])
+        print(f"SSI(1 AU) near {wl_nm:g} nm -> {wl[idx]:.6f} nm = {val:.8e} W m^-2 nm^-1  [nearest]")
+
+    return val
+
 """
 Function calls after this
 """
-black_bin_file = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/2_bad-pixel_mask.bin')
+# black_bin_file = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/2_bad-pixel_mask.bin')
 # create_blank_binaries(black_bin_file, 512, 640)
 
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_CPX_comp.fits'), True)
+asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), True)
+
+with fits.open(asp_sim) as hdul:
+    reflectance_calibration(hdul)
 
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/501/AS0_000000_240813T084402_1B.fits'), False)
 
@@ -812,9 +1112,17 @@ file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/503/AS0_000
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_1B.fits'))
 
-compare_bin_images(file_a, file_b, True, 5, (1024, 1024), visualize=True)
+# compare_bin_images(file_a, file_b, True, 5, (1024, 1024), visualize=True)
 
 # update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
+
+nc_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_v03r00_yearly_s1610_e2024_c20250221.nc')
+ssi_csv = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_yearly_avg_e2024_c20250221.csv')
+# print_ssi_value(ssi_csv, 672.0, mode="exact")
+# plot_ssi(nc_path, mode="mean", wl_range=(200, 1500), show_uncertainty=True)
+# F, F_unc = solar_irradiance_1au_at_wavelength(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_v03r00_yearly_s1610_e2024_c20250221.nc'),672.0)
+# print(F)
+# print(F_unc)
 
 
 """ 
