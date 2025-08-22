@@ -33,7 +33,7 @@ from pathlib import Path
 def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     """
     Combines the FITS files into one single files containing the hyperspectral data cube.
-    If the files list contains VIS channel the VIS channel is aligned into same grid with the NIR channel images.
+    If the files list contains Vis channel the Vis channel is aligned into same grid with the NIR channel images.
     If the fiels contains the SWIR channel .... 
 
     Parameters:
@@ -49,7 +49,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     
     output_dir = Path(output_dir)
     channel_map = {
-        0 : 'VIS',
+        0 : 'Vis',
         1 : 'NIR1',
         2 : 'NIR2',
         3 : 'SWIR'
@@ -80,7 +80,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
                 new_primary_header = primary_header.copy()
                 primary_header_list.append(new_primary_header)
 
-                if channel_name in ('VIS', 'NIR1', 'NIR2'):
+                if channel_name in ('Vis', 'NIR1', 'NIR2'):
                     image_dict[channel_name] = primary_data
                     if channel_name in ('NIR1', 'NIR2'):
                         if 1 < len(hdul):
@@ -109,9 +109,9 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     else:
         new_image_data = []
 
-        if 'VIS' in channels:
-            print('Aligning VIS channel to NIR grid..')
-            vis_data = image_dict['VIS']
+        if 'Vis' in channels:
+            print('Aligning Vis channel to NIR grid..')
+            vis_data = image_dict['Vis']
             nir_data = image_dict.get('NIR1', image_dict.get('NIR2'))
             
             # Align vis channel based on first images of vis and nir
@@ -142,7 +142,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
     
     new_hdul = [new_primary_hdu]
     # Add data to the data cube
-    if swir_data:
+    if swir_data is not None:
         swir_hdu = fits.ImageHDU(data=swir_data)
         new_hdul.append(swir_hdu)
 
@@ -151,11 +151,13 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
         # Combine all columns from both tables
         combined_table_astropy = hstack([cds_dict['NIR1'], cds_dict['NIR2']], join_type='exact')
         combined_table = fits.BinTableHDU(data=combined_table_astropy.as_array())
+        new_hdul.append(combined_table)
     elif 'NIR1' in cds_dict:
         combined_table = fits.BinTableHDU(data=cds_dict['NIR2'].as_array())
+        new_hdul.append(combined_table)
     elif 'NIR2' in cds_dict:
         combined_table = fits.BinTableHDU(data=cds_dict['NIR2'].as_array())
-    new_hdul.append(combined_table)
+        new_hdul.append(combined_table)
 
     hdu_list = fits.HDUList(new_hdul)
     # File name for new fits

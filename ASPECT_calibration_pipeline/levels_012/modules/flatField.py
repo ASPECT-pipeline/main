@@ -22,22 +22,22 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     header = hdu.header
     data = hdu.data
-    channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
+    channel = header.get('CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     channel_id = reverse_channel_map.get(channel)
     if channel == 'SWIR':
             return hdul
     # Read the Flat field for this channel
     try: 
         cal_dir = Path(calibration_directory)
-        cal_file = Path(cal_dir / f'{channel_id}_flat_field.bin', dtype=np.uint16)
-        arr = np.fromfile(cal_file)
-        if channel == 'VIS':
+        cal_file = Path(cal_dir / f'{channel_id}_flat_field.bin')
+        arr = np.fromfile(cal_file, dtype=np.uint16)
+        if channel == 'Vis':
             w = h = 1024
-            flat_field =  arr.reshape((h,w), dtype=np.uint16)
+            flat_field =  arr.reshape((w, h)).astype(np.uint16)
         elif channel in ('NIR1', 'NIR2'):
             w = 512
             h = 640
-            flat_field =  arr.reshape((h,w), dtype=np.uint16)
+            bad_pixel_mask =  arr.reshape((w, h)).astype(np.uint16)
         else:
             print(f"[WARNING] incorrect channel '{channel}'")
             return hdul
@@ -56,6 +56,7 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
             new_data_cube[i] = image / flat_field
         
         data = new_data_cube
+        print(f'Flat field calibrated')
         return hdul
     except Exception as e:
         print(f'[WARNING] Flat field failed: {e}')

@@ -2,6 +2,7 @@ import cv2
 import os
 import levels_012.modules.utilities as utilities
 import levels_012.modules.convertToFits as convertToFits
+import levels_012.modules.badPixels as badpixels
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,6 +38,8 @@ def read_fits_file(path, visualise = False):
 
             print(hdu.shape)
 
+            print(f'data shape: {hdu.data.shape}')
+
             if visualise:
                 data = hdu.data
 
@@ -59,9 +62,7 @@ def read_fits_file(path, visualise = False):
                     plt.title(f'2D Image')
                     plt.axis('off')
                     plt.tight_layout()
-                    plt.show()
-
-                    
+                    plt.show()                
 
 def visualise_fits(fitsPath, visualise:bool = True, spect:bool = True):
     name = os.path.splitext(os.path.basename(fitsPath))[0]
@@ -251,6 +252,9 @@ def readBinfile(filePath, channel):
     elif channel == "NIR":
         height = 518
         width = 648
+    elif channel == 'SIMULATED':
+        height = 512
+        width = 640
     else:
         with open(filePath, 'rb') as file:
             binaryData = file.read()
@@ -278,13 +282,7 @@ def readBinfile(filePath, channel):
             print(f"Min: {imageArray.min()}")
             print(f"Max: {imageArray.max()}")
 
-            print(f'(254,255): {imageArray[255][254]}')
-            print(f'(3,150): {imageArray[3][150]}')
-            print(f'(8,1): {imageArray[8][1]}')
-            print(f'(346,647): {imageArray[346][647]}')
-            # print(f'(4,100) - (4, 105): {imageArray[4][100:105]}')
-            # print(f'(100,0) - (100, 4): {imageArray[100][:4]}')
-            print(f'array type: {imageArray.dtype}')
+            #Visualise
             plt.figure(figsize=(8,5))
             plt.imshow(imageArray, cmap='gray')
             plt.title(f'channel {channel} little_endian')
@@ -796,6 +794,188 @@ def create_blank_binaries(filename: str, width: int, height: int, dtype=np.uint1
     zeros_array.tofile(filename)
     print(f"Created binary file '{filename}' of shape ({height}, {width}) and dtype {dtype}.")
 
+def try_bad_pixels(file):
+    with fits.open(file) as hdul:
+        rep = badpixels.replace_bad_pixels(hdul)
+        hdu = rep[0]
+        data = hdu.data
+        print(data.shape)
+        data = hdul[0].data[0]
+        plt.figure()
+        plt.imshow(data, cmap='gray')
+        plt.title(f'2D Image')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.show()  
+
+def create_diagonal_bin(filepath: Path, width: int = 640, height: int = 512, dtype=np.uint16):
+    # Initialize zero array
+    arr = np.zeros((height, width), dtype=dtype)
+    
+    # Fill the diagonal with ones
+    diag_len = min(height, width)  # to avoid index mismatch if not square
+    for i in range(diag_len):
+        arr[i, i] = 1
+    
+    # Write to binary file
+    arr.tofile(filepath)
+    print(f"Binary file written: {filepath}, shape {arr.shape}, dtype {arr.dtype}")
+
+def bin_to_fits(
+    bin_path,
+    fits_path,
+    width=640,
+    height=512,
+    dtype=np.uint16,
+    overwrite=True,
+    header_kwargs=None,
+):
+    bin_path = Path(bin_path)
+    fits_path = Path(fits_path)
+
+    # Read data
+    arr = np.fromfile(bin_path, dtype=dtype)
+
+    # Sanity check on size
+    expected = height * width
+    if arr.size != expected:
+        raise ValueError(
+            f"{bin_path.name}: expected {expected} elements for {height}x{width}, "
+            f"got {arr.size}"
+        )
+
+    # Reshape to 2D (H, W)
+    img = arr.reshape((height, width))
+
+    # Build a 3D cube with two identical frames: (2, H, W)
+    cube = np.stack([img, img], axis=0)
+
+    # Create Primary HDU with the cube
+    hdu = fits.PrimaryHDU(cube)
+
+    # Add optional header entries
+    if header_kwargs:
+        for k, v in header_kwargs.items():
+            hdu.header[k] = v
+
+    # Write FITS
+    hdu.writeto(fits_path, overwrite=overwrite)
+
+    return fits_path
+
+def inspect_npz(path, *, show_stats=True, max_list_items=5):
+    """
+    Print a readable summary of an .npz archive.
+    - Unwraps 0-D object arrays (common when dicts are pickled into .npz).
+    - Recurses into dicts/lists/tuples and shows array shapes/dtypes.
+    - For likely transmission bundles (e.g., keys like 'wavelengths', 'transmissions'),
+      prints quick stats (length, min/max).
+    """
+    path = Path(path)
+
+    def is_array(x): return isinstance(x, np.ndarray)
+    def is_scalar_object_array(x): return is_array(x) and x.dtype == object and x.shape == ()
+    def safe_item(x):
+        try:
+            return x.item()
+        except Exception:
+            return x
+
+    def arr_stats(a):
+        if not show_stats or not np.issubdtype(a.dtype, np.number) or a.size == 0:
+            return ""
+        try:
+            amin = np.nanmin(a)
+            amax = np.nanmax(a)
+            return f" (min={amin:g}, max={amax:g})"
+        except Exception:
+            return ""
+
+    def print_kv(k, v, indent=2):
+        pad = " " * indent
+
+        # Unwrap 0-D object arrays (often a dict)
+        if is_scalar_object_array(v):
+            v = safe_item(v)
+
+        # Numpy array
+        if is_array(v):
+            print(f"{pad}- {k}: ndarray shape={v.shape}, dtype={v.dtype}{arr_stats(v)}")
+            return
+
+        # Dict-like
+        if isinstance(v, dict):
+            print(f"{pad}- {k}: dict with {len(v)} key(s)")
+            # Special: look for common spectrum keys
+            for sk in sorted(v.keys()):
+                sv = v[sk]
+                if is_scalar_object_array(sv):
+                    sv = safe_item(sv)
+                if is_array(sv):
+                    extra = arr_stats(sv)
+                    print(f"{pad}    • {sk}: ndarray shape={sv.shape}, dtype={sv.dtype}{extra}")
+                else:
+                    # brief preview for scalars/strings/other
+                    preview = sv
+                    if isinstance(sv, (list, tuple)):
+                        preview = f"{type(sv).__name__}[{len(sv)}]"
+                    elif isinstance(sv, (str, bytes)):
+                        preview = f"{type(sv).__name__}(len={len(sv)})"
+                    print(f"{pad}    • {sk}: {preview}")
+            return
+
+        # List/tuple: show a few items
+        if isinstance(v, (list, tuple)):
+            print(f"{pad}- {k}: {type(v).__name__} with {len(v)} item(s)")
+            for i, item in enumerate(v[:max_list_items]):
+                it = safe_item(item) if is_scalar_object_array(item) else item
+                if is_array(it):
+                    print(f"{pad}    [{i}]: ndarray shape={it.shape}, dtype={it.dtype}{arr_stats(it)}")
+                elif isinstance(it, dict):
+                    print(f"{pad}    [{i}]: dict with {len(it)} key(s)")
+                else:
+                    t = type(it).__name__
+                    s = f"{t}(len={len(it)})" if isinstance(it, (str, bytes)) else t
+                    print(f"{pad}    [{i}]: {s}")
+            if len(v) > max_list_items:
+                print(f"{pad}    … ({len(v)-max_list_items} more)")
+            return
+
+        # Fallback: plain scalar / other object
+        t = type(v).__name__
+        if isinstance(v, (str, bytes)):
+            print(f"{pad}- {k}: {t}(len={len(v)})")
+        else:
+            print(f"{pad}- {k}: {t}")
+
+    with np.load(path, allow_pickle=True) as z:
+        print(f"{path} — {len(z.files)} item(s)")
+        # top-level keys
+        for k in z.files:
+            v = z[k]
+            # show top-level summary and recurse one level
+            if is_scalar_object_array(v):
+                v = safe_item(v)
+
+            if is_array(v):
+                print(f"  {k}: ndarray shape={v.shape}, dtype={v.dtype}{arr_stats(v)}")
+            elif isinstance(v, dict):
+                print(f"  {k}: dict with {len(v)} key(s)")
+                # print inner keys
+                for sk in sorted(v.keys()):
+                    print_kv(sk, v[sk], indent=4)
+            elif isinstance(v, (list, tuple)):
+                print(f"  {k}: {type(v).__name__} with {len(v)} item(s)")
+                for i, item in enumerate(v[:max_list_items]):
+                    print_kv(f"[{i}]", item, indent=4)
+                if len(v) > max_list_items:
+                    print(f"      … ({len(v)-max_list_items} more)")
+            else:
+                t = type(v).__name__
+                if isinstance(v, (str,bytes)):
+                    print(f"  {k}: {t}(len={len(v)})")
+                else:
+                    print(f"  {k}: {t}")
 
 # SOlar irradiace functions 
 def _extract_years(time_da: xr.DataArray) -> np.ndarray:
@@ -1086,33 +1266,96 @@ def print_ssi_value(csv_path: str, wl_nm: float, mode: str = "nearest") -> float
 
     return val
 
+
+def read_pds3_solar_spectrum(path):
+    REC_BYTES = 512
+
+    # Pointers (records start at 1)
+    rec_idnum = 11
+    rec_idname = 12
+    rec_ref = 13
+    rec_data = 14
+
+    # Layout
+    idname_len = 32
+    ref_count = 8
+    n = 901
+    wl_start = 200.0
+    wl_step = 1.0
+
+    with open(path, "rb") as f:
+        # ID number (int32, little-endian)
+        f.seek((rec_idnum - 1) * REC_BYTES)
+        idnum = np.fromfile(f, dtype="<i4", count=1)[0]
+
+        # Name (32 bytes, ASCII)
+        f.seek((rec_idname - 1) * REC_BYTES)
+        name_bytes = np.fromfile(f, dtype="u1", count=idname_len).tobytes()
+        idname = name_bytes.decode("ascii", "ignore").rstrip("\x00").strip()
+
+        # Reference array (8 float64)
+        f.seek((rec_ref - 1) * REC_BYTES)
+        ref = np.fromfile(f, dtype="<f8", count=ref_count)
+
+        # Spectrum data (901 float64)
+        f.seek((rec_data - 1) * REC_BYTES)
+        y = np.fromfile(f, dtype="<f8", count=n)
+
+    # Wavelength grid in nm (from label)
+    wl_nm = wl_start + wl_step * np.arange(n)
+
+    return {
+        "idnum": int(idnum),
+        "idname": idname,
+        "ref": ref,          # np.ndarray shape (8,)
+        "wavelength_nm": wl_nm,  # shape (901,)
+        "irradiance": y      # shape (901,), units not specified in label
+    }
+
+# Example:
+
 """
 Function calls after this
 """
 # black_bin_file = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/2_bad-pixel_mask.bin')
 # create_blank_binaries(black_bin_file, 512, 640)
 
-asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')
+asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
+# read_fits_file(asp_sim)sla
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), True)
 
-with fits.open(asp_sim) as hdul:
-    reflectance_calibration(hdul)
+# Example usage
+# create_diagonal_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_nir_mask.bin'))
+bin_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_bad-pixel_mask.bin')
+fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test.fits')
+# readBinfile(bin_path, 'SIMULATED')
+# bin_to_fits(bin_path,fits_path)
+
+# try_bad_pixels(fits_path)
+
+
+# insert_header_entry(fits_path, 'CHANNELS', 'NIR1')
+# read_fits_file(fits_path, True)
+
+# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), 'CALPHASE', '',None)
+# with fits.open(asp_sim) as hdul:
+#     reflectance_calibration(hdul)
 
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/501/AS0_000000_240813T084402_1B.fits'), False)
 
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_0A.fits'), False)
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/ASP_000000_200101T014231_2B.fits'), False)
 
 
-file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/503/dc_0_exp_005.bin')
-file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/503/AS0_000000_240813T131257_1B.fits')
+# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/503/dc_0_exp_005.bin')
+# file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/503/AS0_000000_240813T131257_1B.fits')
 
-# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_104/acq_000_decompressed/dc_1_exp_000.bin')
-# file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/104/AS1_000000_200101T014800_1A.fits'))
+file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
+file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
 
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_1B.fits'))
 
-# compare_bin_images(file_a, file_b, True, 5, (1024, 1024), visualize=True)
+# compare_bin_images(file_a, file_b, True, 11, (512, 640), visualize=True)
 
 # update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
 
@@ -1124,6 +1367,9 @@ ssi_csv = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_yearl
 # print(F)
 # print(F_unc)
 
+transmissions = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/level_3/datasets/ASPECT/ASPECT_transmission_NEW.npz')
+
+inspect_npz(transmissions)
 
 """ 
 Python3 ASPECT_calibration_pipeline/test_level_012.py

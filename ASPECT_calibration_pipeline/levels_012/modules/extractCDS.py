@@ -31,10 +31,10 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     header = hdu.header
     data = hdu.data
-    channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
+    channel = header.get('CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     missphas = header.get('MISSPHAS')
 
-    if channel in ('VIS', 'SWIR') or missphas == 'SIMULATED':
+    if channel in ('Vis', 'SWIR') or missphas == 'SIMULATED':
         return hdul
     elif channel in ('NIR1', 'NIR2'): 
         try:
@@ -74,9 +74,10 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
             # Create a binary table HDU for the cds pixels
             cds_table = fits.BinTableHDU.from_columns(columns)
             hdul.append(cds_table)
+            print(f'CDS extracted')
             return hdul
         except Exception as e:
             print(f'[WARNING] Exctracting diagnostics failed: {e}')
             return hdul
     else:
-        raise ValueError(f'Channel missmatch in extract CDS: {channel}, Should be in (VIS, NIR1, NIR2, SWIR)')
+        raise ValueError(f'Channel missmatch in extract CDS: {channel}, Should be in (Vis, NIR1, NIR2, SWIR)')

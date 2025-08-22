@@ -103,23 +103,18 @@ def calibration_pipeline(
 
         # Extract diagnostic pixels from NIR2 and NIR2. Convert the values to float64
         hdul = extractCDS.extract_cds_pixels(hdul)
-        print(f'CDS extracted')
 
         # Subtrack the dark frame from each image
         hdul = darkSubtraction.dark_subtraction(hdul)
-        print(f'Dark frame subtracted')
 
         # Apply flatfield correction
         hdul = flatField.flat_field_calibration(hdul)
-        print(f'Flat field calibrated')
 
         # Replace bad pixels with neigbours
         hdul = badPixels.replace_bad_pixels(hdul)
-        print(f'Bad pixels replaced')
 
         # Apply radiometric calibration
         hdul = radiometric.radiometric_calibration(hdul)
-        print(f'Radiometric calibrated')
 
         stem = fits_file.stem
         suffix = fits_file.suffix

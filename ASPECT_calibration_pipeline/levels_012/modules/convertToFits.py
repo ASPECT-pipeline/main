@@ -114,7 +114,7 @@ def convert_to_fits(
     
     """
     Image data
-    VIS, NIR1, NIR2 -> ImageHDU extension
+    Vis, NIR1, NIR2 -> ImageHDU extension
     SWIR -> Binary table extension
     """
     if channel == 'SWIR':
@@ -143,7 +143,7 @@ def convert_to_fits(
         primary_hdu.data = array
     else:
         # Image HDU
-        if channel == 'VIS':
+        if channel == 'Vis':
             height = 1024
             width = 1024
         elif channel == 'NIR1' or channel == 'NIR2':
@@ -153,7 +153,7 @@ def convert_to_fits(
                 height = 512
                 width = 640
         else: 
-            raise ValueError(f"Unknown channel: {channel}. Expected one of: 'VIS', 'NIR1', 'NIR', 'SWIR'." )
+            raise ValueError(f"Unknown channel: {channel}. Expected one of: 'Vis', 'NIR1', 'NIR', 'SWIR'." )
         
         image_data = []
         frame_numbers = []

@@ -195,13 +195,7 @@ def get_current_utc_time_str():
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
 def form_fits_name(channel: str, image_number: str, utc_time: str, calib_lvl: str) -> str:
-    channel_map = {
-            'VIS'   : 0,
-            'NIR1'  : 1,
-            'NIR2'  : 2,
-            'SWIR'  : 3
-        }
-    asp_id = channel_map[channel]
+    asp_id = reverse_channel_map[channel]
     try:
         utc_format = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%S.%f").strftime("%y%m%dT%H%M%S")
     except Exception as e:
@@ -251,11 +245,11 @@ def get_header_template() -> Dict[str, Tuple[str, str]]:
         'CAM_DEC'   : ('UNK', 'Camera axis DEC [deg]'),
         'CAM_NAZ'   : ('UNK', 'Camera axis north azimuth [deg]'),
         'SOL_ELNG'  : ('UNK', 'Solar elongation'),
-        'CALPHASE'  : ('UNK', 'Calibration phase'),
+        'CALPHASE'  : ('', 'Calibration phase'),
         'CHANNELS'  : ('UNK', 'Channels in this file'),
-        '0_CCDTMP' : ('UNK', 'VIS detector temperature [DN]'),
-        '0_FPI1'    : ('UNK', 'VIS FPI 1 temperature [DN]'),
-        '0_FPI2'    : ('UNK', 'VIS FPI 2 temperature [DN]'),
+        '0_CCDTMP' : ('UNK', 'Vis detector temperature [DN]'),
+        '0_FPI1'    : ('UNK', 'Vis FPI 1 temperature [DN]'),
+        '0_FPI2'    : ('UNK', 'Vis FPI 2 temperature [DN]'),
         '1_CCDTMP' : ('UNK', 'NIR1 detector temperature [DN]'),
         '1_FPI1'    : ('UNK', 'NIR1 FPI 1 temperature [DN]'),
         '1_FPI2'    : ('UNK', 'NIR1 FPI 2 temperature [DN]'),
@@ -398,7 +392,7 @@ def check_order(sp: float, channel: str) -> str:
         str: high / low 
     """
     match channel:
-        case 'VIS' | 'NIR1':
+        case 'Vis' | 'NIR1':
             if sp > 19000:
                 return 'HIGH'
             else:
@@ -432,7 +426,7 @@ def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: st
     try:
         telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
         channel_specific_telemetries = {
-            channel: telemetry_data.get(channel, {})
+            channel: telemetry_data.get(channel.upper(), {})
             for channel in channels
         }
     except Exception as e:
@@ -504,7 +498,7 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
     #read SP values for each image
     try:
         match channel:
-            case 'VIS':
+            case 'Vis':
                 taskFile = config_data['visTaskFile']
             case 'NIR1':
                 taskFile = config_data['nir1TaskFile']
@@ -637,7 +631,7 @@ def det_temp_conversion(value: float, channel: str) -> Tuple[str, str]:
         Tuple(Celsius, Kelvin)
     """
     match channel:
-        case 'VIS':
+        case 'Vis':
             if value == 0:
                 return ('UNK', 'UNK')
             c = value * 0.6522 - 295.87
@@ -654,7 +648,7 @@ def det_temp_conversion(value: float, channel: str) -> Tuple[str, str]:
 
 def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[str, str]:
     """
-    Converts the FPI temperatures to Celcius and Kelvin. Not available for VIS-channel
+    Converts the FPI temperatures to Celcius and Kelvin. Not available for Vis-channel
 
     Parameters:
         value (float): Temperature DN value
@@ -664,7 +658,7 @@ def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[str, str]:
         Tuple(Celsius, Kelvin)
     """
     match channel:
-        case 'VIS':
+        case 'Vis':
             return ('N/A', 'N/A')
         case ('NIR1' | 'NIR2' | 'SWIR'):
             if value == 0:
@@ -688,7 +682,7 @@ def exposure_conversion(value: float, channel: str) -> float:
         float exposure in seconds
     """
     match channel:
-        case 'VIS':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
+        case 'Vis':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
         case 'NIR1': return value / 100000
         case 'NIR2': return value / 100000
         case 'SWIR': return value
@@ -713,11 +707,11 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> s
     
     match (channel, order):
         # The correct values for the corretion needed
-        case 'VIS', 'HIGH':
+        case 'Vis', 'HIGH':
             for i in range(0, len(sp_values)):
                 wavelength = round(0.0749 * sp_values[i] - 786.9)
                 wavelengths.append(wavelength)
-        case 'VIS', 'LOW':
+        case 'Vis', 'LOW':
             for i in range(0, len(sp_values)):
                 wavelength = round(0.1244 * sp_values[i] - 1498.2)
                 wavelengths.append(wavelength)
@@ -1008,7 +1002,7 @@ def cropND(img: np.ndarray, bounding: tuple[int, int]) -> np.ndarray:
 
 def get_simulated_wl(channel: str) -> str:
     wl_map = {
-        'VIS' : '675,690,705,720,735,750,765,780,795,810,825',
+        'Vis' : '675,690,705,720,735,750,765,780,795,810,825',
         'NIR1': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
         'NIR2': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
         'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'
@@ -1040,16 +1034,9 @@ def rename_bin_files(directory: str | Path):
 
     directory = Path(directory)
 
-    channel_map = {
-        'VIS' : '0',
-        'NIR1': '1',
-        'NIR2': '2',
-        'SWIR': '3'
-    }
-
     for file in directory.iterdir():
         if file.is_file():
-            match = re.search(r'-(VIS|NIR1|NIR2|SWIR)-', file.name)
+            match = re.search(r'-(Vis|NIR1|NIR2|SWIR)-', file.name)
             if not match:
                 print(f'Skipping unrecognized channel: {file.name}')
                 continue
@@ -1143,7 +1130,7 @@ def plot_spectra_with_image(spectra_list, positions, image, all_wavelengths):
 
 def update_fits_exposure(path, save_as=None):
     exposure_map = {
-        'VIS' : 0.01,
+        'Vis' : 0.01,
         'NIR1': 0.02,
         'NIR2': 0.02,
         'SWIR': 0.02
@@ -1164,7 +1151,7 @@ def update_fits_exposure(path, save_as=None):
 
 def update_fits_wl(path, save_as=None):
     wl_map = {
-        'VIS' : '675,690,705,720,735,750,765,780,795,810,825',
+        'Vis' : '675,690,705,720,735,750,765,780,795,810,825',
         'NIR1': '875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225',
         'NIR2': '1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575',
         'SWIR': '1675,1711,1748,1784,1820,1857,1893,1930,1966,2002,2075,2111,2148,2184,2220,2257,2293,2330,2366,2402,2439,2475'

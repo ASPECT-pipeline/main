@@ -96,7 +96,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
             channel_ids = list(channel_map.keys())
 
             for channel_id in channel_ids:  
-                channel = channel_map[channel_id] # Channel (VIS, NIR1, NIR2, SWIR)
+                channel = channel_map[channel_id] # Channel (Vis, NIR1, NIR2, SWIR)
                 order = header.get(f'{channel_id}_ORDER')
 
                 # To run conversions
@@ -107,7 +107,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
                 ]
 
                 for key, value, comment in keys:
-                    card_length = len(key) + len(value) + len(comment) + 4
+                    card_length = 8 + len(value) + len(comment) + 7
                     if card_length <= 80:
                         header[key] = (value, comment)
                     else:
@@ -122,7 +122,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
             ]
 
             for key, value, comment in keys:
-                card_length = len(key) + len(value) + len(comment) + 4
+                card_length = 8 + len(value) + len(comment) + 7
                 if key in header:
                     if card_length <= 80:
                         header[key] = (value, comment)

@@ -48,7 +48,7 @@ def reflectance_calibration(
     channel = primary_header.get('CHANNELS')
     sun_dist = primary_header.get('SOLAR_D')
 
-    if sun_dist is None:
+    if sun_dist in (None, 'UNK'):
         print(f"Solar distance missing from '{channel} header. Skipping I/F.'")
         return hdul
     else:

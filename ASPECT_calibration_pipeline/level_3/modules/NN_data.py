@@ -530,6 +530,8 @@ def load_transmission(instrument: str) -> tuple[np.ndarray, ...]:
     elif "ASPECT" in instrument:
         data = load_npz(f"ASPECT{_sep_out}transmission.npz", subfolder="ASPECT")
         wvl_transmissions, transmissions, wvl_central = data["wavelengths"].ravel(), [], []
+        print("DEBUG: opening")        # whatever variable holds the path
+        print("DEBUG: keys in npz ->", data.files)
         if "vis" in instrument:
             transmissions.append(data["vis"][()]["transmissions"])
             wvl_central.append(data["vis"][()]["central_wavelengths"])

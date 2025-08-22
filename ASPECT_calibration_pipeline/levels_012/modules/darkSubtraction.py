@@ -20,22 +20,22 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     header = hdu.header
     data = hdu.data
-    channel = header.get('CHANNELS') # Channel (VIS, NIR1, NIR2, SWIR)
+    channel = header.get('CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     channel_id = reverse_channel_map.get(channel)
     # Read Dark frame for this channel
     if channel == 'SWIR':
             return hdul
     try: 
         cal_dir = Path(calibration_directory)
-        cal_file = Path(cal_dir / f'{channel_id}_dark_frame.bin', dtype=np.uint16)
-        arr = np.fromfile(cal_file)
-        if channel == 'VIS':
+        cal_file = Path(cal_dir / f'{channel_id}_dark_frame.bin')
+        arr = np.fromfile(cal_file, dtype=np.uint16)
+        if channel == 'Vis':
             w = h = 1024
-            dark_frame =  arr.reshape((h,w), dtype=np.uint16)
+            dark_frame =  arr.reshape((w, h)).astype(np.uint16)
         elif channel in ('NIR1', 'NIR2'):
             w = 512
             h = 640
-            dark_frame = arr.reshape((h,w), dtype=np.uint16)
+            bad_pixel_mask =  arr.reshape((w, h)).astype(np.uint16)
         else:
             print(f"[WARNING] incorrect channel '{channel}'")
             return hdul
@@ -54,6 +54,7 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
 
         # Add the modified image_HDU to the new HDU list
         data = new_data_cube
+        print(f'Dark frame subtracted')
         return hdul
     except Exception as e:
         print(f'[WARNING] Dark subtraction failed: {e}')

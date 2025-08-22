@@ -358,7 +358,7 @@ def check_spk_coverage(body_id: int):
 
 # load_meta_kernel(spice_mk_ops)
 # print(get_mk_identifier())
-# print(get_sclk(utilities.read_telemetry(telemetry_path, 'VIS')['DATE-OB']))
+# print(get_sclk(utilities.read_telemetry(telemetry_path, 'Vis')['DATE-OB']))
 # print(get_sclk(test_time))
 # print(type(query_position_distance()[1]))
 # print(query_spacecraft_quaternions())

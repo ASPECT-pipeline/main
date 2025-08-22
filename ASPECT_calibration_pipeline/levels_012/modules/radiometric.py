@@ -33,6 +33,7 @@ def radiometric_calibration(hdul: HDUList) -> HDUList:
         for i, image in enumerate(data):
             new_data_cube[i] = (image * coefficient).astype(np.float64) # multiply the image with the coefficient 
         data = new_data_cube
+        print(f'Radiometric calibrated')
         return hdul
     except Exception as e: 
         print(f'[WARNING] Radiometric calibration failed: {e}')
