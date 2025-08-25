@@ -63,4 +63,5 @@ def main_pipeline():
             raise FileNotFoundError(f"Level 3 expects a FITS file with '_2B.fits' ending, but got: {level_3_input}")
 
 
-main_pipeline()
+if __name__ == "__main__": 
+    main_pipeline()

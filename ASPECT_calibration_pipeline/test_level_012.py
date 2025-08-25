@@ -246,7 +246,7 @@ def visualise_fits(fitsPath, visualise:bool = True, spect:bool = True):
                     plt.show()
 
 def readBinfile(filePath, channel):
-    if channel == "VIS": 
+    if channel == "Vis": 
         height = 1024
         width = 1024
     elif channel == "NIR":
@@ -1321,18 +1321,19 @@ Function calls after this
 # create_blank_binaries(black_bin_file, 512, 640)
 
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
-# read_fits_file(asp_sim)sla
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), True)
+# read_fits_file(asp_sim, False)
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autosequence_200825/Exp/202/AS1_000000_250820T143121_1B.fits'), False)
 
 # Example usage
 # create_diagonal_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_nir_mask.bin'))
-bin_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_bad-pixel_mask.bin')
+bin_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_dark_frame.bin')
 fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test.fits')
 # readBinfile(bin_path, 'SIMULATED')
 # bin_to_fits(bin_path,fits_path)
 
 # try_bad_pixels(fits_path)
 
+# readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20250820/Wl/acqseq_301/acq_000_decompressed/dc_0_exp_005.bin'),'Vis')
 
 # insert_header_entry(fits_path, 'CHANNELS', 'NIR1')
 # read_fits_file(fits_path, True)
@@ -1346,16 +1347,16 @@ fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test.
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/ASP_000000_200101T014231_2B.fits'), False)
 
 
-# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/503/dc_0_exp_005.bin')
-# file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/503/AS0_000000_240813T131257_1B.fits')
+# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/504/dc_0_exp_005.bin')
+# file_b = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_504/acq_000_diff_decoded/VIS_decoded_005.bin')
 
-file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
-file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
+# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
+# file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
 
-# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_in-flight-dark_250225/acqseq_100/acq_000_decompressed/dc_0_exp_000.bin')
-# file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/AS0_000000_200101T014231_1B.fits'))
+file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20250820/Dark/acqseq_107/acq_000_decompressed/dc_0_exp_010.bin')
+file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_Autoseq_20250820/Dark/107/AS0_000000_200101T015157_1C.fits'))
 
-# compare_bin_images(file_a, file_b, True, 11, (512, 640), visualize=True)
+compare_bin_images(file_a, file_b, True, 10, (1024, 1024), visualize=False)
 
 # update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
 
@@ -1369,7 +1370,7 @@ ssi_csv = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_yearl
 
 transmissions = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/level_3/datasets/ASPECT/ASPECT_transmission_NEW.npz')
 
-inspect_npz(transmissions)
+# inspect_npz(transmissions)
 
 """ 
 Python3 ASPECT_calibration_pipeline/test_level_012.py

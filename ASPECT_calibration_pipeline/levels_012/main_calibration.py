@@ -239,7 +239,7 @@ def pipeline_level_02(input_dir: str | Path, output_dir: str | Path, instrument:
     for file in fits_dir.iterdir():
         try:
             stem = file.stem
-            if not stem.endswith('1B'):
+            if not stem.endswith('1C'):
                 continue
             if file.suffix.lower() != '.fits':
                 continue

@@ -58,7 +58,8 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
 
             # Create Image HDU with old header
             data = cleaned_data
-
+            hdul[0].data = data
+            
             # Create columns for the cds pixels
             channel_index = reverse_channel_map[channel]
             frames = header.get(f'{channel_index}_FRAMES').split(',')

@@ -55,11 +55,11 @@ def replace_bad_pixels(hdul: HDUList) -> HDUList:
         arr = np.fromfile(cal_file, dtype=np.uint16)
         if channel == 'Vis':
             w = h = 1024
-            bad_pixel_mask =  arr.reshape((w, h)).astype(np.uint16)
+            bad_pixel_mask =  arr.reshape((h, w)).astype(np.uint16)
         elif channel in ('NIR1', 'NIR2'):
-            w = 512
-            h = 640
-            bad_pixel_mask =  arr.reshape((w, h)).astype(np.uint16)
+            w = 640
+            h = 512
+            bad_pixel_mask =  arr.reshape((h, w)).astype(np.uint16)
         else:
             print(f"[WARNING] incorrect channel '{channel}'")
             return hdul

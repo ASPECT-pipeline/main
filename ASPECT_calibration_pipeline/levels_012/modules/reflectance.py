@@ -49,7 +49,7 @@ def reflectance_calibration(
     sun_dist = primary_header.get('SOLAR_D')
 
     if sun_dist in (None, 'UNK'):
-        print(f"Solar distance missing from '{channel} header. Skipping I/F.'")
+        print(f"[WARNING] Solar distance missing from '{channel}' header. Skipping I/F.'")
         return hdul
     else:
         sun_dist = float(sun_dist)
@@ -60,6 +60,10 @@ def reflectance_calibration(
     channel_id = reverse_channel_map.get(channel)
     wavelengths = primary_header.get(f'{channel_id}_WL').split(',')
 
+    if wavelengths[0] in (None, 'UNK', 'N/A'):
+        print(f"[WARNING] Wavelengths is not valid for '{channel}' header '{wavelengths}'. Skipping I/F.'")
+        return hdul
+    
     calib_dir = Path(calibration_directory)
     ssi_csv = calib_dir / 'ssi_yearly_avg_e2024_c20250221.csv'
     wl_nm, ssi_vals = load_ssi_csv(ssi_csv)

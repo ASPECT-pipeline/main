@@ -517,7 +517,7 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
         sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
         #Extract exposure times
         exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
-        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else exposureTimes
+        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else ','.join(str(et) for et in exposureTimes)
         sp1 = ','.join(str(x) for x in sp1Values)
         sp2 = ','.join(str(x) for x in sp2Values)
         sp3 = ','.join(str(x) for x in sp3Values)

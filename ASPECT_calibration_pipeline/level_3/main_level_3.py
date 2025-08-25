@@ -256,9 +256,5 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         taxonomy = evaluate(model_names, spectra_normalized)
         print('Taxonomy analysis:')
         print(f'Length of taxonomy {len(taxonomy)}')
-        print(composition[0])
+        print(taxonomy[0])
     print()
-
-# level3(os.path.join(os.getcwd(), 'test_data/levels_012_test/test_output/simulated_test_3/D1v6v5_simulated_full_datacube.fits'), test_with_simulated=True)
-
-# python3 ASPECT_calibration_pipeline/level_3/main_level_3.py
