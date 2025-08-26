@@ -1266,7 +1266,6 @@ def print_ssi_value(csv_path: str, wl_nm: float, mode: str = "nearest") -> float
 
     return val
 
-
 def read_pds3_solar_spectrum(path):
     REC_BYTES = 512
 
@@ -1312,6 +1311,7 @@ def read_pds3_solar_spectrum(path):
         "irradiance": y      # shape (901,), units not specified in label
     }
 
+
 # Example:
 
 """
@@ -1321,7 +1321,8 @@ Function calls after this
 # create_blank_binaries(black_bin_file, 512, 640)
 
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
-# read_fits_file(asp_sim, False)
+asp_sim_3C = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_Taxonomy.fits')
+read_fits_file(asp_sim_3C, True)
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autosequence_200825/Exp/202/AS1_000000_250820T143121_1B.fits'), False)
 
 # Example usage
@@ -1356,7 +1357,7 @@ fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test.
 file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20250820/Dark/acqseq_107/acq_000_decompressed/dc_0_exp_010.bin')
 file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_Autoseq_20250820/Dark/107/AS0_000000_200101T015157_1C.fits'))
 
-compare_bin_images(file_a, file_b, True, 10, (1024, 1024), visualize=False)
+# compare_bin_images(file_a, file_b, True, 10, (1024, 1024), visualize=False)
 
 # update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
 

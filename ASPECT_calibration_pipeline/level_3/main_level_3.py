@@ -2,7 +2,7 @@ from astropy.io import fits
 import numpy as np
 from pathlib import Path
 from level_3.modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
-from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, get_wavelengths, validate_wl, validate_instrument)
+from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, get_wavelengths, validate_wl, validate_instrument, get_composition_header, get_taxonomy_header)
 from level_3.modules.NN_evaluate import evaluate
 from level_3.test_utilities import get_reflectances, plot_4_spectra, plot_spectra
 from level_3.mgm import fit, plot
@@ -79,25 +79,25 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
             norm_wl = 1539
             start_idx = 0
             end_idx = int(np.where(all_wl == wavelengths['NIR2'][-1])[0]) + 1
-            stem = 'ASPECT-vis-nir1-nir2-1539'
+            model_name = 'ASPECT-vis-nir1-nir2-1539'
         case 'vis-nir1-nir2-swir':
             instrument_wl = np.concatenate([wavelengths['VIS'], wavelengths['NIR1'], wavelengths['NIR2'], wavelengths['SWIR'] ])
             norm_wl = 2348
             start_idx = 0
             end_idx = len(all_wl)
-            stem = 'ASPECT-vis-nir1-nir2-swir-2348'
+            model_name = 'ASPECT-vis-nir1-nir2-swir-2348'
         case 'nir1-nir2': 
             instrument_wl = np.concatenate([wavelengths['NIR1'], wavelengths['NIR2']])
             norm_wl = 1539
             start_idx = int(np.where(all_wl == wavelengths['NIR1'][0])[0])
             end_idx = int(np.where(all_wl == wavelengths['NIR2'][-1])[0]) + 1
-            stem = 'ASPECT-nir1-nir2-1539'
+            model_name = 'ASPECT-nir1-nir2-1539'
         case 'nir1-nir2-swir':
             instrument_wl = np.concatenate([wavelengths['NIR1'], wavelengths['NIR2'], wavelengths['SWIR']])
             norm_wl = 2348
             start_idx = int(np.where(all_wl == wavelengths['NIR1'][0])[0])
             end_idx = len(all_wl)
-            stem = 'ASPECT-nir1-nir2-swir-2348'
+            model_name = 'ASPECT-nir1-nir2-swir-2348'
 
     # Extract the spectrums from data cube
     print(f'Extracting asteroid spectras')
@@ -171,6 +171,12 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         wvl_norm_nm=norm_wl
     )
 
+    #Metadata
+    stem = fits_file.stem
+    suffix = fits_file.suffix
+    calibration_lvl = '3C'
+    primary_header['PROCLEVL'] = calibration_lvl
+
     model = [str(m).upper() for m in models.split('-')] # Analysis to be executed
 
     if 'M' in model:
@@ -195,66 +201,104 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         # figs = plot(combined,mgm_results[0])
         # show_mgm_figures(figs)
     
+    
     if 'C' in model:
         
         print('Composition analysis with Neural Network')
-        model_subdir = os.path.join('composition', stem)
+        model_subdir = os.path.join('composition', model_name)
         model_name = ""
         model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
         composition = evaluate(model_names, spectra_normalized)
 
-        print('Composition analysis:')
-        print(f'Length of compositions {len(composition)}')
-        print(f'composition[0] {composition[0]}')
         ol_frame = black_frame.copy()
         opx_frame = black_frame.copy()
         cpx_frame = black_frame.copy()
+        cube = np.stack([black_frame] * len(composition[0]), axis=0)
 
         for i, result in enumerate(composition):
             result = composition[i]
             coordinate = coords[i]
-            ol_frame[coordinate[0]][coordinate[1]] = result[0]
-            opx_frame[coordinate[0]][coordinate[1]] = result[1]
-            cpx_frame[coordinate[0]][coordinate[1]] = result[2]
-
-        stem = fits_file.stem
-        suffix = fits_file.suffix
-        calibration_lvl = '3C'
-        primary_header['PROCLEVL'] = calibration_lvl
+            ol_frame[coordinate[0], coordinate[1]] = result[0]
+            opx_frame[coordinate[0], coordinate[1]] = result[1]
+            cpx_frame[coordinate[0], coordinate[1]] = result[2]
+            for n in range(len(composition[0])):
+                cube[n, coordinate[0], coordinate[1]] = result[n]
 
         print('Writing results into files')
         #Olivine
+        primary_header['ANALYSIS'] = ('Composition', 'Type of analysis')
+        primary_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
         ol_file_name = stem[:25] + calibration_lvl + '_OL_comp' + suffix
-        primary_header['FILENAME'] = ol_file_name
-        ol_hdu = fits.PrimaryHDU(data=ol_frame, header=primary_header)
+        ol_header = primary_header.copy()
+        ol_header['FILENAME'] = ol_file_name
+        ol_header['LAYER_00'] = ('OL (vol%)', 'Olivine volume percentage')
+        ol_hdu = fits.PrimaryHDU(data=ol_frame, header=ol_header)
         fits_file = os.path.join(output_dir, ol_file_name)
         ol_hdu.writeto(fits_file, overwrite=True)
         print(f'New fits file created: {fits_file}')
 
         #Orthopyroxene
         opx_file_name = stem[:25] + calibration_lvl + '_OPX_comp' + suffix
-        primary_header['FILENAME'] = opx_file_name
-        opx_hdu = fits.PrimaryHDU(data=opx_frame, header=primary_header)
+        opx_header = primary_header.copy()
+        opx_header['FILENAME'] = opx_file_name
+        opx_header['LAYER_00'] = ('OPX (vol%)', 'Orthopyroxene volume percentage')
+        opx_hdu = fits.PrimaryHDU(data=opx_frame, header=opx_header)
         fits_file = os.path.join(output_dir, opx_file_name)
         opx_hdu.writeto(fits_file, overwrite=True)
         print(f'New fits file created: {fits_file}')
 
         #Clinopyroxene
         cpx_file_name = stem[:25] + calibration_lvl + '_CPX_comp' + suffix
-        primary_header['FILENAME'] = cpx_file_name
-        cpx_hdu = fits.PrimaryHDU(data=cpx_frame, header=primary_header)
+        cpx_header = primary_header.copy()
+        cpx_header['FILENAME'] = cpx_file_name
+        cpx_header['LAYER_00'] = ('CPX (vol%)', 'Clinopyroxene volume percentage')
+        cpx_hdu = fits.PrimaryHDU(data=cpx_frame, header=cpx_header)
         fits_file = os.path.join(output_dir, cpx_file_name)
         cpx_hdu.writeto(fits_file, overwrite=True)
         print(f'New fits file created: {fits_file}')
+
+        #All composition results
+        composition_file_name = stem[:25] + calibration_lvl + '_Composition' + suffix
+        composition_header = primary_header.copy()
+        composition_header['FILENAME'] = composition_file_name
+        layers_metadata = get_composition_header()
+        for key, (value, comment) in layers_metadata.items():
+            composition_header[key] = (value, comment)
+        composition_hdu = fits.PrimaryHDU(data=cube, header=composition_header)
+        fits_file = os.path.join(output_dir, composition_file_name)
+        composition_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
         
-        # visualise_composition(primary_data[0],composition, coords)
     if 'T' in model:
-        model_subdir = os.path.join('taxonomy', stem)
+        print('Taxonomy analysis with Neural Network')
+        model_subdir = os.path.join('taxonomy', model_name)
         model_name = ""
         model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
 
         taxonomy = evaluate(model_names, spectra_normalized)
-        print('Taxonomy analysis:')
-        print(f'Length of taxonomy {len(taxonomy)}')
-        print(taxonomy[0])
-    print()
+
+        layer_count = len(taxonomy[0])
+
+        cube = np.stack([black_frame] * layer_count, axis=0)
+
+        for i, result in enumerate(taxonomy):
+            result = taxonomy[i]
+            coordinate = coords[i]
+            for n in range(layer_count):
+                cube[n, coordinate[0], coordinate[1]] = result[n]
+
+        print('Writing results into files')
+        taxonomy_header = primary_header.copy()
+        taxonomy_header['ANALYSIS'] = ('Taxonomy', 'Type of analysis')
+        taxonomy_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
+        taxonomy_name = stem[:25] + calibration_lvl + '_Taxonomy' + suffix
+        taxonomy_header['FILENAME'] = taxonomy_name
+        layers_metadata = get_taxonomy_header()
+        for key, (value, comment) in layers_metadata.items():
+            taxonomy_header[key] = (value, comment)
+        taxonomy_hdu = fits.PrimaryHDU(data=cube, header=taxonomy_header)
+        fits_file = os.path.join(output_dir, taxonomy_name)
+        taxonomy_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+
+

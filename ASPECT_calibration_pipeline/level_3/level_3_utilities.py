@@ -412,6 +412,37 @@ def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | 
     return denoise_array(data, sigma=sigma_nm, x=wavelength)
 
 
+"""
+Analysis results
+"""
+def get_composition_header() -> Dict[str, Tuple[str, str]]:
+    meta_data = {
+        'LAYER_00'  :   ('OL (vol%)' , 'Olivine volume percentage'),
+        'LAYER_01'  :   ('OPX (vol%)' , 'Orthopyroxene volume percentage'),
+        'LAYER_02'  :   ('CPX (vol%)' , 'Clinopyroxene volume percentage'),
+        'LAYER_03'  :   ('Fa (OL)' , 'Fayalite component in olivine'),
+        'LAYER_04'  :   ('Fo (OL)' , 'Forsterite component in olivine'),
+        'LAYER_05'  :   ('Fs (OPX)' , 'Ferrosilite component in orthopyroxene'),
+        'LAYER_06'  :   ('En (OPX)' , 'Enstatite component in orthopyroxene'),
+        'LAYER_07'  :   ('Fs (CPX)' , 'Ferrosilite component in clinopyroxene'),
+        'LAYER_08'  :   ('En (CPX)' , 'Enstatite component in clinopyroxene'),
+        'LAYER_09'  :   ('Wo (CPX)' , 'Wollastonite component in clinopyroxene')
+    }
+    return meta_data
+
+def get_taxonomy_header() -> Dict[str, Tuple[str, str]]:
+    meta_data = {
+        'LAYER_00'  :   ('A+ = A + Sa' , ''),
+        'LAYER_01'  :   ('C+ = C + Cb + Cg + B' , ''),
+        'LAYER_02'  :   ('Ch+ = Ch Cgh' , ''),
+        'LAYER_03'  :   ('D' , ''),
+        'LAYER_04'  :   ('L' , ''),
+        'LAYER_05'  :   ('Q' , ''),
+        'LAYER_06'  :   ('S+ = S + Sqw + Sr + Srw + Sw' , ''),
+        'LAYER_07'  :   ('V+ = V + Vw' , ''),
+        'LAYER_08'  :   ('X+ = X + Xc + Xe + Xk' , ''),
+    }
+    return meta_data
 
 """
 Testing utilities
