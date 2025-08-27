@@ -186,20 +186,49 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
             combined = np.column_stack((selected_wl, spectra))
             result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
             mgm_results.append(result)
-            if i % 10 == 0:
-                print(f'{i} / {len(denoised_spectras)}')
             #     print(i)
             #     result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
             #     mgm_results.append(result)
             #     figs = plot(combined, result)
             #     show_mgm_figures(figs)
-
-        print('printing from results')
-        print(len(mgm_results))
-        print(mgm_results[0])
+        
         # combined = np.column_stack((selected_wl, denoised_spectras[50000]))
         # figs = plot(combined,mgm_results[0])
         # show_mgm_figures(figs)
+
+
+        mgm_header = primary_header.copy()
+        mgm_header['ANALYSIS'] = ('MGM', 'Type of analysis')
+        mgm_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
+        mgm_name = stem[:25] + calibration_lvl + '_MGM' + suffix
+        mgm_header['FILENAME'] = mgm_name
+
+        # Create header info
+        _, _band_parameters, _continuum, _p_values = mgm_results[0]
+        len_of_bp = len(_band_parameters)
+        total_bp = len_of_bp * len(_band_parameters[0])
+        len_of_cont = len(_continuum)
+        len_of_p = len(_p_values)
+        n = 3 + total_bp + len_of_cont + len_of_p
+
+        mgm_header['PARAMETR'] = 'x, y, rms, band parameters, continuum parameters, continuum p-values'
+        mgm_header['BANDPRM'] = (f'{len_of_bp}', 'length of band parameters')
+        mgm_header['CONTPRM'] = (f'{len_of_cont}', 'length of continuum parameters')
+        mgm_header['PVALPRM'] = (f'{len_of_p}', 'length of continuum parameter P-values')
+
+        print('Writing results into files')
+        data = np.empty((len(mgm_results), n), dtype=np.float32)
+        for i, result in enumerate(mgm_results):
+            x, y = coords[i]
+            rms, band_parameters, continuum, p_values = mgm_results[i]
+            flat_bp = [x for row in band_parameters for x in row]
+            row = [x, y, rms, *flat_bp, *continuum, *p_values]
+            data[i] = row
+
+        mgm_hdu = fits.PrimaryHDU(data=data, header=mgm_header)
+        fits_file = os.path.join(output_dir, mgm_name)
+        mgm_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
     
     
     if 'C' in model:

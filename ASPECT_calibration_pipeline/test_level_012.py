@@ -3,6 +3,8 @@ import os
 import levels_012.modules.utilities as utilities
 import levels_012.modules.convertToFits as convertToFits
 import levels_012.modules.badPixels as badpixels
+import levels_012.modules.darkSubtraction as darksubtraction
+import levels_012.modules.flatField as flatfield
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,7 +22,6 @@ import level_3.level_3_utilities as level_3_utilities
 import xarray as xr
 import cftime 
 from datetime import datetime
-import cftime
 from functools import lru_cache
 from levels_012.modules.reflectance import reflectance_calibration
 
@@ -265,11 +266,11 @@ def readBinfile(filePath, channel):
 
     # print(f"height: {height} \nwidht: {width}")
 
-    bytes_per_pixel, bit_depth = utilities.estimate_bit_depth(filePath, width, height)
-    print(f'{channel} bytes per pixel: {bytes_per_pixel}')
-    print(f'{channel} bit depth: {bit_depth}')
-    effective_max = 2**bit_depth - 1
-    print(f'effective max: {effective_max}')
+    # bytes_per_pixel, bit_depth = utilities.estimate_bit_depth(filePath, width, height)
+    # print(f'{channel} bytes per pixel: {bytes_per_pixel}')
+    # print(f'{channel} bit depth: {bit_depth}')
+    # effective_max = 2**bit_depth - 1
+    # print(f'effective max: {effective_max}')
     
 
     try:
@@ -279,9 +280,9 @@ def readBinfile(filePath, channel):
 
             imageArray = np.frombuffer(binaryData, dtype='<u2')
             imageArray = imageArray.reshape((height, width))
-            print(f"Min: {imageArray.min()}")
-            print(f"Max: {imageArray.max()}")
-
+            # print(f"Min: {imageArray.min()}")
+            # print(f"Max: {imageArray.max()}")
+            print(imageArray[0][:5])
             #Visualise
             plt.figure(figsize=(8,5))
             plt.imshow(imageArray, cmap='gray')
@@ -808,6 +809,34 @@ def try_bad_pixels(file):
         plt.tight_layout()
         plt.show()  
 
+def try_dark_subtraction(file):
+    with fits.open(file) as hdul:
+        before = hdul[0].data[0]
+        print(f'before data[0] row 1: {before[0][:5]}')
+        rep = darksubtraction.dark_subtraction(hdul)
+        after = rep[0].data
+        print(after.shape)
+
+        print(f'data[0] row 1: {after[0][0][:5]}')
+        print(f'data[0] row 1: {after[1][0][:5]}')
+        # data = hdul[0].data[0]
+        # plt.figure()
+        # plt.imshow(data, cmap='gray')
+        # plt.title(f'2D Image')
+        # plt.axis('off')
+        # plt.tight_layout()
+        # plt.show()  
+
+def try_flatfield(file):
+    with fits.open(file) as hdul:
+        before = hdul[0].data[0]
+        print(f'before data[0] row 1: {before[0][:5]}')
+        rep = flatfield.flat_field_calibration(hdul)
+        after = rep[0].data
+        print(after.shape)
+        print(f'data[0] row 1: {after[0][0][:5]}')
+        print(f'data[0] row 1: {after[1][0][:5]}')
+
 def create_diagonal_bin(filepath: Path, width: int = 640, height: int = 512, dtype=np.uint16):
     # Initialize zero array
     arr = np.zeros((height, width), dtype=dtype)
@@ -820,6 +849,21 @@ def create_diagonal_bin(filepath: Path, width: int = 640, height: int = 512, dty
     # Write to binary file
     arr.tofile(filepath)
     print(f"Binary file written: {filepath}, shape {arr.shape}, dtype {arr.dtype}")
+
+def create_row_counter_bin(filepath: Path, width: int = 640, height: int = 512, dtype=np.uint16):
+    """
+    Create a binary file with each row counting from 1 to `width`.
+    Rows are identical, producing a row-major increasing pattern.
+    """
+    # Create one row: [1, 2, 3, ..., width]
+    row = np.arange(1, width + 1 , dtype=dtype)
+    
+    # Repeat the row for all rows to build the full array
+    arr = np.tile(row, (height, 1))
+    
+    # Write to binary file
+    arr.tofile(filepath)
+    print(f"Binary file written: {filepath}, shape={arr.shape}, dtype={arr.dtype}")
 
 def bin_to_fits(
     bin_path,
@@ -1322,17 +1366,22 @@ Function calls after this
 
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
 asp_sim_3C = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_Taxonomy.fits')
-read_fits_file(asp_sim_3C, True)
+# read_fits_file(asp_sim_3C, True)
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autosequence_200825/Exp/202/AS1_000000_250820T143121_1B.fits'), False)
 
 # Example usage
-# create_diagonal_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_nir_mask.bin'))
-bin_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_dark_frame.bin')
-fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test.fits')
+# create_diagonal_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_dark_mask.bin'))
+# create_row_counter_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_mask.bin'))
+bin_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_frame.bin')
+fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_frame.fits')
 # readBinfile(bin_path, 'SIMULATED')
 # bin_to_fits(bin_path,fits_path)
 
+# try_dark_subtraction(fits_path)
+
 # try_bad_pixels(fits_path)
+
+# try_flatfield(fits_path)
 
 # readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20250820/Wl/acqseq_301/acq_000_decompressed/dc_0_exp_005.bin'),'Vis')
 

@@ -52,8 +52,8 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
             # Subtract the dark frame from image
             new_data_cube[i] = image - dark_frame
 
-        # Add the modified image_HDU to the new HDU list
-        data = new_data_cube
+
+        hdul[0].data = new_data_cube
         print(f'Dark frame subtracted')
         return hdul
     except Exception as e:

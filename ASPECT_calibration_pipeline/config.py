@@ -52,7 +52,7 @@ pipeline = '3' # Separate with '-' e.g. '1-2-3'
 # Which instrument channels want to include
 instrument = 'vis-nir1-nir2' 
 
-models = 'T'
+models = 'M'
 
 initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
 

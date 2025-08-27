@@ -46,7 +46,6 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
         return hdul
     # Flat field correction
     try:
-
         # To store the calibrated datacube
         new_data_cube = hdu.data.astype(np.float64, copy=True)
 
@@ -55,8 +54,7 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
             # Divide the image with the flatfield 
             new_data_cube[i] = image / flat_field
         
-        data = new_data_cube
-        hdul[0].data = data
+        hdul[0].data = new_data_cube
         print(f'Flat field calibrated')
         return hdul
     except Exception as e:
