@@ -1,5 +1,6 @@
 import cv2
 import os
+import io
 import levels_012.modules.utilities as utilities
 import levels_012.modules.convertToFits as convertToFits
 import levels_012.modules.badPixels as badpixels
@@ -24,7 +25,9 @@ import cftime
 from datetime import datetime
 from functools import lru_cache
 from levels_012.modules.reflectance import reflectance_calibration
-
+import pandas as pd
+from scipy.io import loadmat
+from level_3.modules.BAR_BC_method import calc_BAR_BC
 
 def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
@@ -1347,6 +1350,9 @@ def read_pds3_solar_spectrum(path):
     # Wavelength grid in nm (from label)
     wl_nm = wl_start + wl_step * np.arange(n)
 
+    for wl, spec in zip(wl_nm, y):
+        print(f"{wl:.1f} : {spec:.6e}")
+
     return {
         "idnum": int(idnum),
         "idname": idname,
@@ -1355,18 +1361,476 @@ def read_pds3_solar_spectrum(path):
         "irradiance": y      # shape (901,), units not specified in label
     }
 
+def resample_txt_to_1nm_and_print(
+    path,
+    columns="MCebKur,MChKur",
+    wl_start=200.0,
+    wl_stop=3000.0,
+    method="flux"
+):
+    """
+    Read a whitespace-separated solar spectrum .txt (header on first non-comment line),
+    resample to integer-nm grid, print as two columns, and return (bins_nm, spectrum).
 
+    Parameters
+    ----------
+    path : str
+        Input .txt file. Header must include wavelength and requested irradiance columns.
+        Wavelength can be in 'nm' or 'CM-1' (wavenumber). If values look like micrometers (<20),
+        they are converted to nm by ×1000.
+    columns : str
+        Comma-separated list of column names to average row-wise (e.g. 'MCebKur,MChKur').
+    wl_start, wl_stop : float
+        Desired nm range for output grid.
+    method : {'center','flux'}
+        'center' → linear interpolation at bin centers (integer nm).
+        'flux'   → flux-conserving bin average over [c-0.5, c+0.5].
+
+    Returns
+    -------
+    bins : np.ndarray
+        Integer-nm centers actually produced (clipped to data coverage).
+    y : np.ndarray
+        Resampled irradiance at those centers.
+    """
+    import math
+    import numpy as np
+
+    # ---------- 1) Read header ----------
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        # find header (first non-empty, non-comment line)
+        for line in f:
+            s = line.strip()
+            if s and not s.startswith("#"):
+                header = s.split()
+                break
+        else:
+            raise ValueError("No header line found in file.")
+
+        # normalize header tokens
+        norm = lambda t: t.strip().replace("-", "_")
+        name_to_idx = {norm(h): i for i, h in enumerate(header)}
+
+        # wavelength columns
+        nm_idx = name_to_idx.get("nm")
+        wn_idx = name_to_idx.get("CM_1", name_to_idx.get("CM-1", None))
+
+        # which irradiance columns to use
+        want_cols = [norm(c) for c in columns.split(",") if c.strip()]
+        col_indices = []
+        missing = []
+        for cname in want_cols:
+            ix = name_to_idx.get(cname)
+            if ix is None:
+                missing.append(cname)
+            else:
+                col_indices.append(ix)
+        if not col_indices:
+            raise ValueError(f"None of the requested columns were found: {missing}. "
+                             f"Available: {list(name_to_idx.keys())}")
+
+        # ---------- 2) Stream rows; collect wavelength+row-average flux ----------
+        wl_list, f_list = [], []
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            parts = s.split()
+
+            # wavelength → nm
+            wl = None
+            try:
+                if nm_idx is not None and nm_idx < len(parts):
+                    wl = float(parts[nm_idx])  # might be nm or µm magnitude
+                elif wn_idx is not None and wn_idx < len(parts):
+                    wn = float(parts[wn_idx])  # cm^-1
+                    wl = 1e7 / wn             # nm
+            except ValueError:
+                wl = None
+            if wl is None:
+                continue
+
+            # if it looks like micrometers, convert to nm
+            if wl < 20.0:
+                wl *= 1000.0
+
+            # row-wise average across requested columns (skip missing/bad cells)
+            vals = []
+            for ix in col_indices:
+                if ix < len(parts):
+                    try:
+                        vals.append(float(parts[ix]))
+                    except ValueError:
+                        pass
+            if not vals:
+                continue
+
+            wl_list.append(wl)
+            f_list.append(sum(vals) / len(vals))
+
+    if not wl_list:
+        raise ValueError("No valid data rows parsed (check column names and file format).")
+
+    wl = np.asarray(wl_list, dtype=float)
+    fx = np.asarray(f_list, dtype=float)
+
+    # ---------- 3) Clean, sort, dedupe ----------
+    ok = np.isfinite(wl) & np.isfinite(fx)
+    wl, fx = wl[ok], fx[ok]
+    order = np.argsort(wl)
+    wl, fx = wl[order], fx[order]
+
+    # collapse identical wavelengths by averaging
+    if wl.size == 0:
+        raise ValueError("No valid finite data after cleaning.")
+    uniq, idx = np.unique(wl, return_index=True)
+    counts = np.r_[idx[1:], wl.size] - idx
+    fx = np.add.reduceat(fx, idx) / counts
+    wl = uniq
+
+    # ---------- 4) Build output grid ----------
+    if method == "flux":
+        # require full coverage of each bin [c-0.5, c+0.5]
+        lo = math.ceil(max(wl_start, wl.min() + 0.5))
+        hi = math.floor(min(wl_stop,  wl.max() - 0.5))
+        if hi < lo:
+            raise ValueError(f"Data coverage {wl.min():.3f}..{wl.max():.3f} nm "
+                             f"does not support flux bins {wl_start}..{wl_stop} nm.")
+        bins = np.arange(float(lo), float(hi) + 1.0, 1.0)
+
+        # ---------- 5a) Flux-conserving bin average ----------
+        edges = np.concatenate(([bins[0] - 0.5],
+                                0.5 * (bins[:-1] + bins[1:]),
+                                [bins[-1] + 0.5]))
+        # insert edge samples and integrate piecewise linear curve
+        f_edges = np.interp(edges, wl, fx)
+        wl_aug  = np.concatenate([wl, edges])
+        fx_aug  = np.concatenate([fx, f_edges])
+        o = np.argsort(wl_aug)
+        wl_aug, fx_aug = wl_aug[o], fx_aug[o]
+
+        dλ   = wl_aug[1:] - wl_aug[:-1]
+        trap = 0.5 * (fx_aug[1:] + fx_aug[:-1]) * dλ
+        Icum = np.concatenate([[0.0], np.cumsum(trap)])
+
+        I_at_edges = np.interp(edges, wl_aug, Icum)
+        rebinned = (I_at_edges[1:] - I_at_edges[:-1]) / 1.0  # per nm
+
+    elif method == "center":
+        # only require the center to lie within data range
+        lo = math.ceil(max(wl_start, wl.min()))
+        hi = math.floor(min(wl_stop,  wl.max()))
+        if hi < lo:
+            raise ValueError(f"Data coverage {wl.min():.3f}..{wl.max():.3f} nm "
+                             f"does not include centers {wl_start}..{wl_stop} nm.")
+        bins = np.arange(float(lo), float(hi) + 1.0, 1.0)
+
+        # ---------- 5b) Center sampling (linear interpolation at c) ----------
+        rebinned = np.interp(bins, wl, fx)
+
+    else:
+        raise ValueError("method must be 'center' or 'flux'.")
+
+    # ---------- 6) Print and return ----------
+    # for w, val in zip(bins[:25], rebinned[:25]):
+    #     print(f"{w:.1f} : {val:.6e}")
+
+    return bins, rebinned
+
+
+def compare_resampled_to_pds3(pds3_source, bins_nm, y_resampled):
+    """
+    Compare your resampled spectrum against the PDS3 product and print line-by-line differences.
+
+    Parameters
+    ----------
+    pds3_source : dict | (wl_nm, irr) tuple | str
+        - dict from your reader with keys "wavelength_nm" and "irradiance", OR
+        - tuple (wl_nm, irr) arrays, OR
+        - path string to a PDS3 file (requires read_pds3_solar_spectrum(...) in scope).
+    bins_nm : array-like
+        Wavelength centers (nm) of your resampled spectrum.
+    y_resampled : array-like
+        Your resampled irradiance values at bins_nm.
+
+    Prints
+    ------
+    wl : pds3 : ours : diff (where diff = pds3 - ours)
+    Summary stats:
+        count, total_abs_difference, mean_abs_difference (MAE), bias (mean diff),
+        rmse, min_difference, max_difference,
+        mean_abs_percent_diff, median_abs_percent_diff
+
+    Returns
+    -------
+    dict with keys:
+        wavelength_nm, pds3, ours, diff,
+        total_abs, mae, bias, rmse, min_diff, max_diff,
+        mean_abs_percent_diff, median_abs_percent_diff
+    """
+    import numpy as np
+
+    # --- Load PDS3 arrays ---
+    if isinstance(pds3_source, dict):
+        p_wl = np.asarray(pds3_source["wavelength_nm"], float)
+        p_y  = np.asarray(pds3_source["irradiance"], float)
+    elif isinstance(pds3_source, tuple) and len(pds3_source) == 2:
+        p_wl = np.asarray(pds3_source[0], float)
+        p_y  = np.asarray(pds3_source[1], float)
+    elif isinstance(pds3_source, str):
+        if "read_pds3_solar_spectrum" not in globals():
+            raise ValueError("If pds3_source is a path, read_pds3_solar_spectrum(...) must exist in scope.")
+        d = read_pds3_solar_spectrum(pds3_source)
+        p_wl = np.asarray(d["wavelength_nm"], float)
+        p_y  = np.asarray(d["irradiance"], float)
+    else:
+        raise TypeError("pds3_source must be a dict, (wl,irr) tuple, or path string.")
+
+    bins_nm     = np.asarray(bins_nm, float)
+    y_resampled = np.asarray(y_resampled, float)
+
+    # --- Align on common wavelengths (robust to tiny float noise) ---
+    p_wl_r = np.round(p_wl, 6)
+    b_wl_r = np.round(bins_nm, 6)
+
+    p_map    = {w: v for w, v in zip(p_wl_r, p_y)}
+    ours_map = {w: v for w, v in zip(b_wl_r, y_resampled)}
+
+    common = sorted(set(p_map.keys()) & set(ours_map.keys()))
+    if not common:
+        raise ValueError("No overlapping wavelengths between PDS3 and your resampled grid.")
+
+    p_vals    = np.array([p_map[w]    for w in common], dtype=float)
+    ours_vals = np.array([ours_map[w] for w in common], dtype=float)
+
+    # diff defined as (PDS3 - ours)
+    diffs = p_vals - ours_vals
+
+    # --- Print per-line ---
+    for w, pv, ov, dv in zip(common, p_vals, ours_vals, diffs):
+        print(f"{w:.1f} : {pv:.6e} : {ov:.6e} : {dv:.6e}")
+
+    # --- Summary stats ---
+    total_abs = float(np.sum(np.abs(diffs)))
+    mae       = float(np.mean(np.abs(diffs)))             # average deviation
+    bias      = float(np.mean(diffs))                     # signed average difference
+    rmse      = float(np.sqrt(np.mean(diffs**2)))
+    min_diff  = float(np.min(diffs))
+    max_diff  = float(np.max(diffs))
+
+    # Relative differences (%), ignore zeros in PDS3 to avoid div-by-zero
+    nz = np.abs(p_vals) > 0
+    if np.any(nz):
+        abs_pct = np.abs(diffs[nz]) / np.abs(p_vals[nz]) * 100.0
+        mean_abs_pct = float(np.mean(abs_pct))
+        median_abs_pct = float(np.median(abs_pct))
+    else:
+        mean_abs_pct = float('nan')
+        median_abs_pct = float('nan')
+
+    # Print summary
+    print(f"\ncount: {len(common)}")
+    print(f"total_abs_difference: {total_abs:.6e}")
+    print(f"mean_abs_difference (MAE): {mae:.6e}")
+    print(f"bias (mean difference): {bias:.6e}")
+    print(f"rmse: {rmse:.6e}")
+    print(f"min_difference: {min_diff:.6e}")
+    print(f"max_difference: {max_diff:.6e}")
+    print(f"mean_abs_percent_diff: {mean_abs_pct:.3f}%")
+    print(f"median_abs_percent_diff: {median_abs_pct:.3f}%")
+
+    return {
+        "wavelength_nm": np.array(common, dtype=float),
+        "pds3": p_vals,
+        "ours": ours_vals,
+        "diff": diffs,
+        "total_abs": total_abs,
+        "mae": mae,
+        "bias": bias,
+        "rmse": rmse,
+        "min_diff": min_diff,
+        "max_diff": max_diff,
+        "mean_abs_percent_diff": mean_abs_pct,
+        "median_abs_percent_diff": median_abs_pct,
+    }
+
+
+"""
+mat files
+"""
+def read_mat_files(path):
+    mat_data = loadmat(path)
+    print(list(mat_data.keys()))  # List all variable names
+    print(f"exposure: {mat_data['exposure_ms']}")
+    print(f"wavelengths: {mat_data['wavelengths']}")
+    print(f"shape of cube: {mat_data['cube'].shape}")
+
+def dump_mat_cube_frames(channel, mat_path, out_dir):
+    """
+    Read a MATLAB .mat hyperspectral cube and write per-frame raw .bin files.
+
+    Parameters
+    ----------
+    channel  : str   'Vis' or 'NIR' (case-insensitive)
+    mat_path : str   path to .mat file that contains 'cube' (H, W, N) and 'wavelengths'
+    out_dir  : str   folder to write .bin files into (created if missing)
+
+    Returns
+    -------
+    list of str : file paths written
+    """
+    import os
+    import numpy as np
+    from scipy.io import loadmat
+
+    ch = channel.strip().lower()
+    if ch not in ("vis", "nir"):
+        raise ValueError("channel must be 'Vis' or 'NIR'")
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Load the .mat (MAT v5 style)
+    data = loadmat(mat_path, squeeze_me=True, struct_as_record=False)
+    if "cube" not in data:
+        raise KeyError("The .mat file does not contain a 'cube' variable.")
+    cube = data["cube"]
+
+    if cube.ndim != 3:
+        raise ValueError(f"'cube' must be 3D (H, W, N). Got shape {cube.shape}")
+
+    H, W, N = cube.shape
+
+    written = []
+
+    if ch == "vis":
+        # Expect 10 frames; write all as dc_0_exp_###
+        for i in range(N):
+            fname = f"dc_0_exp_{i:03d}.bin"
+            path = os.path.join(out_dir, fname)
+            # preserve dtype; write row-major contiguous
+            cube[..., i].ravel(order="C").tofile(path)
+            written.append(path)
+
+    else:  # NIR
+        # Expect 20 frames; split first half to dc_1, second half to dc_2
+        half = N // 2  # with N=20 -> 10
+        # first half
+        for i in range(half):
+            fname = f"dc_1_exp_{i:03d}.bin"
+            path = os.path.join(out_dir, fname)
+            cube[..., i].ravel(order="C").tofile(path)
+            written.append(path)
+        # second half
+        for i in range(half, N):
+            fname = f"dc_2_exp_{(i - half):03d}.bin"
+            path = os.path.join(out_dir, fname)
+            cube[..., i].ravel(order="C").tofile(path)
+            written.append(path)
+
+    print(f"Wrote {len(written)} files to: {out_dir}")
+    print(f"cube dtype={cube.dtype}, shape=(H={H}, W={W}, N={N})")
+    return written
+
+"""
+spectra
+"""
+
+def plot_spectrum(csv_path, spectrum_col: int, *, delimiter=None, skiprows=0,
+                  xlabel="Wavelength (nm)", ylabel="Intensity", title=None):
+    """
+    Plot a spectrum from a file where col0 = wavelength and cols 1..N = spectra.
+
+    Parameters
+    ----------
+    csv_path : str or Path
+        Path to the data file (csv/tsv/space-separated).
+    spectrum_col : int
+        1-based index of the spectrum column to plot (1 maps to file column #1).
+    delimiter : str or None, optional
+        If None, autodetect (',' -> CSV, else whitespace).
+    skiprows : int, optional
+        Number of header rows to skip.
+    xlabel, ylabel, title : str, optional
+        Axis labels and plot title.
+    """
+    csv_path = Path(csv_path)
+
+    # Auto-detect delimiter if not given
+    if delimiter is None:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            first = f.readline()
+        delimiter = "," if "," in first else None  # None => whitespace split
+
+    # Load data
+    arr = np.loadtxt(csv_path, delimiter=delimiter, skiprows=skiprows)
+    if arr.ndim != 2 or arr.shape[1] < 2:
+        raise ValueError("Expected at least two columns: wavelength + one spectrum.")
+
+    # Validate requested spectrum column
+    if spectrum_col < 1 or spectrum_col >= arr.shape[1]:
+        raise IndexError(
+            f"spectrum_col must be in [1, {arr.shape[1]-1}] "
+            f"(you gave {spectrum_col})."
+        )
+
+    wl = arr[:, 0]
+    y  = arr[:, spectrum_col]  # 1-based among spectra == file column index
+
+    # Plot
+    plt.figure()
+    plt.plot(wl, y)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title or f"Spectrum column {spectrum_col}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    return wl, y
+
+wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv'), 2)
+# 2, 5, 
+# 13
+
+BAR, BIC, BIIC = calc_BAR_BC(wl, y)
+
+print(f'BAR = {BAR}')
+print(f'BIC = {BIC}')
+print(f'BIIC = {BIIC}')
+
+# read_mat_files(os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/D1v5-10km-10ms.mat'))
+
+# dump_mat_cube_frames('NIR', os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/D1v5-10km-10ms.mat'), os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/acqseq_100'))
+
+# bins, rebinned = resample_txt_to_1nm_and_print(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/AllMODEtr.txt'),columns="MCebKur", method='flux')
+
+out_path = os.path.join(os.getcwd(), "ASPECT_calibration_pipeline/files/MCebKur_resampled_1nm.txt")
+# np.savetxt(
+#     out_path,
+#     np.column_stack((bins, rebinned)),
+#     fmt=["%.1f", "%.6e"],                      # 200.0  4.068072e-03
+#     header="nm irradiance_W·m^-2·nm^-1",      # optional header
+#     comments=""                                # don't prefix header with '#'
+# )
+# print("wrote:", out_path)
 # Example:
 
 """
 Function calls after this
 """
+
+# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1C.fits'), True)
+
+
+# result = read_pds3_solar_spectrum(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/MODTRAN _ MCebKur MChKur_resampled to 1 nm.DAT'))
+
+# compare_resampled_to_pds3(result, bins, rebinned)
 # black_bin_file = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/2_bad-pixel_mask.bin')
 # create_blank_binaries(black_bin_file, 512, 640)
 
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
 asp_sim_3C = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_Taxonomy.fits')
-# read_fits_file(asp_sim_3C, True)
+# read_fits_file(asp_sim_3C, False)
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autosequence_200825/Exp/202/AS1_000000_250820T143121_1B.fits'), False)
 
 # Example usage
@@ -1403,10 +1867,10 @@ fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_
 # file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
 # file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
 
-file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20250820/Dark/acqseq_107/acq_000_decompressed/dc_0_exp_010.bin')
-file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_Autoseq_20250820/Dark/107/AS0_000000_200101T015157_1C.fits'))
+file_a = os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_0_exp_000.bin')
+file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1B.fits')
 
-# compare_bin_images(file_a, file_b, True, 10, (1024, 1024), visualize=False)
+# compare_bin_images(file_a, file_b, True, 0, (1024, 1024), visualize=False)
 
 # update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
 
@@ -1422,6 +1886,9 @@ transmissions = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/level_3/d
 
 # inspect_npz(transmissions)
 
+# inspect_pipeline_results(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/ASP_000000_270101T060000_2B.fits'), os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1C.fits'), os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS1_000000_270101T060000_1C.fits'), 
+#                          os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_0_exp_000.bin'), os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_1_exp_000.bin'))
+
 """ 
 Python3 ASPECT_calibration_pipeline/test_level_012.py
 """
@@ -1430,6 +1897,7 @@ Python3 ASPECT_calibration_pipeline/test_level_012.py
 """
 Alignment Demo
 """
+
 asp = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
 as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')
 as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS1_000000_270323T060000_1B.fits')

@@ -45,6 +45,9 @@ def reflectance_calibration(
     primary_header = primary_hdu.header
     data = primary_hdu.data
 
+    if primary_header.get('MISSPHAS') == 'SIMULATED':
+        return hdul
+
     channel = primary_header.get('CHANNELS')
     sun_dist = primary_header.get('SOLAR_D')
 
