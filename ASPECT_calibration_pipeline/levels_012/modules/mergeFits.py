@@ -93,8 +93,7 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
             print(f"Error: unknown channel ID '{char}' in '{file.name}' ")
     
     if len(channels) == 1:
-        print(f'More than one channel needed to combine.')
-        return files[0]
+        raise ValueError(f'More than one channel needed to combine.')
     
     print(f"Combining channels {channels}")
 
