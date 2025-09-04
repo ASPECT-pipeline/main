@@ -27,7 +27,7 @@ from functools import lru_cache
 from levels_012.modules.reflectance import reflectance_calibration
 import pandas as pd
 from scipy.io import loadmat
-from level_3.modules.BAR_BC_method import calc_BAR_BC
+from level_3.modules.BAR_BC_method import calc_band_parameters
 
 def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
@@ -1789,14 +1789,13 @@ def plot_spectrum(csv_path, spectrum_col: int, *, delimiter=None, skiprows=0,
     return wl, y
 
 # wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv'), 2)
+wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/ElHammami_smoothed.csv'), 1)
 # 2, 5, 
 # 13
 
-# BAR, BIC, BIIC = calc_BAR_BC(wl, y)
+calc_band_parameters(wl, y)
 
-# print(f'BAR = {BAR}')
-# print(f'BIC = {BIC}')
-# print(f'BIIC = {BIIC}')
+
 
 # read_mat_files(os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/D1v5-10km-10ms.mat'))
 
@@ -1831,7 +1830,7 @@ Function calls after this
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
 asp_if = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/106/ASP_000000_200101T015217_2B.fits')
 # asp_sim_3C = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_Taxonomy.fits')
-read_fits_file(asp_if, False)
+# read_fits_file(asp_if, False)
 # read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autosequence_200825/Exp/202/AS1_000000_250820T143121_1B.fits'), False)
 
 # Example usage

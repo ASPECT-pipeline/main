@@ -581,18 +581,15 @@ def my_argextreme(min_or_max: Literal["min", "max"], x: np.ndarray, y: np.ndarra
 
     return x[ix0]
 
-
 def my_argmin(x: np.ndarray, y: np.ndarray, x0: float | None = None, dx: float = 50.,
               n_points: int = 2, fit_method: str = "ransac", rtol: float = 2.) -> float:
     # This function returns a position of local minimum of y(x) around a point x0 +- dx
     return my_argextreme("min", x, y, x0, dx, n_points, fit_method, rtol)
 
-
 def my_argmax(x: np.ndarray, y: np.ndarray, x0: float | None = None, dx: float = 50.,
               n_points: int = 2, fit_method: str = "ransac", rtol: float = 2.) -> float:
     # This function returns a position of local maximum of y(x) around a point x0 +- dx
     return my_argextreme("max", x, y, x0, dx, n_points, fit_method, rtol)
-
 
 def to_shape(a: np.ndarray, shape: tuple[int, int], val: float = np.nan) -> np.ndarray:
     y_, x_ = shape
@@ -603,13 +600,11 @@ def to_shape(a: np.ndarray, shape: tuple[int, int], val: float = np.nan) -> np.n
                       (x_pad // 2, x_pad // 2 + x_pad % 2)),
                   mode="constant", constant_values=(val,))
 
-
 def cropND(img: np.ndarray, bounding: tuple[int, int]) -> np.ndarray:
     start = tuple(map(lambda a, da: (a - da) // 2, np.shape(img), bounding))
     end = tuple(map(np.add, start, bounding))
     slices = tuple(map(slice, start, end))
     return img[slices]
-
 
 def sliding_window(image: np.ndarray, kernel: np.ndarray, func: str | Callable, mode: str = "same") -> np.ndarray:
     if not (callable(func) or func in ["conv", "conv2", "min", "max", "median"]):
