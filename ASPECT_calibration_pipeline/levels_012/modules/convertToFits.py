@@ -138,7 +138,6 @@ def convert_to_fits(
                 values.append(value)
             except Exception as e:
                 raise IOError(f"Error reading binary file {file_path}: {e}") from e
-        
         array = np.array(values, dtype=np.uint32)
         primary_hdu.data = array
     else:
@@ -195,6 +194,7 @@ def convert_to_fits(
     # Append instrument metadata
     frame_number_string = ','.join(frame_numbers)
     image_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, missphas=MISSPHAS)
+
     for i, (key, value) in enumerate(image_data.items()):
         if key in primary_header:
             comment = primary_header.comments[key]
@@ -210,6 +210,7 @@ def convert_to_fits(
     # Add instrument specific metadata this only for one channel at this point.
     channel_index = reverse_channel_map[channel]
     image_specific_data = utilities.collect_instrument_specific_metadata(config_path=config_path, channel=channel, frame_number_string=frame_number_string, missphas=MISSPHAS)
+
     inset_index = primary_header.index(f'{channel_index}_FPI2')
     for i, (key, (value, comment)) in enumerate(image_specific_data.items()):
         if key in primary_header:

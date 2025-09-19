@@ -56,7 +56,7 @@ def convert_exposure_times(header, channel, channel_id):
         print(f'[WARNING] {channel} exposure time conversion failed: {e}')
     return (f'{channel_id}_EXPOS', 'UNK', 'Exposure time(s) [s]')
 
-def convert_waverlengths(header, channel, channel_id, order):
+def convert_wavelengths(header, channel, channel_id, order):
     try:
         missphas = header.get('MISSPHAS')
         if missphas == 'SIMULATED':
@@ -118,7 +118,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
             # To run conversions
             keys = [
                 convert_exposure_times(header, channel, channel_id),
-                convert_waverlengths(header, channel, channel_id, order)
+                convert_wavelengths(header, channel, channel_id, order)
             ]
 
             for key, value, comment in keys:

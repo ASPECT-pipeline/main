@@ -16,18 +16,18 @@ to run the pipeline: python3 ASPECT_calibration_pipeline/main_pipeline.py
 def main_pipeline():
     """
     The main function calls all calibration levels of the pipeline.
-
     """
 
     input_dir = Path(input_directory)
-
-    if not input_dir.exists():
+    
+    if not input_dir.exists() or str(input_dir) == '.':
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
     
     if not input_dir.is_dir():
         raise NotADirectoryError(f"Path exists but is not a directory: {input_dir}")
     
     output_dir = Path(output_directory)
+
     pipeline_steps = [str(s) for s in pipeline.split('-')]
     level_012_utilities.validate_pipeline_steps(pipeline_steps)
 
@@ -35,7 +35,7 @@ def main_pipeline():
         output_dir = Path(output_dir) / OBSERVPH # output directory for this acquisition
         output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
         print()
-        print(f'New directory created for this acquisition: {output_dir.resolve()}')
+        print(f'Directory for the acquisition files: {output_dir.resolve()}')
         print()
         print(f'Executing pipeline levels 0 and 1')
         level_2_input = main_calibration.pipeline_levels_01(input_dir=input_dir, output_dir=output_dir, differential=differential)
@@ -45,7 +45,7 @@ def main_pipeline():
             print(file.name)
     else: 
         level_2_input = input_dir
-    
+    print(f'level_2_input: {level_2_input}')
     instru = instrument.lower()
     
     if '2' in pipeline_steps:

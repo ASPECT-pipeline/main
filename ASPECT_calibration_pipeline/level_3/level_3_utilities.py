@@ -11,6 +11,7 @@ from level_3.modules.utilities import return_ddof, find_outliers, normalise_in_c
 from scipy.stats import norm
 from level_3.modules._constants import _num_eps
 from sklearn.decomposition import PCA
+from matplotlib.patches import Patch
 
 import matplotlib.pyplot as plt
 
@@ -109,6 +110,67 @@ def laplacian(img: np.ndarray) -> np.ndarray:
 
     return laplacian
 
+
+def overlay_images(image1, image2, mode='red-green', title='Image Overlay'):
+    """
+    Overlay two aligned grayscale images using RGB channels to visualize alignment.
+
+    Parameters:
+    - image1, image2: 2D NumPy arrays (grayscale images)
+    - mode: 'red-green' or 'red-blue' (channel assignment)
+    - title: Title for the plot
+    """
+    # Normalize both images to [0, 1]
+    def normalize(img):
+        img = img.astype(np.float32)
+        return (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
+
+    img1_norm = normalize(image1)
+    img2_norm = normalize(image2)
+
+    # Create RGB composite
+    rgb = np.zeros((*image1.shape, 3), dtype=np.float32)
+
+    if mode == 'red-green':
+        rgb[..., 0] = img1_norm  # Red
+        rgb[..., 1] = img2_norm  # Green
+    elif mode == 'red-blue':
+        rgb[..., 0] = img1_norm  # Red
+        rgb[..., 2] = img2_norm  # Blue
+    else:
+        raise ValueError("Mode must be 'red-green' or 'red-blue'.")
+
+    return(rgb)
+
+def asteroid_mask_two(image: np.ndarray):
+
+    image= cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    g = cv2.GaussianBlur(image, (0.0), 1.0)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (101,101))
+    bg = cv2.morphologyEx(g, cv2.MORPH_OPEN, kernel)
+    nrm = cv2.subtract(g, bg)
+
+    _, th = cv2.threshold(nrm, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5)))
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9)))
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15,15)))
+    th = cv2.morphologyEx(th, cv2.MORPH_DILATE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3)))
+    
+
+    fig, axs = plt.subplots(1, 3, figsize=(20, 4))
+    axs[0].imshow(image, cmap='gray')
+    axs[0].set_title("Original (float32)")
+    axs[1].imshow(g, cmap='gray')
+    axs[1].set_title("Guassian)")
+    axs[2].imshow(th, cmap='gray')
+    axs[2].set_title("th")
+    for ax in axs:
+        ax.axis('off')
+    plt.tight_layout()
+    plt.show()
+
 def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
     """
     Creates a mask the asteroid. 
@@ -117,35 +179,59 @@ def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
     image = image.astype(np.float32, copy=False) # Ensure data is float32
     edges = laplacian(image) # Detect asteroid edges
 
+    # convert to binary mask
     edges_uint8 = cv2.normalize(edges, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    _, binary_mask = cv2.threshold(edges_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU) # convert to binary mask
+    _, binary_mask = cv2.threshold(edges_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    kernel = np.ones((5,5), np.uint8)
-    closed_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel) # Apply morphological closing
-
-    contours, _ = cv2.findContours(closed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # Find the outermost contours
-
+    # Apply morphological dilation and closing to fill the asteroid center
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+    dilated_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_DILATE, kernel, iterations=2)
+    closed_mask = cv2.morphologyEx(dilated_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+    
+    # Draw the asteroid mask
+    contours, _ = cv2.findContours(closed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     asteroid_mask = np.zeros_like(image, dtype=np.uint8)
-    cv2.drawContours(asteroid_mask, contours, -1, 255, thickness=cv2.FILLED) # Draw the asteroid mask
+    cv2.drawContours(asteroid_mask, contours, -1, 255, thickness=cv2.FILLED)
+
+    # Erode the contours to select only the inner part of the asteroid
+    eros_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15,15))
+    erosion_mask = cv2.morphologyEx(asteroid_mask, cv2.MORPH_ERODE, eros_kernel, iterations=1 )
+    eros_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9))
+    erosion_mask = cv2.morphologyEx(erosion_mask, cv2.MORPH_ERODE, eros_kernel, iterations=2 )
 
     if visualise:
         fig, axs = plt.subplots(1, 5, figsize=(20, 4))
         axs[0].imshow(original, cmap='gray')
         axs[0].set_title("Original (float32)")
-        axs[1].imshow(edges, cmap='gray')
-        axs[1].set_title("Laplacian (float32)")
-        axs[2].imshow(binary_mask, cmap='gray')
-        axs[2].set_title("Edges (uint8 clipped)")
+        axs[1].imshow(binary_mask, cmap='gray')
+        axs[1].set_title("Edges (uint8 clipped)")
+        axs[2].imshow(dilated_mask, cmap='gray')
+        axs[2].set_title("Morphological Dilated")
         axs[3].imshow(closed_mask, cmap='gray')
         axs[3].set_title("Morphological Closing")
-        axs[4].imshow(asteroid_mask, cmap='gray')
+        axs[4].imshow(erosion_mask, cmap='gray')
         axs[4].set_title("Final Mask")
         for ax in axs:
             ax.axis('off')
         plt.tight_layout()
         plt.show()
     
-    return asteroid_mask
+        legend_elements = [
+            Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
+            Patch(facecolor='red', edgecolor='black', label='Only in original'),
+            Patch(facecolor='green', edgecolor='black', label='mask')
+        ]
+
+        overlay = overlay_images(original, erosion_mask)
+        plt.figure()
+        plt.suptitle('Vis and Nir frame overlay', fontsize=16)
+        plt.imshow(overlay)
+        plt.axis('off')      
+        plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+        plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+        plt.show()
+    
+    return erosion_mask
 
 
 def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0) -> List[Tuple[np.ndarray, np.ndarray]]:
@@ -159,7 +245,6 @@ def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0) -> List[Tuple[
     Returns:
         List[Tuple[coords, spectra]]: coords are the coordinates of which the spectras are extracted. Coords are a list of 2 e.g. [y, x]
     """
-    print(f'cube shape: {image_cube.shape}')
     image = image_cube[mask_index]
 
     mask = asteroid_mask(image)

@@ -165,18 +165,18 @@ def pipeline_levels_01(
         differential: bool
     ) -> str:
     """
-    Executes the calibration levels 0, 1, 2 of the ASPECT calibation pipeline. 
+    Executes the calibration levels 0, 1 of the ASPECT calibation pipeline. 
     The pipeline consist of converting the raw binary data into FITS files,
-    performing clibration steps to each channel individually, and lastly 
-    combining all cahnnels into one FITS file containing one calibrated 
-    hyperspectral data cube.
+    performing clibration steps to each channel individually. The calibrated 
+    FITS files are saved to output_dir.
     
     Parameters:
         input_dir (str | Path):     Directory containing the acquisition files.
         output_dir (str | Path):    Directory where a new directory containg all new files will be sotred.
         differential (bool):        True if differnetial encoding is used for the input images.
     
-    Return: Path to the single combined FITS file as the result of level 2B
+    Return: 
+        (str): path to the created FITS file
     """
 
     input_dir = Path(input_dir)
@@ -195,13 +195,15 @@ def pipeline_levels_01(
     for channel in channel_names:
         print()
         print(f'Calibrating channel: {channel}')
-        channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames_belongs_this_channels]]
+        channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames from this channel]]
         calibrated_fits_file = calibration_pipeline(input_dir=input_dir, 
                                                     output_dir=output_dir, 
                                                     channel=channel,
                                                     channel_info=channel_info,
                                                     differential=differential
                                                     )
+
+        # Modify these for simulated images
         if MISSPHAS == 'SIMULATE':
             utilities.update_fits_exposure(calibrated_fits_file, None)
             utilities.update_fits_wl(calibrated_fits_file, None)
@@ -213,7 +215,8 @@ def pipeline_levels_01(
 
 def pipeline_level_02(input_dir: str | Path, output_dir: str | Path, instrument: str = 'vis-nir1-nir2') -> str:
     """
-    Combines fits files into one single fits file.
+    Combines all channels into one FITS file containing one calibrated 
+    hyperspectral data cube.
 
     Parameters:
         fits_dir (str | Path): Directory path to fits files

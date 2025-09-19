@@ -53,7 +53,7 @@ def verify_acquisition_directory(p: Path) -> Path:
     """
     Verifies that the given acquisition directory contains:
      - a 'meta' subdirectory with 'telemetry.json' and 'config.json'
-     - a subdirectory whose name starts with 'acq_'
+     - a subdirectory which name starts with 'acq_'
 
     Parameters: 
         p (Path): Path to the acquisition directory.
@@ -403,7 +403,7 @@ def check_order(sp: float, channel: str) -> str:
             else:
                 return 'LOW'
         case 'SWIR':
-            return ''
+            return 'N/A'
 
 def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: str) -> Dict[str, str]:
     """
@@ -455,13 +455,13 @@ def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: st
             fpi_temp1 = channel_specific_telemetry['FPI_TEMP1']
             meta_data[f'{ch_id}_FPI1'] = str(fpi_temp1)
         except KeyError:
-            (f"[WARNING] FPI temperature 1 missing for channel '{ch}'.")
+            print(f"[WARNING] 'FPI_TEMP1' missing for channel '{ch}' in telemetry.")
             meta_data[f'{ch_id}_FPI1'] = 'UNK'
         try:
             fpi_temp2 = channel_specific_telemetry['FPI_TEMP2']
             meta_data[f'{ch_id}_FPI2'] = str(fpi_temp2)
         except KeyError:
-            (f"[WARNING] FPI temperature 2 missing for channel '{ch}'.")
+            print(f"[WARNING] 'FPI_TEMP2' missing for channel '{ch}' in telemetry.")
             meta_data[f'{ch_id}_FPI2'] = 'UNK'
 
         if missphas == 'SIMULATED':
@@ -494,6 +494,7 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
         config_data = json.loads(config_path.read_text(encoding='utf-8'))
     except Exception as e:
         print(f"[WARNING] Failed to read or parse config file '{config_path}': {e}")
+        config_data = {}
 
     #read SP values for each image
     try:
@@ -508,7 +509,7 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
                 taskFile = config_data['swirTaskFile']
     except KeyError as e:
         print(f"[WARNING] Missing task file entry for channel '{channel}' in config.json'")
-
+        taskFile = []
     try:
         #Extract sp values from taskValues
         taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
@@ -524,10 +525,12 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
         #Check the order based on SP1 index 3
         if len(sp1Values) > 3:
             order = check_order(sp1Values[3], channel)
+        elif len(sp1Values) >= 1:
+            print(f"[WARNING] less than 4 acquisitions, the order determined from setpoint index < 3.")
+            order = check_order(sp1Values[-1], channel)
         else:
-            print(f"[WARNING] Not enough Setpoint values to determine order.")
+            print(f"[WARNING] Not enough setpoint values to determine order.")
             order = 'UNK'
-
     except Exception as e:
         print(f'[WARNING] Failed to parse task file values: {e}')
         sp1 = sp2 = sp3 = 'UNK'
@@ -911,7 +914,7 @@ def laplacian(img: np.ndarray) -> np.ndarray:
     img = cv2.GaussianBlur(img, (3, 3), sigmaX=0, sigmaY=0)
 
     # Apply Laplacian operator
-    laplacian = cv2.Laplacian(img, cv2.CV_8U, ksize=3)
+    laplacian = cv2.Laplacian(img, cv2.CV_8U, ksize=3) 
 
     return laplacian
 
@@ -945,11 +948,9 @@ def estimate_matrix(vis: np.ndarray, nir: np.ndarray, filter: bool = True) -> np
     if filter = true, the feature matches are filtered byt the distance between the 1st and 2nd match suggestion. (This method is recommended)
     if filter = false, the matches are filtered based on the angle of the keypoint calculated by ORB
     """
-
     # Step 1: Edge detection
     edges1 = laplacian(vis)
     edges2 = laplacian(nir)
-
 
     # Step 2: Feature detection using ORB
     orb = cv2.ORB_create(nfeatures=2000) # create ORB feature detector

@@ -46,6 +46,7 @@ def reflectance_calibration(
     data = primary_hdu.data
 
     if primary_header.get('MISSPHAS') == 'SIMULATED':
+        print(f'[WARNING] skipping I/F for simulated data')
         return hdul
 
     channel = primary_header.get('CHANNELS')
@@ -71,7 +72,7 @@ def reflectance_calibration(
     ssi_csv = calib_dir / 'ssi_yearly_avg_e2024_c20250221.csv'
     wl_nm, ssi_vals = load_ssi_csv(ssi_csv)
 
-    ssi_gaussian = gaussian_convolution(ssi_vals, wl_nm, fwhm_nm)
+    ssi_gaussian = gaussian_convolution(ssi_vals, wl_nm, fwhm_nm)   
 
     for i, frame in enumerate(data):
         wl = float(wavelengths[i])
@@ -80,7 +81,6 @@ def reflectance_calibration(
         IF_frame = np.pi * frame * (sun_dist**2) / f_au
     
         data[i] = IF_frame
-
     primary_hdu.data = data
     return hdul
 

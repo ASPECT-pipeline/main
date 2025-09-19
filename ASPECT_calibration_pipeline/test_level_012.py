@@ -1024,6 +1024,20 @@ def inspect_npz(path, *, show_stats=True, max_list_items=5):
                 else:
                     print(f"  {k}: {t}")
 
+def try_asteroid_mask(path):
+    with fits.open(path) as hdul:
+        data = hdul[0].data
+    combined = level_3_utilities.extract_asteroid(data)
+
+
+def rotate_asteroid(img, angle_deg):
+    img = img.astype('<f4', copy=False)
+    h, w = img.shape
+    center = (w/2, h/2)
+    M = cv2.getRotationMatrix2D(center, angle_deg, 1.0)
+    rotated = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return rotated
+
 # SOlar irradiace functions 
 def _extract_years(time_da: xr.DataArray) -> np.ndarray:
     """Return an int array of years from an xarray time coordinate, robust to datetime64, cftime, or numeric."""
@@ -1731,6 +1745,7 @@ def dump_mat_cube_frames(channel, mat_path, out_dir):
     print(f"cube dtype={cube.dtype}, shape=(H={H}, W={W}, N={N})")
     return written
 
+
 """
 spectra
 """
@@ -1788,13 +1803,13 @@ def plot_spectrum(csv_path, spectrum_col: int, *, delimiter=None, skiprows=0,
 
     return wl, y
 
+
 # wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv'), 2)
-wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/ElHammami_smoothed.csv'), 1)
+# wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/ElHammami_smoothed.csv'), 1)
 # 2, 5, 
 # 13
 
-calc_band_parameters(wl, y)
-
+# calc_band_parameters(wl, y)
 
 
 # read_mat_files(os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/D1v5-10km-10ms.mat'))
@@ -1828,6 +1843,30 @@ Function calls after this
 # create_blank_binaries(black_bin_file, 512, 640)
 
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
+
+# with fits.open(asp_sim) as hdul:
+#     data = hdul[0].data
+
+#     original = data[0]
+
+#     rot = rotate_asteroid(original, 20.0)
+
+#     plt.figure(figsize=(12, 6))
+#     plt.subplot(1, 2, 1)
+#     plt.imshow(original, cmap='gray')
+#     plt.title(f'Original')
+#     plt.axis('off')
+
+#     plt.subplot(1, 2, 2)
+#     plt.imshow(rot, cmap='gray')
+#     plt.title(f'Rotated')
+#     plt.axis('off')
+#     plt.show()
+
+
+# try_asteroid_mask(asp_sim)
+# read_fits_file(asp_sim)
+
 asp_if = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/106/ASP_000000_200101T015217_2B.fits')
 # asp_sim_3C = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_Taxonomy.fits')
 # read_fits_file(asp_if, False)
@@ -1894,6 +1933,7 @@ Python3 ASPECT_calibration_pipeline/test_level_012.py
 """
 
 
+
 """
 Alignment Demo
 """
@@ -1904,4 +1944,4 @@ as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEw
 vis_bin = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_0_exp_000.bin')
 nir_bin = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
 
-# inspect_pipeline_results(asp=asp,as0=as0, as1=as1, vis_bin=vis_bin,nir_bin=nir_bin)
+inspect_pipeline_results(asp=asp,as0=as0, as1=as1, vis_bin=vis_bin,nir_bin=nir_bin)
