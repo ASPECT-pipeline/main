@@ -55,7 +55,6 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
     Returns:
 
     """
-    
 
     fits_file = Path(fits_file)
     output_dir = Path(output_dir)
@@ -146,11 +145,11 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
             denoised = denoise_spectra(cleaned, selected_wl).flatten()
 
             denoised_spectras.append(denoised)
-            try:
-                if i % 10000 == 0:
-                    plot_4_spectra(np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len), connected, cleaned, denoised, selected_wl, ['original', 'connected', 'outliers', 'denoised', 'level 3A'])
-            except KeyboardInterrupt:
-                print('Stopped')
+            # try:
+            #     if i % 10000 == 0:
+            #         plot_4_spectra(np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len), connected, cleaned, denoised, selected_wl, ['original', 'connected', 'outliers', 'denoised', 'level 3A'])
+            # except KeyboardInterrupt:
+            #     print('Stopped')
     else:
         # Only select the range remove the nir1-nir2 ovelap
         for i, spectra in enumerate(spectras):
@@ -181,6 +180,10 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
 
     if 'M' in model:
         print('MGM analysis')
+
+        denoised_spectras = denoised_spectras[:500]
+        coords = coords[:500]
+
         mgm_results = []
         for i, spectra in enumerate(denoised_spectras):
             combined = np.column_stack((selected_wl, spectra))
@@ -196,38 +199,49 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         # figs = plot(combined,mgm_results[0])
         # show_mgm_figures(figs)
 
+        _, _band_parameters, _continuum, _p_values = mgm_results[0]
+        len_of_bp = len(_band_parameters)
+        len_of_bpl = len(_band_parameters[0])
+        len_of_cont = len(_continuum)
+        len_of_p = len(_p_values)
+
+        # Binary HDU columns
+        n = len(mgm_results)
+        coordinates = coords
+        rms_array = np.zeros(n, dtype=np.float32)
+        band_parameters = np.zeros((n, len_of_bp, len_of_bpl), dtype=np.float32)
+        continuum_parameters = np.zeros((n, len_of_cont), dtype=np.float32)
+        continuum_p_values = np.zeros((n, len_of_p), dtype=np.float32)
+
+        # Append the data to columns
+        for i, result in enumerate(mgm_results):
+            rms, bp, cont_vals, cont_pvals = result
+            rms_array[i] = rms
+            band_parameters[i] = bp
+            continuum_parameters[i] = cont_vals
+            continuum_p_values[i] = cont_pvals
+
+        cols = fits.ColDefs([
+            fits.Column(name='COORDS', format='2J', array=coordinates),
+            fits.Column(name='RMS', format=f'E', array=rms_array),
+            fits.Column(name='BANDPRM', format='6E', dim='(3,2)', array=band_parameters),
+            fits.Column(name='CONTPRM', format=f'{len_of_cont}E', array=continuum_parameters),
+            fits.Column(name='CONTPVAL', format=f'{len_of_p}E', array=continuum_p_values)
+        ])
+        bin_table_hdu = fits.BinTableHDU.from_columns(cols)
 
         mgm_header = primary_header.copy()
         mgm_header['ANALYSIS'] = ('MGM', 'Type of analysis')
         mgm_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
         mgm_name = stem[:25] + calibration_lvl + '_MGM' + suffix
         mgm_header['FILENAME'] = mgm_name
+        mgm_header['COLUMNS'] = 'pixel coordinates, rms, band parameters, continuum parameters, continuum p-values'
+        mgm_header['INITGUES'] = str(initGuess)
 
-        # Create header info
-        _, _band_parameters, _continuum, _p_values = mgm_results[0]
-        len_of_bp = len(_band_parameters)
-        total_bp = len_of_bp * len(_band_parameters[0])
-        len_of_cont = len(_continuum)
-        len_of_p = len(_p_values)
-        n = 3 + total_bp + len_of_cont + len_of_p
-
-        mgm_header['PARAMETR'] = 'x, y, rms, band parameters, continuum parameters, continuum p-values'
-        mgm_header['BANDPRM'] = (f'{len_of_bp}', 'length of band parameters')
-        mgm_header['CONTPRM'] = (f'{len_of_cont}', 'length of continuum parameters')
-        mgm_header['PVALPRM'] = (f'{len_of_p}', 'length of continuum parameter P-values')
-
-        print('Writing results into files')
-        data = np.empty((len(mgm_results), n), dtype=np.float32)
-        for i, result in enumerate(mgm_results):
-            x, y = coords[i]
-            rms, band_parameters, continuum, p_values = mgm_results[i]
-            flat_bp = [x for row in band_parameters for x in row]
-            row = [x, y, rms, *flat_bp, *continuum, *p_values]
-            data[i] = row
-
-        mgm_hdu = fits.PrimaryHDU(data=data, header=mgm_header)
+        mgm_primary_hdu = fits.PrimaryHDU(header=mgm_header)
+        new_hdul = fits.HDUList([mgm_primary_hdu, bin_table_hdu])
         fits_file = os.path.join(output_dir, mgm_name)
-        mgm_hdu.writeto(fits_file, overwrite=True)
+        new_hdul.writeto(fits_file, overwrite=True)
         print(f'New fits file created: {fits_file}')
     
     

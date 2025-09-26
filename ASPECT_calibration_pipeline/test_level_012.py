@@ -6,6 +6,7 @@ import levels_012.modules.convertToFits as convertToFits
 import levels_012.modules.badPixels as badpixels
 import levels_012.modules.darkSubtraction as darksubtraction
 import levels_012.modules.flatField as flatfield
+import levels_012.modules.extractCDS as extractCDS
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,6 +29,8 @@ from levels_012.modules.reflectance import reflectance_calibration
 import pandas as pd
 from scipy.io import loadmat
 from level_3.modules.BAR_BC_method import calc_band_parameters
+import sys
+from config import initGuess, reverse_channel_map
 
 def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
@@ -67,187 +70,6 @@ def read_fits_file(path, visualise = False):
                     plt.axis('off')
                     plt.tight_layout()
                     plt.show()                
-
-def visualise_fits(fitsPath, visualise:bool = True, spect:bool = True):
-    name = os.path.splitext(os.path.basename(fitsPath))[0]
-    print(f'Reading file: {name}')
-    # Open FITS file using astropy
-    with fits.open(fitsPath) as hdul:
-        print(f'info:\n {hdul.info()}') # Print the info of the hdul
-        total_size = hdul._file.size # Total size of the file
-        print(f"Total File Size: {total_size} bytes")
-        num_extensions = len(hdul) - 1 # Number of extensions
-        print(f"Number of Extensions: {num_extensions}")
-
-
-        # Iterate through each extension
-        for i, hdu in enumerate(hdul):
-            print('')
-            print(f'\nHDU number: {i}') # Extension number
-            header = hdu.header
-            data = hdu.data
-            # print(f'Data cube shape: {data.shape}')
-
-            print(repr(header))
-            
-
-            if isinstance(hdu, fits.ImageHDU):
-                naxis1 = header.get('NAXIS1')  # Width
-                naxis2 = header.get('NAXIS2')  # Height
-                naxis3 = header.get('NAXIS3')  # Number of images
-
-
-                # Determine grid layout
-                max_images_per_row = 5
-                rows = math.ceil(naxis3 / max_images_per_row)
-                cols = min(max_images_per_row, naxis3)
-
-                # utils.plot_random_spectra(data, header)
-                x = 110
-                y = 130
-                if spect:
-                    spectra = []
-                    for i in range(naxis3):
-                        val = data[i, y, x]
-                        spectra.append(val)
-
-                    print(spectra)
-                    print(f'vis bg: {data[0, 490, 585]}')
-                    print(f'nir bg: {data[12, 490, 585]}')
-
-                    vis_wl = [int(w.strip()) for w in header['0_WL'].split(',')]
-                    nir1_wl = [int(w.strip()) for w in header['1_WL'].split(',')]
-                    nir2_wl = [int(w.strip()) for w in header['2_WL'].split(',')]
-                    nir_wl = nir1_wl + nir2_wl
-                    all_wavelengths = vis_wl + nir1_wl + nir2_wl
-                    spectra = np.array(spectra)
-                    spectra = spectra.astype(np.float32)
-                    spectra[:11] /= 4096 # 2^12
-                    spectra[11:] /= 16384 # 2^14
-                    print(f'Spectra length: {len(spectra)}')
-                    print(f'Spectra length: {len(all_wavelengths)}')
-                    print(f'vis wl: {len(vis_wl)}')
-                    print(f'nir1 wl: {len(nir1_wl)}')
-                    print(f'nir2 wl: {len(nir2_wl)}')
-                    vis_len = len(vis_wl)
-                    nir1_len = len(nir1_wl)
-                    nir2_len = len(nir2_wl)
-                    nir1_s = spectra[vis_len : vis_len+nir1_len]
-                    nir2_s = spectra[vis_len+nir1_len : ]
-
-                    plt.figure(figsize=(10, 5))
-                    plt.plot(all_wavelengths, spectra, 'ro-', label="Spectra")
-                    plt.xlabel("Wavelength (nm)")
-                    plt.ylabel("values")
-                    plt.title(f"Spectra from ({x}, {y})")
-                    plt.legend()
-                    plt.show()
-
-                    # Display multiple spectras across the image
-                    positions = [(250,250), (110, 130), (130, 300), (475, 260)]
-                    spectra_list = [
-                        np.concatenate([data[:11, y, x] / 4096, data[11:, y, x] / 16384])
-                        for (x, y) in positions
-                    ]
-                    figure = utilities.plot_spectra_with_image(spectra_list,positions,data[0], all_wavelengths)
-                    figure.show()
-
-                    # corrected, _ = utils.nir2_offset_correction(nir1_wl, nir1_s, nir2_wl, nir2_s)
-                    # connected = np.concatenate((spectra[: vis_len+nir1_len], corrected))
-                    # print('lengths after segment correction')
-                    # print(len(connected))
-
-                    # # outliers = utils.remove_outliers(spectra, all_wavelengths)
-
-                    # plt.figure(figsize=(10, 5))
-                    # plt.plot(all_wavelengths, spectra, 'ro-', label="Original Spectra")
-                    # plt.plot(all_wavelengths, connected, 'bo-', label="connected")
-                    # plt.xlabel("Wavelength (nm)")
-                    # plt.ylabel("values")
-                    # plt.title("Spectra from (250, 250)")
-                    # plt.legend()
-                    plt.show()
-
-
-                    """
-                    FOLLOWING PART IS MISSING CONVERSION COEFFIENTS
-                    """
-                    # vis_c = utils.load_conversion_file(vis_conversion)
-                    # vis_results = utils.query_coefficients(vis_c, vis_wl)
-                    # nir_c = utils.load_conversion_file(nir_conversion)
-                    # nir_results = utils.query_coefficients(nir_c, nir_wl)
-                    # combined_results = {**vis_results, **nir_results}
-
-                    # reflectances = []
-                    # for i, wl in enumerate(all_wavelengths):
-                    #     print(f'wl: {i}: {wl}')
-                    #     coefficient = combined_results[wl]
-                    #     # print(f'coef: {coefficient}')
-                    #     dn = spectra[i]
-                    #     # print(f'dn: {dn}')
-                    #     if i > 10:
-                    #         exposure = 0.02
-                    #     else: 
-                    #         exposure = 0.01
-                    #     dn_coef = dn / coefficient
-                    #     reflectance = dn_coef / exposure
-                    #     reflectances.append(reflectance)
-
-                    # plt.figure(figsize=(10, 5))
-                    # plt.plot(all_wavelengths, reflectance, 'ro-', label="Original Spectra")
-                    # plt.xlabel("Wavelength (nm)")
-                    # plt.ylabel("reflectance")
-                    # plt.title("Spectra from (250, 250)")
-                    # plt.legend()
-                    # plt.show()
-
-                if visualise:
-                    plt.figure()
-                    plt.suptitle('Frame 0', fontsize=16)
-                    plt.imshow(data[0], cmap='gray')
-                    plt.title(f'Slice 0')
-                    plt.axis('off')
-
-                    plt.tight_layout()
-                    plt.show()
-
-                    plt.figure()
-                    plt.suptitle('Frame 0', fontsize=16)
-                    plt.imshow(data[11], cmap='gray')
-                    plt.title(f'Slice 0')
-                    plt.axis('off')
-
-                    plt.tight_layout()
-                    plt.show()
-
-                # Display all 2D images
-                    plt.figure(figsize=(cols * 4, rows * 4))
-                    plt.suptitle('2D Slices from Data Cube', fontsize=16)
-                    for i in range(naxis3):
-                        plt.subplot(rows, cols, i + 1)
-                        plt.imshow(data[i, :, :], cmap='gray')
-                        plt.title(f'Slice {i + 1}')
-                        plt.axis('off')
-
-                    plt.tight_layout()
-                    plt.show()
-
-                    visN = cv2.normalize(data[1], None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-                    nirN = cv2.normalize(data[14], None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-                    legend_elements = [
-                        Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
-                        Patch(facecolor='red', edgecolor='black', label='Only in vis image'),
-                        Patch(facecolor='green', edgecolor='black', label='Only in nir image')
-                    ]
-                    overlay = utilities.overlay_images(data[0], data[11])
-                    plt.figure()
-                    plt.suptitle('Vis and Nir frame overlay', fontsize=16)
-                    plt.imshow(overlay)
-                    plt.axis('off')      
-                    plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
-                    plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
-
-                    plt.show()
 
 def readBinfile(filePath, channel):
     if channel == "Vis": 
@@ -302,11 +124,15 @@ def readBinfile(filePath, channel):
 
 def update_fits_exposure(path, new_exposure, save_as=None):
     with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
+        header = hdul[0].header
+        channel = header.get('CHANNEL')
+        channel_id = reverse_channel_map.get(channel)
+        exposure_str = f'{channel_id}_EXPOS'
         for hdu in hdul:
-            if 'EXPOSURE' in hdu.header:
-                print(f"Old EXPOSURE: {hdu.header['EXPOSURE']}")
-                hdu.header['EXPOSURE'] = new_exposure
-                print(f"New EXPOSURE: {hdu.header['EXPOSURE']}")
+            if exposure_str in hdu.header:
+                print(f"Old EXPOSURE: {hdu.header[exposure_str]}")
+                hdu.header[exposure_str] = new_exposure
+                print(f"New EXPOSURE: {hdu.header[exposure_str]}")
 
         if save_as:
             hdul.writeto(save_as, overwrite=True)
@@ -762,153 +588,6 @@ def remove_header_entries(fits_path: Union[str, os.PathLike], keys: List[str], h
             if key in header:
                 del header[key]
         hdul.flush()
-        
-def test_mgm(data):
-    # strength, center, std
-    # initGuess = [[0.3, 0.94, 0.11], [0.5, 1.12, 0.11], [0.3, 1.32, 0.09], [0.2, 2.14, 0.19]]
-    initGuess = [[0.3, 940, 110], [0.5, 1120, 110], [0.3, 1320, 90], [0.2, 2140, 190]]
-    # initGuess = [[0.67, 950, 100],[0.11, 1210, 80], [0.57, 1950, 270]]
-    with open(data, 'r') as f:
-        dat = np.loadtxt(f)
-    # RMS, band parameters, continuum parameters, continuum parameters P-values
-    result = mgm.fit(dat, initGuess, contLinDeg=0, eps=0.1)
-    print(f'mgm results')
-    print(result)
-    figure = mgm.plot(dat, result)
-    show_mgm_figures(figure)
-
-def create_2d_fits(fits_path, index, output_dir, name):
-
-    with fits.open(fits_path) as hdul:
-        primary_header = hdul[0].header
-        image_header = hdul[1].header
-        frame = hdul[1].data[index]
-
-    primary_hdu = fits.PrimaryHDU(None,primary_header)
-    image_hdu = fits.ImageHDU(frame, image_header)
-
-    new_hdul = fits.HDUList([primary_hdu, image_hdu])
-    file_name = os.path.join(output_dir, name)
-    new_hdul.writeto(file_name, overwrite=True)
-
-def create_blank_binaries(filename: str, width: int, height: int, dtype=np.uint16):
-    zeros_array = np.zeros((height, width), dtype=dtype)
-    
-    # Write to file in binary format
-    zeros_array.tofile(filename)
-    print(f"Created binary file '{filename}' of shape ({height}, {width}) and dtype {dtype}.")
-
-def try_bad_pixels(file):
-    with fits.open(file) as hdul:
-        rep = badpixels.replace_bad_pixels(hdul)
-        hdu = rep[0]
-        data = hdu.data
-        print(data.shape)
-        data = hdul[0].data[0]
-        plt.figure()
-        plt.imshow(data, cmap='gray')
-        plt.title(f'2D Image')
-        plt.axis('off')
-        plt.tight_layout()
-        plt.show()  
-
-def try_dark_subtraction(file):
-    with fits.open(file) as hdul:
-        before = hdul[0].data[0]
-        print(f'before data[0] row 1: {before[0][:5]}')
-        rep = darksubtraction.dark_subtraction(hdul)
-        after = rep[0].data
-        print(after.shape)
-
-        print(f'data[0] row 1: {after[0][0][:5]}')
-        print(f'data[0] row 1: {after[1][0][:5]}')
-        # data = hdul[0].data[0]
-        # plt.figure()
-        # plt.imshow(data, cmap='gray')
-        # plt.title(f'2D Image')
-        # plt.axis('off')
-        # plt.tight_layout()
-        # plt.show()  
-
-def try_flatfield(file):
-    with fits.open(file) as hdul:
-        before = hdul[0].data[0]
-        print(f'before data[0] row 1: {before[0][:5]}')
-        rep = flatfield.flat_field_calibration(hdul)
-        after = rep[0].data
-        print(after.shape)
-        print(f'data[0] row 1: {after[0][0][:5]}')
-        print(f'data[0] row 1: {after[1][0][:5]}')
-
-def create_diagonal_bin(filepath: Path, width: int = 640, height: int = 512, dtype=np.uint16):
-    # Initialize zero array
-    arr = np.zeros((height, width), dtype=dtype)
-    
-    # Fill the diagonal with ones
-    diag_len = min(height, width)  # to avoid index mismatch if not square
-    for i in range(diag_len):
-        arr[i, i] = 1
-    
-    # Write to binary file
-    arr.tofile(filepath)
-    print(f"Binary file written: {filepath}, shape {arr.shape}, dtype {arr.dtype}")
-
-def create_row_counter_bin(filepath: Path, width: int = 640, height: int = 512, dtype=np.uint16):
-    """
-    Create a binary file with each row counting from 1 to `width`.
-    Rows are identical, producing a row-major increasing pattern.
-    """
-    # Create one row: [1, 2, 3, ..., width]
-    row = np.arange(1, width + 1 , dtype=dtype)
-    
-    # Repeat the row for all rows to build the full array
-    arr = np.tile(row, (height, 1))
-    
-    # Write to binary file
-    arr.tofile(filepath)
-    print(f"Binary file written: {filepath}, shape={arr.shape}, dtype={arr.dtype}")
-
-def bin_to_fits(
-    bin_path,
-    fits_path,
-    width=640,
-    height=512,
-    dtype=np.uint16,
-    overwrite=True,
-    header_kwargs=None,
-):
-    bin_path = Path(bin_path)
-    fits_path = Path(fits_path)
-
-    # Read data
-    arr = np.fromfile(bin_path, dtype=dtype)
-
-    # Sanity check on size
-    expected = height * width
-    if arr.size != expected:
-        raise ValueError(
-            f"{bin_path.name}: expected {expected} elements for {height}x{width}, "
-            f"got {arr.size}"
-        )
-
-    # Reshape to 2D (H, W)
-    img = arr.reshape((height, width))
-
-    # Build a 3D cube with two identical frames: (2, H, W)
-    cube = np.stack([img, img], axis=0)
-
-    # Create Primary HDU with the cube
-    hdu = fits.PrimaryHDU(cube)
-
-    # Add optional header entries
-    if header_kwargs:
-        for k, v in header_kwargs.items():
-            hdu.header[k] = v
-
-    # Write FITS
-    hdu.writeto(fits_path, overwrite=overwrite)
-
-    return fits_path
 
 def inspect_npz(path, *, show_stats=True, max_list_items=5):
     """
@@ -1029,6 +708,123 @@ def try_asteroid_mask(path):
         data = hdul[0].data
     combined = level_3_utilities.extract_asteroid(data)
 
+# Rotation 
+def as_native_f32(img: np.ndarray) -> np.ndarray:
+    if img.dtype.byteorder == '>' or (img.dtype.byteorder == '=' and sys.byteorder == 'big'):
+        img = img.byteswap().newbyteorder()
+    if img.dtype != np.float32:
+        img = img.astype(np.float32, copy=False)
+    return np.ascontiguousarray(img)
+
+def estimate_disk(img: np.ndarray):
+    """
+    Returns (cx, cy, r) in pixels.
+    Uses an adaptive threshold + largest contour + minEnclosingCircle.
+    """
+    a = as_native_f32(img)
+    # normalize to 8-bit just for robust thresholding
+    u8 = cv2.normalize(a, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    # gentle blur + Otsu to segment disk from space
+    u8b = cv2.GaussianBlur(u8, (0,0), 2.0)
+    _, m = cv2.threshold(u8b, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # keep largest blob
+    cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        # fallback: whole image center, half-min dimension
+        h, w = a.shape
+        return (w/2, h/2, min(w, h)/2 * 0.9), (m>0)
+    c = max(cnts, key=cv2.contourArea)
+    (cx, cy), r = cv2.minEnclosingCircle(c)
+    return (cx, cy, r), (m>0)
+
+def normalized_coords(shape, cx, cy, r):
+    """
+    Returns x,y,r2,mask where x,y in [-1,1] over a square crop 2r x 2r
+    centered on (cx,cy). mask marks the unit disk x^2+y^2<=1.
+    """
+    H, W = shape
+    R = int(np.ceil(r))
+    # crop bounds (clamped to image)
+    x0 = max(0, int(cx - R)); x1 = min(W, int(cx + R))
+    y0 = max(0, int(cy - R)); y1 = min(H, int(cy + R))
+    hh, ww = y1 - y0, x1 - x0
+
+    yy, xx = np.mgrid[0:hh, 0:ww].astype(np.float32)
+    x = (xx + x0 - cx) / r
+    y = (yy + y0 - cy) / r
+    r2 = x*x + y*y
+    mask = r2 <= 1.0
+    return (slice(y0, y1), slice(x0, x1)), x, y, r2, mask
+
+def overlay_limb(img, cx, cy, r, color=(0,255,0)):
+    a = cv2.normalize(as_native_f32(img), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    bgr = cv2.cvtColor(a, cv2.COLOR_GRAY2BGR)
+    cv2.circle(bgr, (int(round(cx)), int(round(cy))), int(round(r)), color, 1, cv2.LINE_AA)
+    return bgr
+
+def yaw_rotate_front_hemisphere(img: np.ndarray, cx: float, cy: float, r: float,
+                                yaw_deg: float, limb_darkening: float = 0.4):
+    """
+    Treat 'img' (float32) as an orthographic photo of the FRONT hemisphere.
+    Rotate by yaw_deg (CCW looking from north), and re-project with self-occlusion.
+    Returns (crop_original, crop_rotated), both float32, shape ≈ (2R, 2R).
+    """
+    a = img.astype(np.float32, copy=False)
+    H, W = a.shape
+    R = int(np.ceil(r))
+
+    # Build a tight crop and normalized coords (x,y) in [-1,1]
+    y0, y1 = max(0, int(cy - R)), min(H, int(cy + R))
+    x0, x1 = max(0, int(cx - R)), min(W, int(cx + R))
+    crop = a[y0:y1, x0:x1]
+
+    hh, ww = crop.shape
+    yy, xx = np.mgrid[0:hh, 0:ww].astype(np.float32)
+    x = (xx + x0 - cx) / r
+    y = (yy + y0 - cy) / r
+    r2 = x*x + y*y
+    unit = r2 <= 1.0
+
+    # Lift to sphere: front hemisphere z>=0
+    z = np.zeros_like(x, dtype=np.float32)
+    z[unit] = np.sqrt(np.clip(1.0 - r2[unit], 0.0, 1.0))
+
+    # Output view grid is the same (x,y,z) we just built; compute its lat'/lon'
+    latp = np.zeros_like(x); lonp = np.zeros_like(x)
+    latp[unit] = np.arcsin(np.clip(y[unit], -1.0, 1.0))
+    lonp[unit] = np.arctan2(x[unit], z[unit])  # atan2(X', Z')
+
+    # Undo yaw to find source longitude on the original front hemisphere
+    yaw = np.deg2rad(yaw_deg)
+    lon = lonp - yaw
+    lat = latp
+
+    # Source point on original front hemisphere (X0,Y0,Z0)
+    X0 = np.zeros_like(x); Y0 = np.zeros_like(y); Z0 = np.zeros_like(z)
+    X0[unit] = np.cos(lat[unit]) * np.sin(lon[unit])
+    Y0[unit] = np.sin(lat[unit])
+    Z0[unit] = np.cos(lat[unit]) * np.cos(lon[unit])
+
+    # Only sample where the original view actually had front hemisphere
+    visible0 = (Z0 >= 0) & unit
+
+    # Map back to source pixel coords in the original image
+    u = (X0 * r + cx).astype(np.float32)
+    v = (Y0 * r + cy).astype(np.float32)
+
+    # Sample with bilinear interpolation; anything outside becomes 0
+    sampled = cv2.remap(a, u, v, interpolation=cv2.INTER_LINEAR,
+                       borderMode=cv2.BORDER_CONSTANT, borderValue=0.0)
+
+    # Optional simple limb darkening using current view Z' (which equals z)
+    if limb_darkening > 0:
+        w = (1 - limb_darkening) + limb_darkening * np.clip(z, 0, 1)
+        sampled = sampled * w
+
+    out = np.zeros_like(crop, dtype=np.float32)
+    out[visible0] = sampled[visible0]
+    # Outside unit disk is 0 by construction; back hemisphere also 0
+    return crop, out
 
 def rotate_asteroid(img, angle_deg):
     img = img.astype('<f4', copy=False)
@@ -1038,7 +834,7 @@ def rotate_asteroid(img, angle_deg):
     rotated = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     return rotated
 
-# SOlar irradiace functions 
+# Solar irradiace functions 
 def _extract_years(time_da: xr.DataArray) -> np.ndarray:
     """Return an int array of years from an xarray time coordinate, robust to datetime64, cftime, or numeric."""
     # Case A: datetime64 -> use .dt.year
@@ -1551,7 +1347,6 @@ def resample_txt_to_1nm_and_print(
 
     return bins, rebinned
 
-
 def compare_resampled_to_pds3(pds3_source, bins_nm, y_resampled):
     """
     Compare your resampled spectrum against the PDS3 product and print line-by-line differences.
@@ -1668,7 +1463,58 @@ def compare_resampled_to_pds3(pds3_source, bins_nm, y_resampled):
         "median_abs_percent_diff": median_abs_pct,
     }
 
+"""
+calibration
+"""
+def read_flats():
 
+    root = Path(__file__).parent.resolve()
+    flat_folder = root / 'calibration_data/FLATS'
+
+    flat = flat_folder / 'AS2_FLAT_HIGH.fts'
+    
+    with fits.open(flat) as hdul:
+
+        primary_hdu = hdul[0]
+        primary_header = primary_hdu.header
+        primary_data = primary_hdu.data
+        print(repr(primary_header))
+
+        plt.imshow(primary_data)
+        plt.show()
+
+def try_flat_cal(path):
+    with fits.open(path) as hdul:
+        original = utilities.convert_to_float64(hdul)
+        original = extractCDS.extract_cds_pixels(original)
+        original = hdul[0].data
+        flat_corrected_hdul = flatfield.flat_field_calibration(hdul)
+        flat_corrected = flat_corrected_hdul[0].data
+
+    
+    for i in range(len(original)):
+        diff = np.mean(np.abs(original[i] - flat_corrected[i]))
+        print(f'frame {i} mean diff: {diff}')
+    
+    reprod = original[1] / flat_corrected[1]
+    plt.figure()
+
+    plt.subplot(1,3,1)
+    plt.imshow(original[1], cmap='gray')
+    plt.title('Original')
+    plt.axis('off')
+
+    plt.subplot(1,3,2)
+    plt.imshow(flat_corrected[1], cmap='gray')
+    plt.title('Flat field corrected')
+    plt.axis('off')
+
+    plt.subplot(1,3,3)
+    plt.imshow(reprod, cmap='viridis')
+    plt.title('original / corrected')
+    plt.axis('off')
+
+    plt.show()
 """
 mat files
 """
@@ -1745,7 +1591,6 @@ def dump_mat_cube_frames(channel, mat_path, out_dir):
     print(f"cube dtype={cube.dtype}, shape=(H={H}, W={W}, N={N})")
     return written
 
-
 """
 spectra
 """
@@ -1804,135 +1649,28 @@ def plot_spectrum(csv_path, spectrum_col: int, *, delimiter=None, skiprows=0,
     return wl, y
 
 
-# wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv'), 2)
-# wl, y = plot_spectrum(os.path.join(os.getcwd(), 'test_data/ElHammami_smoothed.csv'), 1)
-# 2, 5, 
-# 13
-
-# calc_band_parameters(wl, y)
-
-
-# read_mat_files(os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/D1v5-10km-10ms.mat'))
-
-# dump_mat_cube_frames('NIR', os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/D1v5-10km-10ms.mat'), os.path.join(os.getcwd(), 'test_data/ASPECT_noise_project/acqseq_100'))
-
-# bins, rebinned = resample_txt_to_1nm_and_print(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/AllMODEtr.txt'),columns="MCebKur", method='flux')
-
-out_path = os.path.join(os.getcwd(), "ASPECT_calibration_pipeline/files/MCebKur_resampled_1nm.txt")
-# np.savetxt(
-#     out_path,
-#     np.column_stack((bins, rebinned)),
-#     fmt=["%.1f", "%.6e"],                      # 200.0  4.068072e-03
-#     header="nm irradiance_W·m^-2·nm^-1",      # optional header
-#     comments=""                                # don't prefix header with '#'
-# )
-# print("wrote:", out_path)
-# Example:
+""" 
+Python3 ASPECT_calibration_pipeline/test_level_012.py
+"""
 
 """
 Function calls after this
 """
 
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1C.fits'), True)
-
-
-# result = read_pds3_solar_spectrum(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/MODTRAN _ MCebKur MChKur_resampled to 1 nm.DAT'))
-
-# compare_resampled_to_pds3(result, bins, rebinned)
-# black_bin_file = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/2_bad-pixel_mask.bin')
-# create_blank_binaries(black_bin_file, 512, 640)
-
-asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
-
-# with fits.open(asp_sim) as hdul:
-#     data = hdul[0].data
-
-#     original = data[0]
-
-#     rot = rotate_asteroid(original, 20.0)
-
-#     plt.figure(figsize=(12, 6))
-#     plt.subplot(1, 2, 1)
-#     plt.imshow(original, cmap='gray')
-#     plt.title(f'Original')
-#     plt.axis('off')
-
-#     plt.subplot(1, 2, 2)
-#     plt.imshow(rot, cmap='gray')
-#     plt.title(f'Rotated')
-#     plt.axis('off')
-#     plt.show()
-
-
-# try_asteroid_mask(asp_sim)
-# read_fits_file(asp_sim)
-
-asp_if = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/106/ASP_000000_200101T015217_2B.fits')
-# asp_sim_3C = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_Taxonomy.fits')
-# read_fits_file(asp_if, False)
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_autosequence_200825/Exp/202/AS1_000000_250820T143121_1B.fits'), False)
-
-# Example usage
-# create_diagonal_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_dark_mask.bin'))
-# create_row_counter_bin(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_mask.bin'))
-bin_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_frame.bin')
-fits_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/1_test_frame.fits')
-# readBinfile(bin_path, 'SIMULATED')
-# bin_to_fits(bin_path,fits_path)
-
-# try_dark_subtraction(fits_path)
-
-# try_bad_pixels(fits_path)
-
-# try_flatfield(fits_path)
-
-# readBinfile(os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20250820/Wl/acqseq_301/acq_000_decompressed/dc_0_exp_005.bin'),'Vis')
-
-# insert_header_entry(fits_path, 'CHANNELS', 'NIR1')
-# read_fits_file(fits_path, True)
-
-# replace_header_value_with_custom(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'), 'CALPHASE', '',None)
-# with fits.open(asp_sim) as hdul:
-#     reflectance_calibration(hdul)
-
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_20240809/501/AS0_000000_240813T084402_1B.fits'), False)
-
-# read_fits_file(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_in-flight-dark_250225/100/ASP_000000_200101T014231_2B.fits'), False)
-
-
-# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/diff_decoded/504/dc_0_exp_005.bin')
-# file_b = os.path.join(os.getcwd(), 'test_data/ASPECT_Autoseq_20240809/acqseq_504/acq_000_diff_decoded/VIS_decoded_005.bin')
-
-# file_a = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
-# file_b = os.path.join(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits'))
-
+asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_MGM.fits')
 file_a = os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_0_exp_000.bin')
 file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1B.fits')
 
-# compare_bin_images(file_a, file_b, True, 0, (1024, 1024), visualize=False)
+# Calibration tests
 
-# update_fits_wl(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/v2/ASP_000000_270323T060000_2B.fits'))
+test_dir = (Path(__file__).parent.parent / 'pipeline_results').resolve()
+aps_250225 = test_dir / 'ASPECT_in-flight-dark_250225'
+as0_250225_1A = aps_250225 / '100' / 'AS0_000000_200101T014231_1A.fits'
+as1_250225_1A = aps_250225 / '104' / 'AS1_000000_200101T014800_1A.fits'
+as2_250225_1A = aps_250225 / '104' / 'AS2_000000_200101T014800_1A.fits'
 
-nc_path = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_v03r00_yearly_s1610_e2024_c20250221.nc')
-ssi_csv = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_yearly_avg_e2024_c20250221.csv')
-# print_ssi_value(ssi_csv, 672.0, mode="exact")
-# plot_ssi(nc_path, mode="mean", wl_range=(200, 1500), show_uncertainty=True)
-# F, F_unc = solar_irradiance_1au_at_wavelength(os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/files/ssi_v03r00_yearly_s1610_e2024_c20250221.nc'),672.0)
-# print(F)
-# print(F_unc)
-
-transmissions = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/level_3/datasets/ASPECT/ASPECT_transmission_NEW.npz')
-
-# inspect_npz(transmissions)
-
-# inspect_pipeline_results(os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/ASP_000000_270101T060000_2B.fits'), os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1C.fits'), os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS1_000000_270101T060000_1C.fits'), 
-#                          os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_0_exp_000.bin'), os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_1_exp_000.bin'))
-
-""" 
-Python3 ASPECT_calibration_pipeline/test_level_012.py
-"""
-
-
+try_flat_cal(as0_250225_1A)
+# read_flats()
 
 """
 Alignment Demo
@@ -1944,4 +1682,4 @@ as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEw
 vis_bin = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_0_exp_000.bin')
 nir_bin = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000/dc_1_exp_000.bin')
 
-inspect_pipeline_results(asp=asp,as0=as0, as1=as1, vis_bin=vis_bin,nir_bin=nir_bin)
+# inspect_pipeline_results(asp=asp,as0=as0, as1=as1, vis_bin=vis_bin,nir_bin=nir_bin)

@@ -1,13 +1,16 @@
 """
 This file contains values for the pipeline. Modify the values to match your usecase.
 """
-# INPUT path for the acquisition data
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+from pathlib import Path
+# Project directory
+project_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/"
 
+# INPUT path for the acquisition data
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225"
 
 # OUTPUT path where the results are saved
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated_20270323_McEwen"
-
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/calib_tests"
 
 
 # Is the data differetially encoded
@@ -17,8 +20,8 @@ differential: bool = False
 INSTRUME:   str = 'ASPECT'              # Camera ID
 ORIGIN:     str = 'ESA-HERA'                
 SWCREATE:   str = 'ASPECTCAL'           # Software identification
-MISSPHAS:   str = 'SIMULATED'        # Hera mission phase ID
-OBSERVPH:   str = ''                 # Hera observation ID
+MISSPHAS:   str = 'in-flight'        # Hera mission phase ID
+OBSERVPH:   str = '250225_100'                 # Hera observation ID
 OBSTARGT:   str = 'DIDYMOS'                # Observation target
 OBJECT:     str = 'Didymos'                # Observed object
 TARGET:     str = 'DIDYMOS'             # Observed target (SPICE)
@@ -28,7 +31,7 @@ sc_clock_seconds: int = 0 # Spacecraft clock in seconds
 sc_clock_offset: int = 0  # Offset of sc_clock
 
 # Adjust this to to point to the directory containing calibration files 
-calibration_directory = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/ASPECT_calibration_pipeline/files"
+calibration_directory = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/ASPECT_calibration_pipeline/calibration_data"
 
 # Adjust these to point to the locations of spice metakernels
 spice_mk_plan = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/mk/hera_plan.tm"
@@ -37,12 +40,12 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 # Adjust this to point to the metakernel to be used for FITS header data
 spice_mk = spice_mk_plan
 
-pipeline = '1-2-3' # Separate with '-' e.g. '1-2-3'
+pipeline = '1' # Separate with '-' e.g. '1-2-3'
 
 # Which instrument channels want to include
 instrument = 'vis-nir1-nir2' 
 
-models = 'C'
+models = 'M'
 
 initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
 
@@ -51,6 +54,13 @@ initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
 Constants do not change unless you know what your are modifying.
 """
 
+subdirs = {
+    "pipeline" : "ASPECT_calibration_pipeline",
+    "calibration" : "calibration_data",
+    "flat_field" : "FLATS",
+}
+
+_path_flat = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['flat_field']
 
 channel_map = {
     0 : 'Vis',

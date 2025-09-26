@@ -2,7 +2,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.io.fits import HDUList
 from pathlib import Path
-from config import reverse_channel_map, calibration_directory
+from config import reverse_channel_map, _path_flat
 
 
 
@@ -17,7 +17,6 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
         The modified HDU list of the FITS file
     """
 
-
     # Data from fits file
     hdu = hdul[0]
     header = hdu.header
@@ -26,21 +25,18 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
     channel_id = reverse_channel_map.get(channel)
     if channel == 'SWIR':
             return hdul
-    # Read the Flat field for this channel
+    
+    order = header.get(f'{channel_id}_ORDER')
+    if order not in ('LOW', 'HIGH'):
+        print(f'[WARNING] channel {channel} order is {order}. Flat field calibration failed.')
+        return hdul
+    
+    # Read the Flat field for this channel and order
     try: 
-        cal_dir = Path(calibration_directory)
-        cal_file = Path(cal_dir / f'{channel_id}_flat_field.bin')
-        arr = np.fromfile(cal_file, dtype=np.uint16)
-        if channel == 'Vis':
-            w = h = 1024
-            flat_field =  arr.reshape((h, w)).astype(np.uint16)
-        elif channel in ('NIR1', 'NIR2'):
-            w = 640
-            h = 512
-            flat_field =  arr.reshape((h, w)).astype(np.uint16)
-        else:
-            print(f"[WARNING] incorrect channel '{channel}'")
-            return hdul
+        flat_dir = Path(_path_flat)
+        flat_file = flat_dir / f'AS{channel_id}_FLAT_{order}.fts'
+        with fits.open(flat_file) as flat_hdul:
+            flat_field = flat_hdul[0].data
     except Exception as e:
         print(f'[WARNING] Caught Exception while reading flat field: {e}')
         return hdul
