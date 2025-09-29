@@ -47,6 +47,14 @@
       <title>{{ title }}</title>
       <information_model_version>1.22.0.0</information_model_version>
       <product_class>Product_Observational</product_class>
+      
+      <Modification_History>
+         <Modification_Detail>
+            <modification_date>{{ modification_date }}</modification_date>
+            <version_id>1.0</version_id>
+            <description>This PDS4 label was generated based on fits metadata.</description>
+         </Modification_Detail>
+      </Modification_History>
    </Identification_Area>
 
    <Observation_Area>
@@ -54,6 +62,15 @@
          <start_date_time>{{ start_time }}</start_date_time><!-- Example: 2024-08-20T21:58:35.202Z -->
          <stop_date_time>{{ stop_time }}</stop_date_time>
       </Time_Coordinates>
+
+      <Primary_Result_Summary>
+         <purpose>Science</purpose>
+         <processing_level>{{ processing_level }}</processing_level>
+         <Science_Facets>
+            <wavelength_range>{{ wavelength_range }}</wavelength_range>
+            <discipline_name>Spectroscopy</discipline_name>
+         </Science_Facets>
+      </Primary_Result_Summary>
 
       <Investigation_Area>
          <name>Hera</name>
@@ -87,11 +104,10 @@
       <Target_Identification>
          <name>{{ target_name }}</name>
          <type>{{ target_type }}</type>
-         <!-- <Internal_Reference>Optional
-            <lid_reference></lid_reference>
-            <reference_type></reference_type>
-            <comment></comment>Optional
-         </Internal_Reference> -->
+         <Internal_Reference>
+            <lid_reference>{{ target_lid_reference }}</lid_reference>
+            <reference_type>data_to_target</reference_type>
+         </Internal_Reference>
       </Target_Identification>
 
       <Mission_Area>
@@ -101,11 +117,11 @@
             <psa:mission_phase_name>{{ mission_phase }}</psa:mission_phase_name>
             <psa:mission_phase_identifier>urn:esa:psa:context:...</psa:mission_phase_identifier>
          </psa:Mission_Information>
-         <hera:Hera_Parameters><!-- To be defined later in collaboration with ESA -->
+         <!-- <hera:Hera_Parameters>To be defined later...
             <hera:Aspect_Parameters>
-               <hera:detector_temp unit="degC">0</hera:detector_temp><!-- Example -->
+               <hera:detector_temp unit="degC">0</hera:detector_temp>Example
             </hera:Aspect_Parameters>
-         </hera:Hera_Parameters>
+         </hera:Hera_Parameters> -->
       </Mission_Area>
       
       <Discipline_Area>

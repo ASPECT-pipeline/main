@@ -1,8 +1,10 @@
 import os
+import sys
 from astropy.io import fits
 from jinja2 import Template
-from datetime import datetime
+import datetime
 import pandas as pd
+from pathlib import Path
 
 def find_acquisition_start(csv_path, acquisition_end_utc):
     df = pd.read_csv(csv_path)
@@ -25,7 +27,7 @@ def find_acquisition_start(csv_path, acquisition_end_utc):
         latest_start_time = acquiring_starts['Time'].iloc[-1]
         return latest_start_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
     
-# print(find_acquisition_start('/home/sysa/HERA/test_data/ASPECT state-data-2025-08-22 18_29_07.csv', '2025-08-22T16:34:58.000'))
+# print(find_acquisition_start('.../ASPECT state-data-2025-08-22 18_29_07.csv', '2025-08-22T16:34:58.000'))
 
 def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
 
@@ -138,46 +140,46 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
     # Processing level mapping
     if processing_level == '0A':
         if "SWIR" in channels:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-0A-swir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-0A-swir-template.xml"
         else:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-0A-vis-nir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-0A-vis-nir-template.xml"
         level_suffix = 'raw'
         level_description = "Raw"
         unit = 'Brightness'
     elif processing_level == '1A':
         if "SWIR" in channels:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-1A-swir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-1A-swir-template.xml"
         else:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-1A-vis-nir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-1A-vis-nir-template.xml"
         level_suffix = 'raw'
         level_description = "Raw"
         unit = 'Brightness'
     elif processing_level == '1B':
         if "SWIR" in channels:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-1B-swir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-1B-swir-template.xml"
         else:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-1B-vis-nir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-1B-vis-nir-template.xml"
         level_suffix = 'partially_processed'
         level_description = "Partially Processed"
         unit = 'Brightness' 
     elif processing_level == '1C':
         if "SWIR" in channels:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-1C-swir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-1C-swir-template.xml"
         else:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-1C-vis-nir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-1C-vis-nir-template.xml"
         level_suffix = 'partially_processed'
         level_description = "Partially Processed"
         unit = 'nm'
     elif processing_level == '2A':
         if "SWIR" in channels:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-2A-swir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-2A-swir-template.xml"
         else:
-            template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-2A-vis-nir-template.xml'
+            template_path = Path(__file__).parent / "label_templates" / "ASPECT-2A-vis-nir-template.xml"
         level_suffix = 'partially_processed'
         level_description = "Partially Processed"
         unit = 'nm'
     elif processing_level == '2B':
-        template_path = '/home/sysa/HERA/PDS4_automation/ASPECT-2B-template.xml'
+        template_path = Path(__file__).parent / "label_templates" / "ASPECT-2B-template.xml"
         level_suffix = 'calibrated'
         level_description = "Calibrated"
         unit = 'nm'
@@ -186,14 +188,14 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         level_description = 'Unknown'
         unit = 'UNKNOWN'
 
-    lid = f"urn:esa:psa:hera_milani_aspect:aspect_{level_suffix}:{lid_base}"
+    lid = f"urn:esa:psa:hera_milani_aspect:data_{level_suffix}:{lid_base}"
     title = f"{processing_level} {level_description} datacube {filename} from the Aspect hyperspectral imager on Milani in the Hera Mission"
     fits_header = f"Fits header. Contains metadata about the datacube."
 
     try:
         start_time = find_acquisition_start(aspect_state_data, date_obs)
-        t1 = datetime.fromisoformat(start_time)
-        t2 = datetime.fromisoformat(date_obs)
+        t1 = datetime.datetime.fromisoformat(start_time)
+        t2 = datetime.datetime.fromisoformat(date_obs)
         time_delta = t2 - t1
         time_delta = time_delta.total_seconds()
         start_time = start_time + "Z"
@@ -201,12 +203,18 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         start_time = 'UNKNOWN'
 
     # Determine target type
-    if target.lower() in ['didymos', 'dimorphos']:
+    if target.lower() == 'didymos':
+        target_type = 'Asteroid'
+        target_lid_reference = 'urn:nasa:pds:context:target:asteroid.65803_didymos'
+    elif target.lower() == 'dimorphos':
         target_type = 'Asteroid' # must be equal to one of the following values: 'Asteroid', 'Astrophysical', 'Calibration', 'Calibration Field', 'Calibrator', 'Centaur', 'Comet', 'Dust', 'Dwarf Planet', 'Equipment', 'Exoplanet System', 'Galaxy', 'Globular Cluster', 'Laboratory Analog', 'Lunar Sample', 'Magnetic Field', 'Meteorite', 'Meteoroid', 'Meteoroid Stream', 'Nebula', 'Open Cluster', 'Planet', 'Planetary Nebula', 'Planetary System', 'Plasma Cloud', 'Plasma Stream', 'Ring', 'Sample', 'Satellite', 'Sky', 'Star', 'Star Cluster', 'Synthetic Sample', 'Terrestrial Sample', 'Trans-Neptunian Object'
+        target_lid_reference = 'UNKNOWN'
     elif target.lower() in ['DARK']:
         target_type = 'Calibration'
+        target_lid_reference = 'UNKNOWN'
     else:
         target_type = 'UNKNOWN'
+        target_lid_reference = 'UNKNOWN'
 
     if all(channel in channels for channel in ["VIS", "NIR1", "NIR2", "SWIR"]):
         wavelengths = f'({vis_wl},{nir1_wl},{nir2_wl},{swir_wl})'
@@ -215,6 +223,7 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         fov_description = 'VIS, NIR1, and NIR2 channels have a rectangular FoV. SWIR channel has a circular FoV.'
         fov_width = '5.4'
         fov_length = '6.7'
+        wavelength_range = 'Near Infrared'
         try:
             net_integration_time = len(vis_wl.split(','))*float(vis_exposure) + len(nir1_wl.split(','))*float(nir1_exposure) + len(nir2_wl.split(','))*float(nir2_exposure) + len(swir_wl.split(','))*float(swir_exposure)
             net_integration_time = str(net_integration_time)
@@ -227,8 +236,22 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         fov_description = 'VIS, NIR1, and NIR2 channels have a rectangular FoV.'
         fov_width = '5.4'
         fov_length = '6.7'
+        wavelength_range = 'Near Infrared'
         try:
             net_integration_time = len(vis_wl.split(','))*float(vis_exposure) + len(nir1_wl.split(','))*float(nir1_exposure) + len(nir2_wl.split(','))*float(nir2_exposure)
+            net_integration_time = str(net_integration_time)
+        except:
+            net_integration_time = 'UNKNOWN'
+    elif all(channel in channels for channel in ["NIR1", "NIR2"]):
+        wavelengths = f'({nir1_wl},{nir2_wl})'
+        all_exposure_times = f'({nir1_exposure}, {nir2_exposure})'
+        lowest_wl = nir1_wl.split(',')[0]
+        fov_description = 'NIR1, and NIR2 channels have a rectangular FoV.'
+        fov_width = '5.4'
+        fov_length = '6.7'
+        wavelength_range = 'Near Infrared'
+        try:
+            net_integration_time = len(nir1_wl.split(','))*float(nir1_exposure) + len(nir2_wl.split(','))*float(nir2_exposure)
             net_integration_time = str(net_integration_time)
         except:
             net_integration_time = 'UNKNOWN'
@@ -239,6 +262,7 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         fov_description = 'VIS has a rectangular FoV.'
         fov_width = '10'
         fov_length = '10'
+        wavelength_range = 'Visible'
         try:
             net_integration_time = len(vis_wl.split(','))*float(vis_exposure)
         except:
@@ -250,6 +274,7 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         fov_description = 'NIR1 has a rectangular FoV.'
         fov_width = '5.4'
         fov_length = '6.7'
+        wavelength_range = 'Near Infrared'
         try:
             net_integration_time = len(nir1_wl.split(','))*float(nir1_exposure)
             net_integration_time = str(net_integration_time)
@@ -262,6 +287,7 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         fov_description = 'NIR2 has a rectangular FoV.'
         fov_width = '5.4'
         fov_length = '6.7'
+        wavelength_range = 'Near Infrared'
         try:
             net_integration_time = len(nir2_wl.split(','))*float(nir2_exposure)
             net_integration_time = str(net_integration_time)
@@ -274,6 +300,7 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         fov_description = 'SWIR has a circular FoV.'
         fov_width = '5.85'
         fov_length = '5.85'
+        wavelength_range = 'Near Infrared'
         try:
             net_integration_time = len(swir_wl.split(','))*float(swir_exposure)
         except:
@@ -294,6 +321,8 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         sc_clk_delta_sum = f"{sec_int}:{frac_int:06d}"
     except:
         sc_clk_delta_sum = sc_clk
+
+    modification_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
     # Prepare template context
     context = {
@@ -329,7 +358,11 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         'fov_description': fov_description,
         'fov_width': fov_width,
         'fov_length': fov_length,
-        'net_integration_time': net_integration_time
+        'net_integration_time': net_integration_time,
+        'modification_date': modification_date,
+        'processing_level': level_description,
+        'wavelength_range': wavelength_range,
+        'target_lid_reference': target_lid_reference,
     }
 
     # Load and render XML template
@@ -338,7 +371,8 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
     label = template.render(context)
 
     # Write rendered label to file
-    output_xml_path = os.path.join(xml_output_folder, filename[:-5].lower()) + '.xml'
+    label_name = filename[:-5].lower()
+    output_xml_path = os.path.join(xml_output_folder, label_name) + '.lblx'
     with open(output_xml_path, 'w') as f:
         f.write(label)
 
@@ -347,9 +381,9 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
     print(f"Saved to: {output_xml_path}")
 
 
-test = True
+test = False
 if test:
-    fits_file_path = ''
-    aspect_state_data = '' # For example ASPECT state-data-2025-08-22 18_29_07.csv
+    fits_file_path = '' # For example ASP_000000_200101T015217_2B.fits
+    aspect_state_data = Path(__file__).parent / "ASPECT state-data-2025-08-22 18_29_07.csv"
     xml_output_folder = ''
     generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder)
