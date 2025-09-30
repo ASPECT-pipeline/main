@@ -208,6 +208,19 @@
       </Discipline_Area>
    </Observation_Area>
 
+   <Reference_List>
+      <Source_Product_Internal>
+         <lidvid_reference>{{ source_lid_vis }}</lidvid_reference>
+         <reference_type>data_to_calibrated_source_product</reference_type>
+         <lidvid_reference>{{ source_lid_nir1 }}</lidvid_reference>
+         <reference_type>data_to_calibrated_source_product</reference_type>
+         <lidvid_reference>{{ source_lid_nir2 }}</lidvid_reference>
+         <reference_type>data_to_calibrated_source_product</reference_type>
+         <lidvid_reference>{{ source_lid_swir }}</lidvid_reference>
+         <reference_type>data_to_calibrated_source_product</reference_type>
+      </Source_Product_Internal>
+   </Reference_List>
+
    <File_Area_Observational>
       <File>
          <file_name>{{ filename }}</file_name>

@@ -137,6 +137,12 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
     else:
         object_length = -999  
 
+    source_lid_vis = 'unknown'
+    source_lid_nir1 = 'unknown'
+    source_lid_nir2 = 'unknown'
+    source_lid_swir = 'unknown'
+    source_lid = 'unknown'
+
     # Processing level mapping
     if processing_level == '0A':
         if "SWIR" in channels:
@@ -144,49 +150,74 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         else:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-0A-vis-nir-template.xml"
         level_suffix = 'raw'
+        previous_level_suffix = ''
         level_description = "Raw"
         unit = 'Brightness'
+        previous_lid_base = ''
+        source_lid = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base}"
     elif processing_level == '1A':
         if "SWIR" in channels:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-1A-swir-template.xml"
         else:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-1A-vis-nir-template.xml"
         level_suffix = 'raw'
+        previous_level_suffix = 'raw'
         level_description = "Raw"
         unit = 'Brightness'
+        previous_lid_base = lid_base[:-2] + '0a'
+        source_lid = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base}"
     elif processing_level == '1B':
         if "SWIR" in channels:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-1B-swir-template.xml"
         else:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-1B-vis-nir-template.xml"
         level_suffix = 'partially_processed'
+        previous_level_suffix = 'raw'
         level_description = "Partially Processed"
         unit = 'Brightness' 
+        previous_lid_base = lid_base[:-2] + '1a'
+        source_lid = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base}"
     elif processing_level == '1C':
         if "SWIR" in channels:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-1C-swir-template.xml"
         else:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-1C-vis-nir-template.xml"
         level_suffix = 'partially_processed'
+        previous_level_suffix = 'partially_processed'
         level_description = "Partially Processed"
         unit = 'nm'
+        previous_lid_base = lid_base[:-2] + '1b'
+        source_lid = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base}"
     elif processing_level == '2A':
         if "SWIR" in channels:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-2A-swir-template.xml"
         else:
             template_path = Path(__file__).parent / "label_templates" / "ASPECT-2A-vis-nir-template.xml"
         level_suffix = 'partially_processed'
+        previous_level_suffix = 'partially_processed'
         level_description = "Partially Processed"
         unit = 'nm'
+        previous_lid_base = lid_base[:-2] + '1c'
+        source_lid = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base}"
     elif processing_level == '2B':
         template_path = Path(__file__).parent / "label_templates" / "ASPECT-2B-template.xml"
         level_suffix = 'calibrated'
+        previous_level_suffix = 'partially_processed'
         level_description = "Calibrated"
         unit = 'nm'
+        previous_lid_base_vis = lid_base[:2] + '0' + lid_base[3:-2] + '1c'
+        previous_lid_base_nir1 = lid_base[:2] + '1' + lid_base[3:-2] + '1c'
+        previous_lid_base_nir2 = lid_base[:2] + '2' + lid_base[3:-2] + '1c'
+        previous_lid_base_swir = lid_base[:2] + '3' + lid_base[3:-2] + '1c'
+        source_lid_vis = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base_vis}"
+        source_lid_nir1 = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base_nir1}"
+        source_lid_nir2 = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base_nir2}"
+        source_lid_swir = f"urn:esa:psa:hera_milani_aspect:data_{previous_level_suffix}:{previous_lid_base_swir}"
     else:
         level_suffix = 'unknown'
         level_description = 'Unknown'
         unit = 'UNKNOWN'
+        source_lid = 'unknown'
 
     lid = f"urn:esa:psa:hera_milani_aspect:data_{level_suffix}:{lid_base}"
     title = f"{processing_level} {level_description} datacube {filename} from the Aspect hyperspectral imager on Milani in the Hera Mission"
@@ -363,6 +394,11 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         'processing_level': level_description,
         'wavelength_range': wavelength_range,
         'target_lid_reference': target_lid_reference,
+        'source_lid': source_lid,
+        'source_lid_vis': source_lid_vis,
+        'source_lid_nir1': source_lid_nir1,
+        'source_lid_nir2': source_lid_nir2,
+        'source_lid_swir': source_lid_swir,
     }
 
     # Load and render XML template

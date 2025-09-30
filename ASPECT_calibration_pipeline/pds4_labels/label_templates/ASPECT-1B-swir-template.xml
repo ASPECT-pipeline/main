@@ -208,6 +208,13 @@
       </Discipline_Area>
    </Observation_Area>
 
+   <Reference_List>
+      <Source_Product_Internal>
+         <lidvid_reference>{{ source_lid }}</lidvid_reference>
+         <reference_type>data_to_partially_processed_source_product</reference_type>
+      </Source_Product_Internal>
+   </Reference_List>
+
    <File_Area_Observational>
       <File>
          <file_name>{{ filename }}</file_name>
