@@ -6,11 +6,11 @@ from pathlib import Path
 project_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/"
 
 # INPUT path for the acquisition data
-# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225"
 
 # OUTPUT path where the results are saved
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/calib_tests"
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated"
 
 
 # Is the data differetially encoded
@@ -20,8 +20,8 @@ differential: bool = False
 INSTRUME:   str = 'ASPECT'              # Camera ID
 ORIGIN:     str = 'ESA-HERA'                
 SWCREATE:   str = 'ASPECTCAL'           # Software identification
-MISSPHAS:   str = 'in-flight'        # Hera mission phase ID
-OBSERVPH:   str = '250225_100'                 # Hera observation ID
+MISSPHAS:   str = 'SIMULATED'        # Hera mission phase ID
+OBSERVPH:   str = 'Radiance'                 # Hera observation ID
 OBSTARGT:   str = 'DIDYMOS'                # Observation target
 OBJECT:     str = 'Didymos'                # Observed object
 TARGET:     str = 'DIDYMOS'             # Observed target (SPICE)
@@ -40,7 +40,7 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 # Adjust this to point to the metakernel to be used for FITS header data
 spice_mk = spice_mk_plan
 
-pipeline = '1' # Separate with '-' e.g. '1-2-3'
+pipeline = '1-2' # Separate with '-' e.g. '1-2-3'
 
 # Which instrument channels want to include
 instrument = 'vis-nir1-nir2' 

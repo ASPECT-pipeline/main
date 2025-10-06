@@ -46,6 +46,7 @@ def read_fits_file(path, visualise = False):
             print(hdu.shape)
 
             print(f'data shape: {hdu.data.shape}')
+            print(f'data head: {hdu.data[0][0][:5]}')
 
             if visualise:
                 data = hdu.data
@@ -71,7 +72,7 @@ def read_fits_file(path, visualise = False):
                     plt.tight_layout()
                     plt.show()                
 
-def readBinfile(filePath, channel):
+def read_bin_file(filePath, channel):
     if channel == "Vis": 
         height = 1024
         width = 1024
@@ -103,11 +104,11 @@ def readBinfile(filePath, channel):
             binaryData = file.read()
             print(f"Read {len(binaryData)} bytes")
 
-            imageArray = np.frombuffer(binaryData, dtype='<u2')
+            imageArray = np.frombuffer(binaryData, dtype='int16')
             imageArray = imageArray.reshape((height, width))
             # print(f"Min: {imageArray.min()}")
             # print(f"Max: {imageArray.max()}")
-            print(imageArray[0][:5])
+            print(f'head: {imageArray[0][:5]}')
             #Visualise
             plt.figure(figsize=(8,5))
             plt.imshow(imageArray, cmap='gray')
@@ -378,6 +379,147 @@ def replace_header_value_with_custom(fits_path: Union[str, os.PathLike], key_to_
                     comment = header.comments[key_to_replace]
                 header[key_to_replace] = (value, comment)
         hdul.flush()
+
+def visualise_alignment(as0: str, as1:str):
+
+    try:
+        with fits.open(as0) as as0_hdul, fits.open(as1) as as1_hdul:
+            as0_data = as0_hdul[0].data
+            as1_data = as1_hdul[0].data
+    except Exception as e:
+        print(f'Error occured reading the files: {e}')
+
+    print(f'Visualising alignment')
+    vis = as0_data[0]
+    nir = as1_data[0]
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(vis, cmap='gray')
+    plt.title(f'VIS Frame_0')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(nir, cmap='gray')
+    plt.title(f'NIR1 Frame_0')
+    plt.axis('off')
+    plt.suptitle('Comparison of VIS and NIR Channels') 
+    plt.show()
+
+    # Step 1: Edge detection
+    edges1 = utilities.laplacian(vis)
+    edges2 = utilities.laplacian(nir)
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(edges1, cmap='gray')
+    plt.title(f'VIS')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(edges2, cmap='gray')
+    plt.title(f'NIR1')
+    plt.axis('off')
+    plt.suptitle('Laplacian edges') 
+    plt.show()
+
+    # Step 2: Feature detection using ORB
+    orb = cv2.ORB_create(nfeatures=2000) # create ORB feature detector
+    # keypoints and binary descriptions
+    keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
+    # Draw keypoints on each image
+    image1_with_kp = cv2.drawKeypoints(edges1, keypoints1, None, color=(0, 255, 0), flags=0)
+    image2_with_kp = cv2.drawKeypoints(edges2, keypoints2, None, color=(0, 255, 0), flags=0)
+
+    # Display using matplotlib
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(image1_with_kp, cmap='gray')
+    plt.title(f'ORB Keypoints ({len(keypoints1)}) - VIS')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(image2_with_kp, cmap='gray')
+    plt.title(f'ORB Keypoints ({len(keypoints2)}) - NIR')
+    plt.axis('off')
+    plt.suptitle('ORB Feature Keypoints')
+    plt.show()
+
+    index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
+                    table_number=30,  # Number of hash tables
+                    key_size=20,     # Size of the key
+                    multi_probe_level=2)  # Number of probes
+        
+    search_params = dict(checks=100)
+    flann = cv2.FlannBasedMatcher(index_params, search_params) # Initialize the FLANN
+    flann_matches = flann.knnMatch(descriptors1, descriptors2, k=2) # Match features
+    print(f'FLANN matches before filtering: {len(flann_matches)}')
+    matches = utilities.filter_by_distance(flann_matches)
+    print(f'FLANN matches after filtering: {len(matches)}')
+    N = 500
+    matches_to_draw = matches[:N]
+    # Draw matches on combined image
+    matched_img = cv2.drawMatches(
+        edges1, keypoints1,
+        edges2, keypoints2,
+        matches_to_draw,
+        None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    )
+    # Show the match visualization
+    plt.figure(figsize=(15, 8))
+    plt.imshow(matched_img)
+    plt.title(f'{N} FLANN feature matches')
+    plt.axis('off')
+    plt.show()
+
+    # Step 4: Extract location of good matches and estimate transformation matrix
+    # arrays to store x and y coordinates
+    points1 = np.zeros((len(matches), 2), dtype=np.float32)
+    points2 = np.zeros((len(matches), 2), dtype=np.float32)
+
+    #Extract keypoint coordinates 
+    for i, match in enumerate(matches):
+        points1[i, :] = keypoints1[match.queryIdx].pt
+        points2[i, :] = keypoints2[match.trainIdx].pt
+
+    # Estimate transformation matrix
+    H, mask = cv2.findHomography(points1, points2, cv2.RANSAC, 10.0)
+
+    little_endian = np.ascontiguousarray(vis.astype('<f4'))
+    wrapped = cv2.warpPerspective(little_endian, H, (640, 512), flags=cv2.INTER_LINEAR )
+
+    # Convert back to big_endian float32
+    vis_aligned = np.ascontiguousarray(wrapped.astype('>f4'))
+
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(vis_aligned, cmap='gray')
+    plt.title(f'Aligned VIS')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(nir, cmap='gray')
+    plt.title(f' NIR')
+    plt.axis('off')
+    plt.suptitle('Images after Alignment')
+    plt.show()
+
+    print('Visualising the results of alignment')
+    legend_elements = [
+        Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
+        Patch(facecolor='red', edgecolor='black', label='Only in vis image'),
+        Patch(facecolor='green', edgecolor='black', label='Only in nir image')
+    ]
+    overlay = utilities.overlay_images(vis_aligned, nir)
+    plt.figure()
+    plt.suptitle('Vis and Nir frame overlay', fontsize=16)
+    plt.imshow(overlay)
+    plt.axis('off')      
+    plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+    plt.show()
 
 def inspect_pipeline_results(asp: str, as0: str, as1: str, vis_bin: str, nir_bin: str):
     """
@@ -1466,23 +1608,65 @@ def compare_resampled_to_pds3(pds3_source, bins_nm, y_resampled):
 """
 calibration
 """
-def read_flats():
+def read_all_flats():
 
     root = Path(__file__).parent.resolve()
     flat_folder = root / 'calibration_data/FLATS'
 
-    flat = flat_folder / 'AS2_FLAT_HIGH.fts'
-    
+    for flat in sorted(flat_folder.iterdir()):
+        if flat.suffix != '.fts':
+            continue
+        channel = flat.stem.split('_')[0]
+        order = flat.stem.split('_')[-1]
+        print('')
+        print(f'{channel}, {order}')
+
+        
+        with fits.open(flat) as hdul:
+
+            primary_hdu = hdul[0]
+            primary_header = primary_hdu.header
+            primary_data = primary_hdu.data
+            print(f'frame shape: {primary_data.shape}')
+            print(f'max: {np.max(primary_data)}, min: {np.min(primary_data)}')
+            if channel in ['AS1', 'AS2']:
+                center_window = primary_data[206:306, 270:370]
+                print(f'window shape: {center_window.shape}')
+                print(f'window mean: {np.mean(center_window):.6f}')
+            elif flat.name.split('_')[0] == 'AS0':
+                center_window = primary_data[412:612, 412:612]
+                print(f'window shape: {center_window.shape}')
+                print(f'window mean: {np.mean(center_window):.6f}')
+
+        # print(repr(primary_header))
+        # plt.imshow(primary_data)
+        # plt.show()
+
+def read_flat():
+    root = Path(__file__).parent.resolve()
+    flat_folder = root / 'calibration_data/FLATS'
+    flat = flat_folder / 'AS1_FLAT_HIGH.fts'
+
     with fits.open(flat) as hdul:
 
         primary_hdu = hdul[0]
         primary_header = primary_hdu.header
         primary_data = primary_hdu.data
         print(repr(primary_header))
+        print(np.max(primary_data))
 
+        for i, row in enumerate(primary_data):
+            for n, x in enumerate(row):
+                if x > 1.8:
+                    print(f'data[{i}][{n}] = {x}')
+                    c = 0
+                elif x < 0:
+                    print(f'data[{i}][{n}] = {x}')
+                
         plt.imshow(primary_data)
         plt.show()
-
+    
+    
 def try_flat_cal(path):
     with fits.open(path) as hdul:
         original = utilities.convert_to_float64(hdul)
@@ -1656,10 +1840,27 @@ Python3 ASPECT_calibration_pipeline/test_level_012.py
 """
 Function calls after this
 """
+###
+# SIMULATED FILES
+
+sim_folder = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated')
+as1_sim = os.path.join(sim_folder, 'radiance/AS1_000000_270323T060000_1B.fits')
+as0_sim = os.path.join(sim_folder, 'radiance/AS0_000000_270323T060000_1B.fits')
+asp_sim = os.path.join(sim_folder, 'radiance/ASP_000000_270323T060000_2B.fits')
+# read_fits_file(as0_sim, visualise=True)
 
 asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_MGM.fits')
 file_a = os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_0_exp_000.bin')
 file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1B.fits')
+# read_bin_file(file_a)
+
+###
+# binary files
+
+sim_bin_folder = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000' )
+as0_sim_bin =   os.path.join(sim_bin_folder, 'dc_0_exp_000.bin')
+# read_bin_file(as0_sim_bin, 'Vis')
+
 
 # Calibration tests
 
@@ -1669,12 +1870,19 @@ as0_250225_1A = aps_250225 / '100' / 'AS0_000000_200101T014231_1A.fits'
 as1_250225_1A = aps_250225 / '104' / 'AS1_000000_200101T014800_1A.fits'
 as2_250225_1A = aps_250225 / '104' / 'AS2_000000_200101T014800_1A.fits'
 
-try_flat_cal(as0_250225_1A)
-# read_flats()
+# try_flat_cal(as1_250225_1A)
+# read_flat()
+# read_all_flats()
 
 """
 Alignment Demo
 """
+
+as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated/radiance/AS0_000000_270323T060000_1B.fits')
+as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated/radiance/AS1_000000_270323T060000_1B.fits')
+# as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')
+# as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS1_000000_270323T060000_1B.fits')
+visualise_alignment(as0, as1)
 
 asp = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
 as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')

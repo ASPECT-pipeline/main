@@ -21,9 +21,10 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     header = hdu.header
     data = hdu.data
+    missphas = header.get('MISSPHAS')
     channel = header.get('CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     channel_id = reverse_channel_map.get(channel)
-    if channel == 'SWIR':
+    if channel == 'SWIR' or missphas == 'SIMULATED':
             return hdul
     
     order = header.get(f'{channel_id}_ORDER')
@@ -37,6 +38,8 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
         flat_file = flat_dir / f'AS{channel_id}_FLAT_{order}.fts'
         with fits.open(flat_file) as flat_hdul:
             flat_field = flat_hdul[0].data
+            mean = np.mean(flat_field)
+            print(f'mean: {mean}')
     except Exception as e:
         print(f'[WARNING] Caught Exception while reading flat field: {e}')
         return hdul

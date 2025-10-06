@@ -1,6 +1,7 @@
 import numpy as np
 from astropy.io import fits
 from astropy.io.fits import HDUList
+from levels_012.modules.simulated.simToRadFac import sim_to_radiance_factor
 
 """
 Function for converting the pixel values into scientific units.
@@ -24,13 +25,25 @@ def radiometric_calibration(hdul: HDUList) -> HDUList:
 
     # Data from fits file
     hdu = hdul[0]
+    header = hdu.header
     data = hdu.data
-    coefficient = 1 # Temporary coefficient for radiometric calibration
+
+    missphas = header.get('MISSPHAS')
+    channel = header.get('CHANNELS')
+
+    if missphas == 'SIMULATED':
+        lambertRadianceAt1au = 217.0
+        au = 1.0
+        coefficient = lambertRadianceAt1au / au**2
+    else:
+        coefficient = 1 # Temporary coefficient for radiometric calibration
 
     try:
         new_data_cube = data.astype(np.float64, copy=True)
         #loop over the 2D images inside the extension
         for i, image in enumerate(data):
+            if missphas == 'SIMULATED':
+                image = sim_to_radiance_factor(image.flatten(), channel, i)
             new_data_cube[i] = (image * coefficient).astype(np.float64) # multiply the image with the coefficient 
         data = new_data_cube
         hdul[0].data = data
