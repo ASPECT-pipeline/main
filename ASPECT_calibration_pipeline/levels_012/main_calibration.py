@@ -12,7 +12,7 @@ import levels_012.modules.badPixels as badPixels
 import levels_012.modules.radiometric as radiometric
 import levels_012.modules.mergeFits as mergeFits
 import levels_012.modules.reflectance as reflectance
-from config import MISSPHAS
+from config import MISSPHAS, instrument
 """
     The main program to execute the data processing pipeline.
 
@@ -187,12 +187,16 @@ def pipeline_levels_01(
     output_dir = utilities.verify_directory_path(output_dir)
 
     acq_dir = utilities.verify_acquisition_directory(input_dir)
+    output_dir = Path(output_dir) / acq_dir.name # output directory for this acquisition
+    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
 
     print('Separating acquisition directory into channel specific files.')
     channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]
     channel_names = list(channel_acq.keys()) # List of all channels in acquisition folder
     print(f'Channels found: {channel_names}.')
-    for channel in channel_names:
+    channels_to_calibrate = [x for x in channel_names if x in instrument]
+    print(f'Calibrating channels: {channels_to_calibrate}')
+    for channel in channels_to_calibrate:
         print()
         print(f'Calibrating channel: {channel}')
         channel_info = channel_acq[channel] # Tuple[original_filename, List[filenames from this channel]]
@@ -203,10 +207,10 @@ def pipeline_levels_01(
                                                     differential=differential
                                                     )
 
-        # Modify these for simulated images
-        if MISSPHAS == 'SIMULATE':
-            utilities.update_fits_exposure(calibrated_fits_file, None)
-            utilities.update_fits_wl(calibrated_fits_file, None)
+        # # Modify these for simulated images
+        # if MISSPHAS == 'SIMULATE':
+        #     utilities.update_fits_exposure(calibrated_fits_file, None)
+        #     utilities.update_fits_wl(calibrated_fits_file, None)
 
     print(f'Successfully calibrated all channels')
 

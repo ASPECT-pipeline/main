@@ -12,12 +12,17 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tup
     """
     calculate spectral parameters (slope, band center, band depth, band width, band area) from the spectra
     """
-    pos_max_1 = 680.
-    pos_max_2 = 1500.
+    pos_max_1 = 640.
+    pos_max_2 = 1600.
     pos_max_3 = 2300.
+    # pos_max_1 = 680.
+    # pos_max_2 = 1500.
+    # pos_max_3 = 2300.
 
-    pos_min_1 = 1000.
+    pos_min_1 = 950.
     pos_min_2 = 2000.
+    # pos_min_1 = 1000.
+    # pos_min_2 = 2000.
 
     n_points = 2
 

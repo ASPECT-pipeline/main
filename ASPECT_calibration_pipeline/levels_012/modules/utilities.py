@@ -209,18 +209,17 @@ def form_fits_name(channel: str, image_number: str, utc_time: str, calib_lvl: st
 def get_header_template() -> Dict[str, Tuple[str, str]]: 
     metadata = {
         'INSTRUME'  : ('UNK', 'Camera ID'),
-        'ORIGIN'    : ('UNK', ''),
-        'DATE'      : ('UNK', 'UTC time of file creation'),
-        'FILENAME'  : ('UNK', 'Name of the fits file'),
-        'SWCREATE'  : ('UNK', 'Software identification'),
-        'ORIGFILE'  : ('UNK', 'Original file name.'),
-        'PROCLEVL'  : ('UNK', 'Calibration level'),
+        'ORIGIN'    : ('UNK', 'HERA imaging instruments'),
         'MISSPHAS'  : ('UNK', 'HERA Mission Phase ID'),
-        'OBSERVPH'  : ('UNK', 'HERA Observation ID'),
-        'OBSTARGT'  : ('UNK', 'Observation target'),
-        'DATE-OB'   : ('UNK', 'UTC time of observation'),
-        'OBJECT'    : ('UNK', 'Observation object'),
+        'OSERV_ID'  : ('UNK', 'HERA Observation ID'),
+        'FILENAME'  : ('UNK', 'Name of the fits file'),
+        'ORIGFILE'  : ('UNK', 'Original file name.'),
+        'SWCREATE'  : ('UNK', 'Software identification'),
+        'DATE'      : ('UNK', 'file creation time UTC'),
+        'PROCLEVL'  : ('UNK', 'Calibration level'),
+        'DATE-OBS'  : ('UNK', 'Observation time UTC'),
         'SC_CLK'    : ('UNK', 'SC clock Hera instrument format'),
+        'OBJECT'    : ('UNK', 'Observation target'),
         'SPICE_MK'  : ('UNK', 'SPICE metakernel'),
         'SPICEVER'  : ('UNK', 'SPICE dataset version'),
         'SPICECLK'  : ('UNK', 'SC clock SPICE format'),
@@ -246,19 +245,20 @@ def get_header_template() -> Dict[str, Tuple[str, str]]:
         'CAM_NAZ'   : ('UNK', 'Camera axis north azimuth [deg]'),
         'SOL_ELNG'  : ('UNK', 'Solar elongation'),
         'CALPHASE'  : ('', 'Calibration phase'),
-        'CHANNELS'  : ('UNK', 'Channels in this file'),
-        '0_CCDTMP' : ('UNK', 'Vis detector temperature [DN]'),
-        '0_FPI1'    : ('UNK', 'Vis FPI 1 temperature [DN]'),
-        '0_FPI2'    : ('UNK', 'Vis FPI 2 temperature [DN]'),
-        '1_CCDTMP' : ('UNK', 'NIR1 detector temperature [DN]'),
-        '1_FPI1'    : ('UNK', 'NIR1 FPI 1 temperature [DN]'),
-        '1_FPI2'    : ('UNK', 'NIR1 FPI 2 temperature [DN]'),
-        '2_CCDTMP' : ('UNK', 'NIR2 detector temperature [DN]'),
-        '2_FPI1'    : ('UNK', 'NIR2 FPI 1 temperature [DN]'),
-        '2_FPI2'    : ('UNK', 'NIR2 FPI 2 temperature [DN]'),
-        '3_CCDTMP' : ('UNK', 'SWIR detector temperature [DN]'),
-        '3_FPI1'    : ('UNK', 'SWIR FPI 1 temperature [DN]'),
-        '3_FPI2'    : ('UNK', 'SWIR FPI 2 temperature [DN]'),
+        'HIERARCH ASP_ACQDATE'      : ('Invalid', 'Telemetry ACQ_DATE'),
+        'HIERARCH ASP_CHANNELS'     : ('UNK', 'Channels in this file'),
+        'HIERARCH AS0_CCDTEMP'      : ('UNK', 'Vis detector temperature [DN]'),
+        'HIERARCH AS0_FPI_TEMP1'    : ('UNK', 'Vis FPI 1 temperature [DN]'),
+        'HIERARCH AS0_FPI_TEMP2'    : ('UNK', 'Vis FPI 2 temperature [DN]'),
+        'HIERARCH AS1_CCDTEMP'      : ('UNK', 'NIR1 detector temperature [DN]'),
+        'HIERARCH AS1_FPI_TEMP1'    : ('UNK', 'NIR1 FPI 1 temperature [DN]'),
+        'HIERARCH AS1_FPI_TEMP2'    : ('UNK', 'NIR1 FPI 2 temperature [DN]'),
+        'HIERARCH AS2_CCDTEMP'      : ('UNK', 'NIR2 detector temperature [DN]'),
+        'HIERARCH AS2_FPI_TEMP1'    : ('UNK', 'NIR2 FPI 1 temperature [DN]'),
+        'HIERARCH AS2_FPI_TEMP2'    : ('UNK', 'NIR2 FPI 2 temperature [DN]'),
+        'HIERARCH AS3_CCDTEMP'      : ('UNK', 'SWIR detector temperature [DN]'),
+        'HIERARCH AS3_FPI_TEMP1'    : ('UNK', 'SWIR FPI 1 temperature [DN]'),
+        'HIERARCH AS3_FPI_TEMP2'    : ('UNK', 'SWIR FPI 2 temperature [DN]'),
     }
 
     return metadata
@@ -418,7 +418,7 @@ def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: st
         Dict[header_keyword, Tuple(value, comment)]
     """
     meta_data = {}
-    meta_data['CHANNELS'] = channel
+    meta_data['ASP_CHANNELS'] = channel
 
     channels = list(reverse_channel_map.keys())
     # Load telemetry file
@@ -436,7 +436,8 @@ def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: st
         acq_date = telemetry_data.get('ACQ_DATE', None)
         if acq_date:
             dt = datetime.strptime(acq_date, "%a %b %d %H:%M:%S %Y")
-            meta_data['DATE-OB'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+            meta_data['DATE-OBS'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
+            meta_data['ASP_ACQDATE'] = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
         else:
             print(f"[WARNING] 'ACQ_DATE' missing in telemetry file.")
     except Exception as e:
@@ -447,31 +448,31 @@ def collect_instrument_metadata(telemetry_path: Path, channel: str, missphas: st
         ch_id = reverse_channel_map[ch]
         try: 
             det_temp = channel_specific_telemetry['DET_TEMP']
-            meta_data[f'{ch_id}_CCDTMP'] = str(det_temp)
+            meta_data[f'AS{ch_id}_CCDTEMP'] = str(det_temp)
         except KeyError:
             print(f"[WARNING] 'DET_TEMP' missing for channel '{ch}' in telemetry.")
-            meta_data[f'{ch_id}_CCDTMP'] = 'UNK'
+            meta_data[f'AS{ch_id}_CCDTEMP'] = 'UNK'
         try:
             fpi_temp1 = channel_specific_telemetry['FPI_TEMP1']
-            meta_data[f'{ch_id}_FPI1'] = str(fpi_temp1)
+            meta_data[f'AS{ch_id}_FPI_TEMP1'] = str(fpi_temp1)
         except KeyError:
             print(f"[WARNING] 'FPI_TEMP1' missing for channel '{ch}' in telemetry.")
-            meta_data[f'{ch_id}_FPI1'] = 'UNK'
+            meta_data[f'AS{ch_id}_FPI_TEMP1'] = 'UNK'
         try:
             fpi_temp2 = channel_specific_telemetry['FPI_TEMP2']
-            meta_data[f'{ch_id}_FPI2'] = str(fpi_temp2)
+            meta_data[f'AS{ch_id}_FPI_TEMP2'] = str(fpi_temp2)
         except KeyError:
             print(f"[WARNING] 'FPI_TEMP2' missing for channel '{ch}' in telemetry.")
-            meta_data[f'{ch_id}_FPI2'] = 'UNK'
+            meta_data[f'AS{ch_id}_FPI_TEMP2'] = 'UNK'
 
         if missphas == 'SIMULATED':
-            meta_data[f'{ch_id}_CCDTMP'] = 'N/A'
-            meta_data[f'{ch_id}_FPI1'] = 'N/A'
-            meta_data[f'{ch_id}_FPI2'] = 'N/A'
+            meta_data[f'AS{ch_id}_CCDTEMP'] = 'N/A'
+            meta_data[f'AS{ch_id}_FPI_TEMP1'] = 'N/A'
+            meta_data[f'AS{ch_id}_FPI_TEMP2'] = 'N/A'
             
     return meta_data
 
-def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_number_string: str, missphas: str) -> Dict[str, Tuple[str, str]]:
+def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_numbers: list[str], missphas: str) -> Dict[str, Tuple[str, str]]:
     """
     Collect instrument specific metadata from config.json file. 
     This includes Exposure times and setpoint values. Also calculate the order of acquisition.
@@ -488,7 +489,8 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
 
     meta_data = {}
     channel_id = reverse_channel_map[channel]
-    meta_data[f'{channel_id}_FRAMES'] = (frame_number_string, f'{channel} frames')
+    frame_number_string = ','.join(frame_numbers)
+    meta_data[f'AS{channel_id}_FRAMES'] = (frame_number_string, f'{channel} frames')
 
     try: 
         config_data = json.loads(config_path.read_text(encoding='utf-8'))
@@ -513,42 +515,37 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
     try:
         #Extract sp values from taskValues
         taskValues = [taskFile[i:i + 8] for i in range(0, len(taskFile), 8)]
-        sp1Values = [taskValues[i][1] for i in range(0, len(taskValues))]
-        sp2Values = [taskValues[i][2] for i in range(0, len(taskValues))]
-        sp3Values = [taskValues[i][3] for i in range(0, len(taskValues))]
-        #Extract exposure times
-        exposureTimes = [taskValues[i][4] for i in range(0, len(taskValues))]
-        exposureTimes = exposureTimes[0] if all(et == exposureTimes[0] for et in exposureTimes) else ','.join(str(et) for et in exposureTimes)
-        sp1 = ','.join(str(x) for x in sp1Values)
-        sp2 = ','.join(str(x) for x in sp2Values)
-        sp3 = ','.join(str(x) for x in sp3Values)
+        sp_expos_values = [task[1:5] for task in taskValues]
+        task_number = len(taskValues)
         #Check the order based on SP1 index 3
-        if len(sp1Values) > 3:
-            order = check_order(sp1Values[3], channel)
-        elif len(sp1Values) >= 1:
+        if task_number > 3:
+            order = check_order(taskValues[3][0], channel)
+        elif task_number >= 1:
             print(f"[WARNING] less than 4 acquisitions, the order determined from setpoint index < 3.")
-            order = check_order(sp1Values[-1], channel)
+            order = check_order(taskValues[-1][0], channel)
         else:
             print(f"[WARNING] Not enough setpoint values to determine order.")
             order = 'UNK'
     except Exception as e:
         print(f'[WARNING] Failed to parse task file values: {e}')
-        sp1 = sp2 = sp3 = 'UNK'
-        exposureTimes = 'UNK'
+        sp_expos_values = ['UNK, UNK, UNK, UNK'] * len(frame_numbers)
         order = 'UNK'
     
-    meta_data[f'{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
-    meta_data[f'{channel_id}_EXPOS'] = (str(exposureTimes), f'{channel} Exposure time(s) [DN]')
-    meta_data[f'{channel_id}_SP1'] = (str(sp1), f'{channel} setpoints 1 [DN]')
-    meta_data[f'{channel_id}_SP2'] = (str(sp2), f'{channel} setpoints 2 [DN]')
-    meta_data[f'{channel_id}_SP3'] = (str(sp3), f'{channel} setpoints 3 [DN]')
+    meta_data[f'AS{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
+    meta_data[f'AS{channel_id}_TASK_NUMBER'] = (str(task_number), f'Number of {channel} imiging tasks')
+    if task_number != len(frame_numbers):
+        print(f'[WARNING] The number of tasks is different to number of frames')
+    for i, task in enumerate(sp_expos_values):
+        n = taskValues[i][0]
+        num = f'{n:03d}' # e.g. 1 -> 001
+        meta_data[f'AS{channel_id}_TASK_{num}'] = (' '.join(str(x) for x in task), 'SP1 SP2 SP3 ExpDn')
 
-    if missphas == 'SIMULATED':
-        meta_data[f'{channel_id}_ORDER'] = ('N/A', 'LOW / HIGH')
-        meta_data[f'{channel_id}_EXPOS'] = ('N/A', f'{channel} Exposure time(s) [DN]')
-        meta_data[f'{channel_id}_SP1'] = ('N/A', f'{channel} setpoints 1 [DN]')
-        meta_data[f'{channel_id}_SP2'] = ('N/A', f'{channel} setpoints 2 [DN]')
-        meta_data[f'{channel_id}_SP3'] = ('N/A', f'{channel} setpoints 3 [DN]')
+    # if missphas == 'SIMULATED':
+    #     meta_data[f'{channel_id}_ORDER'] = ('N/A', 'LOW / HIGH')
+    #     meta_data[f'{channel_id}_EXPOS'] = ('N/A', f'{channel} Exposure time(s) [DN]')
+    #     meta_data[f'{channel_id}_SP1'] = ('N/A', f'{channel} setpoints 1 [DN]')
+    #     meta_data[f'{channel_id}_SP2'] = ('N/A', f'{channel} setpoints 2 [DN]')
+    #     meta_data[f'{channel_id}_SP3'] = ('N/A', f'{channel} setpoints 3 [DN]')
 
     return meta_data
 
@@ -673,7 +670,7 @@ def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[str, str]:
             k = c + kelvin
             return (f'{c:.2f}', f'{k:.2f}')
 
-def exposure_conversion(value: float, channel: str) -> float:
+def exposure_conversion(values: float, channel: str, task_number: int) -> float:
     """
     Converts exposure DN into seconds.
 
@@ -684,65 +681,113 @@ def exposure_conversion(value: float, channel: str) -> float:
     Returns: 
         float exposure in seconds
     """
+    exposures = []
+    # Conversion from DN to s
     match channel:
-        case 'Vis':  return ((value + 8.6123) / 155.04) / 1000 # Conversion from DN to s
-        case 'NIR1': return value / 100000
-        case 'NIR2': return value / 100000
-        case 'SWIR': return value
+        case 'Vis':
+            for value in values:
+             x = ((value + 8.6123) / 155.04) / 1000
+             exposures.append(f"{x:.6f}")
+        case 'NIR1': 
+            for value in values:
+                x = value / 100000
+                exposures.append(f"{x:.6f}")
+        case 'NIR2': 
+            for value in values:
+                x = value / 100000
+                exposures.append(f"{x:.6f}")
+        case 'SWIR': 
+            for value in values:
+                x = value
+                exposures.append(f"{x:.6f}")
+    
+    channel_id = reverse_channel_map[channel]
+    ex_dict = {}
 
-def wavelength_conversion(channel: str, order: str, sp_values: List[float]) -> str:
+    for i in range(0, task_number):
+        num = f'{i:03d}' # e.g. 1 -> 001
+        ex_dict[f'AS{channel_id}_TASK_{num}_EXPOS'] = (str(exposures[i]), f'{channel} task {num} exposure [s]')
+    
+    return ex_dict
+
+def wavelength_conversion(channel: str, order: str, sp_values: List[float], task_number: int, simulated: bool) -> Dict[str, Tuple[str, str]]:
     """
     Calculates the wavelengths from setpoint values
 
     Parameters:
         channel: instrument channel
-        order: order of the acquisition (high / low)
+        order: order of the acquisition (HIGH / LOW)
         sp_values: Piezo actuator setpoint values
+        taks_number: number of tasks
+        simulated: True if the data is simulated othewise False
 
     Returns:
-        str: wavelengths in string separated by comma
+        Dict[header entry, (wl, comment)]
     """
-    if sp_values == None:
-        print(f"[WARNING] no piezo setpoint values for wavelenght conversion")
-        return 'UNK'
+    channel_id = reverse_channel_map[channel]
     wavelengths = []
-    return 'UNK'
     
-    match (channel, order):
-        # The correct values for the corretion needed
-        case 'Vis', 'HIGH':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.0749 * sp_values[i] - 786.9)
-                wavelengths.append(wavelength)
-        case 'Vis', 'LOW':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.1244 * sp_values[i] - 1498.2)
-                wavelengths.append(wavelength)
-        case 'NIR1', 'HIGH':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.1331 * sp_values[i] - 1823.1)
-                wavelengths.append(wavelength)
-        case 'NIR1', 'LOW':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.2379 * sp_values[i] - 3190.5)
-                wavelengths.append(wavelength)
-        case 'NIR2', 'HIGH':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.1293 * sp_values[i] - 1619.4)
-                wavelengths.append(wavelength)
-        case 'NIR2', 'LOW':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.2366 * sp_values[i] - 2925.8)
-                wavelengths.append(wavelength)
-        case 'SWIR', '':
-            for i in range(0, len(sp_values)):
-                wavelength = round(0.2869 * sp_values[i] - 3847.2)
-                wavelengths.append(wavelength)
-        case _ , _:
-            print(f"[WARNING] invalid channel '{channel}' / order '{order}' inside wavelenght conversion.")
-            return 'UNK'
+    if simulated:
+        match (channel):
+            case 'Vis':
+                wavelengths = [675,690,705,720,735,750,765,780,795,810,825]
+            case 'NIR1':
+                wavelengths = [875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225]
+            case 'NIR2':
+                wavelengths = [1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575]
+            case 'SWIR':
+                wavelengths = [1675, 1711, 1748, 1784, 1820, 1857, 1893, 1930, 1966, 2002, 2039, 2075, 2111, 2148, 2184, 2220, 2257, 2293, 2330, 2366, 2402, 2439, 2475]
+    else:
+        ## Before the correct values are added
+        # unk_dict = {}
+        # for i in range(0, len(frames)):
+        #     unk_dict[f'{channel_id}_WL{frames[i]}'] = ('UNK', f'task setpoint: {sp_values[i]}')
+        # return unk_dict
     
-    return ",".join(map(str, wavelengths))
+        match (channel, order):
+            # The correct values for the corretion needed
+            case 'Vis', 'HIGH':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.0749 * sp_values[i] - 786.9)
+                    wavelengths.append(wavelength)
+            case 'Vis', 'LOW':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.1244 * sp_values[i] - 1498.2)
+                    wavelengths.append(wavelength)
+            case 'NIR1', 'HIGH':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.1331 * sp_values[i] - 1823.1)
+                    wavelengths.append(wavelength)
+            case 'NIR1', 'LOW':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.2379 * sp_values[i] - 3190.5)
+                    wavelengths.append(wavelength)
+            case 'NIR2', 'HIGH':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.1293 * sp_values[i] - 1619.4)
+                    wavelengths.append(wavelength)
+            case 'NIR2', 'LOW':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.2366 * sp_values[i] - 2925.8)
+                    wavelengths.append(wavelength)
+            case 'SWIR', '':
+                for i in range(0, len(sp_values)):
+                    wavelength = round(0.2869 * sp_values[i] - 3847.2)
+                    wavelengths.append(wavelength)
+            case _ , _:
+                print(f"[WARNING] invalid channel '{channel}' / order '{order}' inside wavelength conversion.")
+                unk_dict = {}
+                for i in range(0, task_number):
+                    num = f'{i:03d}' # e.g. 1 -> 001
+                    unk_dict[f'AS{channel_id}_WL_{num}'] = ('UNK', f'{channel} task {num} wavelength [nm]')
+                return unk_dict
+    
+    wl_dict = {}
+    for i in range(0, task_number):
+        num = f'{i:03d}' # e.g. 1 -> 001
+        wl_dict[f'AS{channel_id}_WL_{num}'] = (str(wavelengths[i]), f'{channel} task {num} wavelength [nm]')
+
+    return wl_dict
 
 def is_valid_fits_file(path:str) -> Tuple[bool, Optional[str]]:
     path = Path(path)
@@ -953,7 +998,7 @@ def estimate_matrix(vis: np.ndarray, nir: np.ndarray, filter: bool = True) -> np
     edges2 = laplacian(nir)
 
     # Step 2: Feature detection using ORB
-    orb = cv2.ORB_create(nfeatures=2000) # create ORB feature detector
+    orb = cv2.ORB_create(nfeatures=5000) # create ORB feature detector
     # keypoints and binary descriptions
     keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
     keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
@@ -1029,7 +1074,6 @@ def estimate_bit_depth(binary_file, width, height):
             image = image.reshape((height, width))
             bit_depth = int(np.ceil(np.log2(np.max(image) + 1)))
     return bytes_per_pixel, bit_depth
-
 
 def rename_bin_files(directory: str | Path):
 

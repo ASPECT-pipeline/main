@@ -44,7 +44,7 @@ def replace_bad_pixels(hdul: HDUList) -> HDUList:
     header = hdu.header
     data = hdu.data
 
-    channel = header.get('CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
+    channel = header.get('ASP_CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     channel_id = reverse_channel_map.get(channel)
     if channel == 'SWIR':
             return hdul

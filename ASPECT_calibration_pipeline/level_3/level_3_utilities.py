@@ -110,7 +110,6 @@ def laplacian(img: np.ndarray) -> np.ndarray:
 
     return laplacian
 
-
 def overlay_images(image1, image2, mode='red-green', title='Image Overlay'):
     """
     Overlay two aligned grayscale images using RGB channels to visualize alignment.
@@ -232,7 +231,6 @@ def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
         plt.show()
     
     return erosion_mask
-
 
 def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0) -> List[Tuple[np.ndarray, np.ndarray]]:
     """
@@ -359,7 +357,6 @@ def sliding_window(image: np.ndarray, kernel: np.ndarray,
     else:
         raise ValueError("Invalid function")
     return result
-
 
 def interpolate_mask_1d(spectrum: np.ndarray, mask: np.ndarray | None = None,
                         interp_nans: bool = True, fill_value: float = np.nan, keep_edges: bool = True) -> np.ndarray: #fill_value: float = np.nan

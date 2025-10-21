@@ -46,8 +46,9 @@ def display_vis_image(file_name):
     finalConvFunc = post.toQEMonoFunction(convFact3, wla, qeDataName, verbose=verbose, QEOrder=1)
         
     data = np.fromfile(file_name, dtype='int16')
-    hi = max(data)
-    lo = min(data)
+    hi = np.max(data)
+    mean = np.mean(data)
+    lo = np.min(data)
     typ = data.dtype
     shape = data.shape
     head = data[:5]
@@ -57,8 +58,9 @@ def display_vis_image(file_name):
     img = data.reshape(detectorResolution[1],-1)
 
     print(f'Image DN:')
-    print(f'max : {hi}')
     print(f'min : {lo}')
+    print(f'mean : {mean}')
+    print(f'max : {hi}')
     print(f'type : {typ}')
     print(f'shape : {shape}')
     print(f'head : {head}')
@@ -236,5 +238,7 @@ data_folder = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-
 nir1_000 = os.path.join(data_folder, 'dc_1_exp_000.bin')
 vis1_000 = os.path.join(data_folder, 'dc_0_exp_000.bin')
 
+vis_example = ()
+
 # display_nir_image(nir1_000)
-# display_vis_image(vis1_000)
+display_vis_image(vis1_000)

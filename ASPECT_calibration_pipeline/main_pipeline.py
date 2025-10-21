@@ -1,4 +1,4 @@
-from config import input_directory, output_directory, OBSERVPH, differential, pipeline, instrument, models, initGuess
+from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument, models, initGuess
 import levels_012.main_calibration as main_calibration
 import levels_012.modules.utilities as level_012_utilities
 import level_3.main_level_3 as main_level_3
@@ -32,7 +32,7 @@ def main_pipeline():
     level_012_utilities.validate_pipeline_steps(pipeline_steps)
 
     if '1' in pipeline_steps:
-        output_dir = Path(output_dir) / OBSERVPH # output directory for this acquisition
+        output_dir = Path(output_dir) / OSERV_ID # output directory for this acquisition
         output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
         print()
         print(f'Directory for the acquisition files: {output_dir.resolve()}')

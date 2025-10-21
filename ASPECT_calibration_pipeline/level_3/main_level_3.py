@@ -118,8 +118,8 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         print(f'Applying data filtering')
         for i, spectra in enumerate(spectras):
             #3A
-            spectra[:11] /= 4096
-            spectra[11:] /= 16384
+            # spectra[:11] /= 4096
+            # spectra[11:] /= 16384
 
             nir1_spectra = spectra[first_nir1_idx : first_nir1_idx + nir1_len]
             nir2_spectra = spectra[first_nir1_idx + nir1_len : first_nir1_idx + nir1_len + nir2_len]
@@ -154,8 +154,8 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         # Only select the range remove the nir1-nir2 ovelap
         for i, spectra in enumerate(spectras):
             #3A
-            spectra[:11] /= 4096
-            spectra[11:] /= 16384
+            # spectra[:11] /= 4096
+            # spectra[11:] /= 16384
             selected_wl = np.array(list(dict.fromkeys(selected_wl)))
             denoised = np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len)
             denoised_spectras.append(denoised)

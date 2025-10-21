@@ -4,7 +4,7 @@ from astropy.io import fits
 from pathlib import Path
 from typing import List, Tuple
 import levels_012.modules.utilities as utilities
-from config import spice_mk, channel_map, reverse_channel_map, INSTRUME, ORIGIN, SWCREATE, MISSPHAS, OBSERVPH, OBSTARGT, OBJECT, SC_CLK, TARGET
+from config import spice_mk, channel_map, reverse_channel_map, INSTRUME, ORIGIN, SWCREATE, MISSPHAS, OSERV_ID, OBJECT, SC_CLK, TARGET
 import json
 import re
 
@@ -75,24 +75,22 @@ def convert_to_fits(
     primary_header['INSTRUME'] = (INSTRUME, comment)
     comment = primary_header.comments['ORIGIN'] 
     primary_header['ORIGIN'] = (ORIGIN, comment)
-    comment = primary_header.comments['DATE'] 
-    primary_header['DATE'] = (date, comment)
-    comment = primary_header.comments['SWCREATE'] 
-    primary_header['SWCREATE'] = (SWCREATE, comment)
-    comment = primary_header.comments['ORIGFILE'] 
-    primary_header['ORIGFILE'] = (orig_file_name, comment)
-    comment = primary_header.comments['PROCLEVL'] 
-    primary_header['PROCLEVL'] = ('0A', comment)
     comment = primary_header.comments['MISSPHAS'] 
     primary_header['MISSPHAS'] = (MISSPHAS, comment)
-    comment = primary_header.comments['OBSERVPH'] 
-    primary_header['OBSERVPH'] = (OBSERVPH, comment)
-    comment = primary_header.comments['OBSTARGT'] 
-    primary_header['OBSTARGT'] = (OBSTARGT, comment)
-    comment = primary_header.comments['OBJECT'] 
-    primary_header['OBJECT'] = (OBJECT, comment)
+    comment = primary_header.comments['OSERV_ID'] 
+    primary_header['OSERV_ID'] = (OSERV_ID, comment)
+    comment = primary_header.comments['ORIGFILE'] 
+    primary_header['ORIGFILE'] = (orig_file_name, comment)
+    comment = primary_header.comments['SWCREATE'] 
+    primary_header['SWCREATE'] = (SWCREATE, comment)
+    comment = primary_header.comments['DATE'] 
+    primary_header['DATE'] = (date, comment)
+    comment = primary_header.comments['PROCLEVL'] 
+    primary_header['PROCLEVL'] = ('0A', comment)
     comment = primary_header.comments['SC_CLK'] 
     primary_header['SC_CLK'] = (SC_CLK, comment)
+    comment = primary_header.comments['OBJECT'] 
+    primary_header['OBJECT'] = (OBJECT, comment)
     comment = primary_header.comments['TARGET'] 
     primary_header['TARGET'] = (TARGET, comment)
 
@@ -108,7 +106,7 @@ def convert_to_fits(
         primary_header[key] = (value, comment)
     
     # Add comments to help the readability
-    primary_header.insert('OBSTARGT',('COMMENT', ' - - - - - - - - Instrument data - - - - - - - - '), after=True)
+    primary_header.insert('PROCLEVL',('COMMENT', ' - - - - - - - - Instrument data - - - - - - - - '), after=True)
     primary_header.insert('SPICE_MK',('COMMENT', ' - - - - - - - - SPICE data - - - - - - - - '), after=False)
     primary_header.insert('SOL_ELNG',('COMMENT', ' - - - - - - - - Calibration specific data - - - - - - - - '), after=True)
     
@@ -192,7 +190,6 @@ def convert_to_fits(
         primary_hdu.data = data_cube
 
     # Append instrument metadata
-    frame_number_string = ','.join(frame_numbers)
     image_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, missphas=MISSPHAS)
 
     for i, (key, value) in enumerate(image_data.items()):
@@ -205,24 +202,24 @@ def convert_to_fits(
                 primary_header[key] = (value, '')
         else:
             print(f"[WARNING] key '{key}' not found in header")
-    primary_header.insert('CHANNELS',('COMMENT', ' - - - - - - - - Instrument specific data - - - - - - - - '), after=False)
+    primary_header.insert('ASP_ACQDATE',('COMMENT', ' - - - - - - - - Instrument specific data - - - - - - - - '), after=False)
 
     # Add instrument specific metadata this only for one channel at this point.
     channel_index = reverse_channel_map[channel]
-    image_specific_data = utilities.collect_instrument_specific_metadata(config_path=config_path, channel=channel, frame_number_string=frame_number_string, missphas=MISSPHAS)
+    image_specific_data = utilities.collect_instrument_specific_metadata(config_path=config_path, channel=channel, frame_numbers=frame_numbers, missphas=MISSPHAS)
 
-    inset_index = primary_header.index(f'{channel_index}_FPI2')
+    inset_index = primary_header.index(f'AS{channel_index}_FPI_TEMP2')
     for i, (key, (value, comment)) in enumerate(image_specific_data.items()):
         if key in primary_header:
                 primary_header[key] = (value, comment)
         else:
-            card_length = len(key) + len(value) + len(comment) + 4
+            card_length = len(key) + len(value) + len(comment) + 13
             if card_length <= 80:
-                primary_header.insert(inset_index + i, (key, value, comment), after=True)
+                primary_header.insert(inset_index + i, (f'HIERARCH {key}', value, comment), after=True)
             else:
-                primary_header.insert(inset_index + i, (key, value, ''), after=True)
+                primary_header.insert(inset_index + i, (f'HIERARCH {key}', value, ''), after=True)
     # Generate FITS file name 
-    utc_time = primary_header.get('DATE-OB')
+    utc_time = primary_header.get('DATE-OBS')
     sc_clock = primary_header.get('SC_CLK')
     if sc_clock in (None, 'UNK'):
         sc_clock = 0

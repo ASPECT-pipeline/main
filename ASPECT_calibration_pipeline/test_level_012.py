@@ -19,8 +19,12 @@ from pprint import pprint
 from collections import defaultdict
 from typing import List, Union
 import level_3.mgm as mgm
-from level_3.test_utilities import show_mgm_figures
 import level_3.level_3_utilities as level_3_utilities
+from level_3.test_utilities import test_and_plot_nir_connection, test_and_plot_denoise_spectra, test_and_plot_remove_outliers, show_mgm_figures
+from level_3.modules._constants import _project_data
+from level_3.modules.utilities_spectra import normalise_spectra
+from level_3.modules.utilities import my_argmax, gimme_kind
+from scipy.interpolate import interp1d
 import xarray as xr
 import cftime 
 from datetime import datetime
@@ -45,9 +49,13 @@ def read_fits_file(path, visualise = False):
 
             print(hdu.shape)
 
-            print(f'data shape: {hdu.data.shape}')
-            print(f'data head: {hdu.data[0][0][:5]}')
-
+            # print(f'data shape: {hdu.data.shape}')
+            # print(f'data head: {hdu.data[0][0][:5]}')
+            spectrum = []
+            for frame in hdu.data:
+                spectrum.append(frame[250][300])
+            print('spectrum:')
+            print(spectrum)
             if visualise:
                 data = hdu.data
 
@@ -393,6 +401,9 @@ def visualise_alignment(as0: str, as1:str):
     vis = as0_data[0]
     nir = as1_data[0]
 
+    vis_f = utilities.normalize_to_8bit(vis)
+    nir_f = utilities.normalize_to_8bit(nir)
+
     plt.figure(figsize=(10, 5))
     plt.subplot(1, 2, 1)
     plt.imshow(vis, cmap='gray')
@@ -424,13 +435,13 @@ def visualise_alignment(as0: str, as1:str):
     plt.show()
 
     # Step 2: Feature detection using ORB
-    orb = cv2.ORB_create(nfeatures=2000) # create ORB feature detector
+    orb = cv2.ORB_create(nfeatures=5000) # create ORB feature detector
     # keypoints and binary descriptions
     keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
     keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
     # Draw keypoints on each image
-    image1_with_kp = cv2.drawKeypoints(edges1, keypoints1, None, color=(0, 255, 0), flags=0)
-    image2_with_kp = cv2.drawKeypoints(edges2, keypoints2, None, color=(0, 255, 0), flags=0)
+    image1_with_kp = cv2.drawKeypoints(vis_f, keypoints1, None, color=(0, 255, 0), flags=0)
+    image2_with_kp = cv2.drawKeypoints(nir_f, keypoints2, None, color=(0, 255, 0), flags=0)
 
     # Display using matplotlib
     plt.figure(figsize=(12, 6))
@@ -457,12 +468,12 @@ def visualise_alignment(as0: str, as1:str):
     print(f'FLANN matches before filtering: {len(flann_matches)}')
     matches = utilities.filter_by_distance(flann_matches)
     print(f'FLANN matches after filtering: {len(matches)}')
-    N = 500
+    N = 1000
     matches_to_draw = matches[:N]
     # Draw matches on combined image
     matched_img = cv2.drawMatches(
-        edges1, keypoints1,
-        edges2, keypoints2,
+        vis_f, keypoints1,
+        nir_f, keypoints2,
         matches_to_draw,
         None,
         flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
@@ -1665,8 +1676,7 @@ def read_flat():
                 
         plt.imshow(primary_data)
         plt.show()
-    
-    
+     
 def try_flat_cal(path):
     with fits.open(path) as hdul:
         original = utilities.convert_to_float64(hdul)
@@ -1832,6 +1842,227 @@ def plot_spectrum(csv_path, spectrum_col: int, *, delimiter=None, skiprows=0,
 
     return wl, y
 
+def analyse_spectra(fits_path):
+
+    with fits.open(fits_path) as hdul:
+        primary = hdul[0]
+        header = primary.header
+        data = primary.data
+
+    channel = header.get('CHANNELS')
+    wavelengths = level_3_utilities.get_wavelengths(header)
+    print(f'Visualising {channel} spectra')
+
+    combined = level_3_utilities.extract_asteroid(data)
+
+    coords, spectras = zip(*combined)
+    coords = np.array(coords) 
+    spectras = np.array(spectras)
+    print(f'{len(spectras)} spectras extracted')
+
+    all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
+    print(f'All wavelengths: {all_wl}')
+
+    plt.figure()
+    plt.plot(all_wl, spectras[100000])
+    plt.xlabel('Wavelength (nm)')
+    plt.ylabel('Radiance (W/m2/sr)')
+    plt.title(f"Spectrum")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def spectral_visual():
+    # 1. Load spectra file
+    csv_path = os.path.join(os.getcwd(), "test_data/600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv")
+    df = pd.read_csv(csv_path, sep=" ", header=None)
+
+    # 2. Extract wavelengths and spectra
+    wavelengths = df.iloc[:, 0].to_numpy()         # shape (N,)
+    spectra = df.iloc[:, 1:].to_numpy().T          # shape (16, N)
+    
+    vis = wavelengths[:7]
+    nir1 = wavelengths[7:19]
+    nir2 = wavelengths[19:]
+    i = 6
+    s = spectra[i]
+    wl = wavelengths
+    print(f'len vis {len(vis)}')
+    print(vis)
+    print(s[:7])
+    print()
+    print(f'len nir1 {len(nir1)}')
+    print(nir1)
+    print(s[7:19])
+    print()
+    print(f'len nir2 {len(nir2)}')
+    print(nir2)
+    print(s[19:])
+    print(wl)
+
+
+    # plt.figure()
+    # plt.plot(wl, s, marker='o', color='red', markersize=3, linewidth=0.8)
+    # plt.xlabel('Wavelength')
+    # plt.ylabel('Reflectance')
+    # plt.title(f'Spectra {i}')
+    # plt.grid(True)
+    # plt.tight_layout()
+    # plt.show()
+
+    nir2_offset_correction_result = level_3_utilities.nir2_offset_correction(
+                nir1_wavelengths=nir1,
+                nir1_spectra=s[7:19],
+                nir2_wavelengths=nir2,
+                nir2_spectra=s[19:],
+                overlap_wavelength=nir2[0]
+            )
+    
+    connected = np.concatenate([s[:19], nir2_offset_correction_result[0][1:]])
+    connected_wl = np.concatenate([wl[:19], wl[20:]])
+    print(f'len wl :{len(connected_wl)}')
+    print(f'len connected :{len(connected)}')
+    print(f'org wl: \n{wl}')
+    print(f'connected wl: \n{connected_wl}')
+    print(f'org s: \n{s}')
+    print(f'connected: \n{connected}')
+    # plt.figure()
+    # plt.plot(connected_wl, connected, marker='o', color='red', markersize=3, linewidth=0.8)
+    # plt.xlabel('Wavelength')
+    # plt.ylabel('Reflectance')
+    # plt.title(f'Spectra {i}')
+    # plt.grid(True)
+    # plt.tight_layout()
+    # plt.show()
+
+    # Remove outliers
+    cleaned = level_3_utilities.remove_outliers(connected, connected_wl, z_thresh=1)[0]
+    
+    # denoise spectra 
+    denoised = level_3_utilities.denoise_spectra(cleaned, connected_wl).flatten()
+
+    # plt.figure()
+    # plt.plot(connected_wl, cleaned, marker='o', color='red', markersize=3, linewidth=0.8)
+    # plt.plot(connected_wl, denoised, marker='o', color='blue', markersize=3, linewidth=0.8)
+    # plt.xlabel('Wavelength')
+    # plt.ylabel('Reflectance')
+    # plt.title(f'Spectra {i}')
+    # plt.tight_layout()
+    # plt.show()
+
+
+    print('Spectral parameters')
+    pos_max_1 = 751.
+    pos_max_2 = 1600.
+    pos_max_3 = 2300.
+
+    pos_min_1 = 950.
+    pos_min_2 = 2000.
+
+    n_points = 2
+
+    wavelength = connected_wl
+    reflectance = np.reshape(denoised, (-1, len(wavelength)))
+    # sort wavelengths
+    idx = np.argsort(wavelength)
+    wavelength, reflectance = wavelength[idx], reflectance[:, idx]
+    print(f'wavelength: shape {wavelength.shape}, {wavelength}')
+    print(f'reflectance: shape {reflectance.shape}, {reflectance}')
+
+    spectrum = reflectance[0]
+    fun = interp1d(wavelength, spectrum, kind=gimme_kind(wavelength))
+
+    wvl_max_1 = 681
+    wvl_max_2 = 1507
+    x1, x2 = wvl_max_1, wvl_max_2
+    y1, y2 = fun(wvl_max_1), fun(wvl_max_2)
+    slope = (y1 - y2) / (x1 - x2)
+    const = (x1 * y2 - x2 * y1) / (x1 - x2)
+    line = slope * wavelength + const
+
+
+    # plt.figure(facecolor='black')
+    # ax = plt.gca()
+    # ax.set_facecolor('black') 
+
+    # plt.plot(wl, s, color='white', linewidth=0.8)
+    # plt.plot(connected_wl, denoised, color='red', linewidth=2.5)
+    # plt.plot(wavelength, line, color='gray', linestyle='--', label="Continuum line", linewidth=0.6)
+
+    # plt.xlabel('Wavelength (nm)', color='white', fontsize=12)
+    # plt.ylabel('Reflectance', color='white', fontsize=12)
+
+    # ax.tick_params(colors='white', which='both')   # make tick marks and labels white
+    # for spine in ['top', 'right']:
+    #     ax.spines[spine].set_visible(False)
+    # ax.spines['bottom'].set_color('white')
+    # ax.spines['left'].set_color('white')
+       # Remove grid
+    #ax.grid(False)
+
+    plt.figure()
+
+    plt.plot(wl, s, linewidth=0.8)
+    plt.plot(connected_wl, denoised, color='red', linewidth=2.5)
+    plt.plot(wavelength, line, color='gray', linestyle='--', label="Continuum line", linewidth=0.6)
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Reflectance', fontsize=12)
+    plt.tight_layout()
+    plt.show()
+
+    # plt.figure(figsize=(8,5))
+    # plt.plot(wavelength, spectrum, color='red', label="Spectrum")
+    # plt.plot([wvl_max_1, wvl_max_2], [y1, y2], 'ro', label="Continuum anchors")
+    # plt.plot(wavelength, line, 'k--', label="Continuum line")
+    # plt.xlabel("Wavelength [nm]")
+    # plt.ylabel("Reflectance")
+    # plt.legend()
+    # plt.title("Spectrum with continuum line")
+    # plt.show()
+    # print(f'slope: {slope}')
+
+    continuum_subtracted = spectrum - line + y1
+
+    # plt.figure(figsize=(8,5))
+    # plt.plot(wavelength, spectrum, label="Spectrum")
+    # plt.plot(wavelength, line, "k--", label="Continuum line")
+    # plt.plot(wavelength, continuum_subtracted, color='red', label="Continuum subtracted subtracted")
+    # plt.xlabel("Wavelength [nm]")
+    # plt.ylabel("Reflectance / normalized")
+    # plt.legend()
+    # plt.title("Slope Corrected Spectrum")
+    # plt.show()
+
+
+    # calc_band_parameters(connected_wl, denoised.reshape(1, -1))
+    # r = test_and_plot_nir_connection(s, wl)
+    # r = test_and_plot_remove_outliers(r, wl)
+    # r = test_and_plot_denoise_spectra(r, wl)
+
+"""
+Simulatred asteroid images
+"""
+
+def read_sim_binary(file, channel, visualise=True):
+    if channel == 'Vis':
+        resolution = [1024, 1024]
+    else:
+        resolution = [640, 512]
+    
+    img = np.fromfile(file, dtype=np.uint16)
+    print(f'{channel} frame has {len(img)} values, should have {resolution[0] * resolution[1]}.')
+    print(f'{channel} frame min, mean, max values: {np.min(img)}, {np.mean(img)}, {np.max(img)}')
+    print()
+    im = img.reshape(resolution[1],-1)
+    if visualise:
+        im = plt.imshow(im, cmap='gray', norm=None, vmin=0)
+        plt.colorbar(im)
+        plt.show()
+    
+    return im
+
+
+# spectral_visual()
 
 """ 
 Python3 ASPECT_calibration_pipeline/test_level_012.py
@@ -1840,26 +2071,29 @@ Python3 ASPECT_calibration_pipeline/test_level_012.py
 """
 Function calls after this
 """
+
+
 ###
+_results = (Path(__file__).parent.parent / 'pipeline_results').resolve()
+_test_data = (Path(__file__).parent.parent / 'test_data').resolve()
 # SIMULATED FILES
+g_test = _test_data / 'AS0_000000_240610T092713_1A.fits'
+as0_0A = _results / 'ASPECT_simulated' / 'Radiance' / 'AS0_000000_270323T060000_0A.fits'
 
-sim_folder = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated')
-as1_sim = os.path.join(sim_folder, 'radiance/AS1_000000_270323T060000_1B.fits')
-as0_sim = os.path.join(sim_folder, 'radiance/AS0_000000_270323T060000_1B.fits')
-asp_sim = os.path.join(sim_folder, 'radiance/ASP_000000_270323T060000_2B.fits')
-# read_fits_file(as0_sim, visualise=True)
+# in-flight dark 250225
+as0_100 = _results / 'ASPECT_in-flight-dark_250225' /'002_DARKS' / 'acq_000' / 'AS0_000000_250225T014231_1A.fits'
 
-asp_sim = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_3C_MGM.fits')
-file_a = os.path.join(os.getcwd(),'test_data/ASPECT_noise_project/acqseq_100/acq_000/dc_0_exp_000.bin')
-file_b = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_noise_project/D1/AS0_000000_270101T060000_1B.fits')
-# read_bin_file(file_a)
+# HSH files
+hsh_0 = _test_data / 'HSH' / 'HSH_0CS083_250312T132505_1A.fits'
+read_fits_file(as0_100)
 
 ###
 # binary files
+test_bin_vis = (Path(__file__).parent / 'levels_012' / 'modules' / 'simulated' / 'Calibration' / 'example-1-vis-10ms-0000.bin').resolve()
+sim_bin_folder = (Path(__file__).parent.parent / 'test_data' / 'ASPECT_simulated_images' / '2027-03-23_06_00_00-McEwen' / 'acq_000').resolve()
+as0_sim_bin =   sim_bin_folder / 'dc_0_exp_000.bin'
 
-sim_bin_folder = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen/acq_000' )
-as0_sim_bin =   os.path.join(sim_bin_folder, 'dc_0_exp_000.bin')
-# read_bin_file(as0_sim_bin, 'Vis')
+# read_sim_binary(as0_sim_bin, 'Vis')
 
 
 # Calibration tests
@@ -1882,7 +2116,7 @@ as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated/radiance/AS0_
 as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated/radiance/AS1_000000_270323T060000_1B.fits')
 # as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')
 # as1 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS1_000000_270323T060000_1B.fits')
-visualise_alignment(as0, as1)
+# visualise_alignment(as0, as1)
 
 asp = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/ASP_000000_270323T060000_2B.fits')
 as0 = os.path.join(os.getcwd(), 'pipeline_results/ASPECT_simulated_20270323_McEwen/AS0_000000_270323T060000_1B.fits')

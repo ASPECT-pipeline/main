@@ -40,48 +40,54 @@ def reflectance_calibration(
     Returns: 
         Reflectance unit converted data inside the same hdul 
     """
+    try: 
+        primary_hdu = hdul[0]
+        primary_header = primary_hdu.header
+        data = primary_hdu.data
 
-    primary_hdu = hdul[0]
-    primary_header = primary_hdu.header
-    data = primary_hdu.data
+        if primary_header.get('MISSPHAS') == 'SIMULATED':
+            print(f'[WARNING] skipping I/F for simulated data')
+            return hdul
 
-    if primary_header.get('MISSPHAS') == 'SIMULATED':
-        print(f'[WARNING] skipping I/F for simulated data')
-        return hdul
+        channel = primary_header.get('ASP_CHANNELS')
+        sun_dist = primary_header.get('SOLAR_D')
 
-    channel = primary_header.get('CHANNELS')
-    sun_dist = primary_header.get('SOLAR_D')
+        if sun_dist in (None, 'UNK'):
+            print(f"[WARNING] Solar distance missing from '{channel}' header. Skipping I/F.'")
+            return hdul
+        else:
+            sun_dist = float(sun_dist)
+        
+        if channel == 'SWIR':
+            fwhm_nm = 40.0
+        
+        channel_id = reverse_channel_map.get(channel)
+        frames = primary_header.get(f'AS{channel_id}_FRAMES').split(',')
 
-    if sun_dist in (None, 'UNK'):
-        print(f"[WARNING] Solar distance missing from '{channel}' header. Skipping I/F.'")
-        return hdul
-    else:
-        sun_dist = float(sun_dist)
-    
-    if channel == 'SWIR':
-        fwhm_nm = 40.0
-    
-    channel_id = reverse_channel_map.get(channel)
-    wavelengths = primary_header.get(f'{channel_id}_WL').split(',')
+        wavelengths = []
+        for f in frames:
+            wavelengths.append(f'AS{channel_id}_{f}')
 
-    if wavelengths[0] in (None, 'UNK', 'N/A'):
-        print(f"[WARNING] Wavelengths is not valid for '{channel}' header '{wavelengths}'. Skipping I/F.'")
-        return hdul
-    
-    calib_dir = Path(calibration_directory)
-    ssi_csv = calib_dir / 'ssi_yearly_avg_e2024_c20250221.csv'
-    wl_nm, ssi_vals = load_ssi_csv(ssi_csv)
+        if wavelengths[0] in (None, 'UNK', 'N/A'):
+            print(f"[WARNING] Wavelengths is not valid for '{channel}' header '{wavelengths}'. Skipping I/F.'")
+            return hdul
+        
+        calib_dir = Path(calibration_directory)
+        ssi_csv = calib_dir / 'ssi_yearly_avg_e2024_c20250221.csv'
+        wl_nm, ssi_vals = load_ssi_csv(ssi_csv)
 
-    ssi_gaussian = gaussian_convolution(ssi_vals, wl_nm, fwhm_nm)   
+        ssi_gaussian = gaussian_convolution(ssi_vals, wl_nm, fwhm_nm)   
 
-    for i, frame in enumerate(data):
-        wl = float(wavelengths[i])
-        ssi_index = int(np.searchsorted(wl_nm, wl))
-        f_au = ssi_gaussian[ssi_index]
-        IF_frame = np.pi * frame * (sun_dist**2) / f_au
-    
-        data[i] = IF_frame
-    primary_hdu.data = data
+        for i, frame in enumerate(data):
+            wl = float(wavelengths[i])
+            ssi_index = int(np.searchsorted(wl_nm, wl))
+            f_au = ssi_gaussian[ssi_index]
+            IF_frame = np.pi * frame * (sun_dist**2) / f_au
+        
+            data[i] = IF_frame
+        primary_hdu.data = data
+    except Exception as e:
+        print(f'[WARNING] Reflectance calibration failed: {e}')
     return hdul
 
 

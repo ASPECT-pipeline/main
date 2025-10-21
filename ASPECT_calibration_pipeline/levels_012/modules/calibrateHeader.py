@@ -15,62 +15,86 @@ def convert_detector_temp(header, channel, channel_id):
     try:
         missphas = header.get('MISSPHAS')
         if missphas == 'SIMULATED':
-            return (f'{channel_id}_CCDTMP', 'N/A', "Detector temp [K] ('N/A' [C])") 
-        original = header.get(f'{channel_id}_CCDTMP')
+            return (f'AS{channel_id}_CCDTEMP', 'N/A', f"{channel} detector temp [K] ('N/A' [C])") 
+        original = header.get(f'AS{channel_id}_CCDTEMP')
         if original and original != 'UNK':
             c, k = utilities.det_temp_conversion(float(original),channel)
-            return(f'{channel_id}_CCDTMP', f'{k}', f'Detector temp [K] ({c} [C])')
+            return(f'AS{channel_id}_CCDTEMP', f'{k}', f'{channel} detector temp [K] ({c} [C])')
     except Exception as e:
-        print(f"[WARNING] {channel_id} CCDTMP conversion failed: {e}")
-    return (f'{channel_id}_CCDTMP', 'UNK', "Detector temp [K] ('UNK' [C])") 
+        print(f"[WARNING] {channel_id} CCDTEMP conversion failed: {e}")
+    return (f'AS{channel_id}_CCDTEMP', 'UNK', f"{channel} detector temp [K] ('UNK' [C])") 
 
 
 def convert_fpi_temp(header, channel, channel_id, suffix):
     try:
         missphas = header.get('MISSPHAS')
         if missphas == 'SIMULATED':
-            return (f'{channel_id}_{suffix}', 'N/A', f"{suffix} temp [K] ('N/A' [C])") 
-        original = header.get(f'{channel_id}_{suffix}')
+            return (f'AS{channel_id}_{suffix}', 'N/A', f"{channel} {suffix} [K] ('N/A' [C])") 
+        original = header.get(f'AS{channel_id}_{suffix}')
         if original and original != 'UNK':
-            if suffix == 'FPI1':
+            if suffix == 'FPI_TEMP1':
                 c, k = utilities.fpi_temp_conversion(float(original), channel, 1)
             else:
                 c, k = utilities.fpi_temp_conversion(float(original), channel, 2)
-            return(f'{channel_id}_{suffix}', f'{k}', f'{suffix} temp [K] ({c} [C])')
+            return(f'AS{channel_id}_{suffix}', f'{k}', f'{channel} {suffix} [K] ({c} [C])')
     except Exception as e:
         print(f"[WARNING] {channel} {suffix} conversion failed: {e}")
-    return (f'{channel_id}_{suffix}', 'UNK', f"{suffix} temp [K] ('UNK' [C])") 
+    return (f'AS{channel_id}_{suffix}', 'UNK', f"{channel} {suffix} [K] ('UNK' [C])") 
 
 def convert_exposure_times(header, channel, channel_id):
     try:
         missphas = header.get('MISSPHAS')
         if missphas == 'SIMULATED':
-            return (f'{channel_id}_EXPOS', 'N/A', 'Exposure time(s) [s]')
-        original = header.get(f'{channel_id}_EXPOS')
-        if original and original != 'UNK':
-            exposure_list = list(map(int, original.split(',')))
-            exposures_in_s = [utilities.exposure_conversion(x, channel) for x in exposure_list]
-            exposures_str = ','.join(f"{x:.6f}" for x in exposures_in_s)
-            return(f'{channel_id}_EXPOS', exposures_str, 'Exposure time(s) [s]')
+            raise Exception('Simulated')
+        
+        task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+        exposures = []
+
+        for i in range(0, task_number):
+            num = f'{i:03d}'
+            exposures.append(header.get(f'AS{channel_id}_TASK_{num}').split(' ')[3])
+        
+        values = [float(value) for value in exposures] # convert the values to numbers
+        exp_dict = utilities.exposure_conversion(values,channel,task_number)
+
     except Exception as e:
-        print(f'[WARNING] {channel} exposure time conversion failed: {e}')
-    return (f'{channel_id}_EXPOS', 'UNK', 'Exposure time(s) [s]')
+        print(f'[WARNING] {channel} exposure conversion failed: {e}')
+        unk_dict = {}
+        for i in range(0, task_number):
+            num = f'{i:03d}' # e.g. 1 -> 001
+            unk_dict[f'AS{channel_id}_WL_{num}'] = ('UNK', '')
+            return unk_dict
+
+    return exp_dict
 
 def convert_wavelengths(header, channel, channel_id, order):
     try:
         missphas = header.get('MISSPHAS')
-        if missphas == 'SIMULATED':
-            wavelengths = utilities.get_simulated_wl(channel)
-            return(f'{channel_id}_WL', str(wavelengths), f'[nm]')
-        setpoint1 = header.get(f'{channel_id}_SP1')
-        if setpoint1 and setpoint1 != 'UNK':
-            values = setpoint1.split(",") # capasitance values of setpoint 1
-            values = [float(value) for value in values] # convert the values to numbers
-            wavelengths = utilities.wavelength_conversion(channel, order, values)
-            return(f'{channel_id}_WL', str(wavelengths), f'[nm]')
+        simulated = missphas == 'SIMULATED'
+
+        task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+
+        setpoint1 = []
+
+        for i in range(0, task_number):
+            num = f'{i:03d}'
+            setpoint1.append(header.get(f'AS{channel_id}_TASK_{num}').split(' ')[0])
+
+        values = [float(value) for value in setpoint1] # convert the values to numbers
+
+        # if len(values) != len(frames):
+        #     raise Exception('The number of piezo setpoint 1 values missmatch with the number of frames.')
+        wl_dict = utilities.wavelength_conversion(channel, order, values, task_number, simulated) # get correct wl by frame
+
     except Exception as e:
         print(f'[WARNING] {channel} wavelenght conversion failed: {e}')
-    return(f'{channel_id}_WL', 'UNK', f'[nm]')
+        unk_dict = {}
+        for i in range(0, task_number):
+            num = f'{i:03d}' # e.g. 1 -> 001
+            unk_dict[f'AS{channel_id}_WL_{num}'] = ('UNK', '')
+            return unk_dict
+
+    return wl_dict
 
 def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
     """
@@ -97,13 +121,13 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
 
             for channel_id in channel_ids:  
                 channel = channel_map[channel_id] # Channel (Vis, NIR1, NIR2, SWIR)
-                order = header.get(f'{channel_id}_ORDER')
+                order = header.get(f'AS{channel_id}_ORDER')
 
                 # To run conversions
                 keys = [
                     convert_detector_temp(header, channel, channel_id),
-                    convert_fpi_temp(header, channel, channel_id, 'FPI1'),
-                    convert_fpi_temp(header, channel, channel_id, 'FPI2'),
+                    convert_fpi_temp(header, channel, channel_id, 'FPI_TEMP1'),
+                    convert_fpi_temp(header, channel, channel_id, 'FPI_TEMP2'),
                 ]
 
                 for key, value, comment in keys:
@@ -113,30 +137,32 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
                     else:
                         header[key] = (value, '')
             
-            channel = header.get('CHANNELS')
+            channel = header.get(f'ASP_CHANNELS')
             channel_id = reverse_channel_map.get(channel)
-            # To run conversions
-            keys = [
-                convert_exposure_times(header, channel, channel_id),
-                convert_wavelengths(header, channel, channel_id, order)
-            ]
+            order = header.get(f'AS{channel_id}_ORDER')
 
-            for key, value, comment in keys:
-                card_length = 8 + len(value) + len(comment) + 7
-                if key in header:
-                    if card_length <= 80:
-                        header[key] = (value, comment)
-                    else:
-                        header[key] = (value, '')
-                else:
-                    sp3_idx = header.index(f'{channel_id}_SP3')
-                    if card_length <= 80:
-                        header.insert(sp3_idx, (key, value, comment), after=True)
-                    else:
-                        header.insert(sp3_idx, (key, value, ''), after=True)
+            # Convert wavelengths
+            wl_dict = convert_wavelengths(header, channel, channel_id, order)
+            sorted_wl_dict = dict(sorted(wl_dict.items(), key=lambda x: int(x[0][-3:]), reverse=True))
+            for key, (value, comment) in sorted_wl_dict.items():
+                task_idx = header.index(f'AS{channel_id}_TASK_NUMBER')
+                task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+                task_idx += task_number
+                header.insert(task_idx, (f'HIERARCH {key}', value, comment), after=True)
+
+            # Conver exposure
+            exp_dict = convert_exposure_times(header, channel, channel_id)
+            sorted_exp_dict = dict(sorted(exp_dict.items(), key=lambda x: int(x[0][-9:-6]), reverse=True))
+
+            for key, (value, comment) in sorted_exp_dict.items():
+                task_idx = header.index(f'AS{channel_id}_TASK_NUMBER')
+                task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+                task_idx += task_number
+                header.insert(task_idx, (f'HIERARCH {key}', value, comment), after=True)
+
 
         except Exception as e:
-            print(f"[WARNING] Error while calibrating IMAGE HDU header: {e}")
+            print(f"[WARNING] Error while calibrating primary HDU header: {e}")
             
 
         stem = fits_path.stem

@@ -31,7 +31,7 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     header = hdu.header
     data = hdu.data
-    channel = header.get('CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
+    channel = header.get('ASP_CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     missphas = header.get('MISSPHAS')
 
     if channel in ('Vis', 'SWIR') or missphas == 'SIMULATED':
@@ -62,7 +62,7 @@ def extract_cds_pixels(hdul: HDUList) -> HDUList:
             
             # Create columns for the cds pixels
             channel_index = reverse_channel_map[channel]
-            frames = header.get(f'{channel_index}_FRAMES').split(',')
+            frames = header.get(f'AS{channel_index}_FRAMES').split(',')
             columns = []
             for i, col in enumerate(cds_list):
                 column = fits.Column(
