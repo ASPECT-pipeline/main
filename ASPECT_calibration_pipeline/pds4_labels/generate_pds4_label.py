@@ -31,9 +31,9 @@ def find_acquisition_start(csv_path, acquisition_end_utc):
 
 def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
 
-    # Define required FITS header keys
+    # This section or list of required keywords prints the missing keywords, and is solely for troubleshooting purposes. These are not directly reguired to generate the PDS4 label.
     required_keywords = {
-        ('DATE-OB',): 'Acquisition UTC date',
+        ('DATE-OBS',): 'Acquisition UTC date',
         ('NAXIS1',): 'Image width',
         ('NAXIS2',): 'Image height',
         ('NAXIS3',): 'Number of images',
@@ -44,7 +44,7 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         ('SC_CLK',): 'SC clock Hera instrument format: 13480572:349872',
         ('SPICE_MK',): 'SPICE meta kernel version',
         ('DATE',): 'UTC time of file creation',
-        ('CHANNELS',): 'Channels in this file'
+        ('HIERARCH ASP_CHANNELS',): 'Channels in this file'
     }
 
     # Read FITS header
@@ -69,10 +69,11 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
     PrimaryHDU_size = ((header_cards * 80 + 2879) // 2880) * 2880
     PrimaryHDU_offset = 0
 
+    # This section reads the listed items from the fits header. If there are changes to the header, update this section and troubleshoot any possible issues.
     naxis1 = hdr.get('NAXIS1', 0)
     naxis2 = hdr.get('NAXIS2', 0)
     naxis3 = hdr.get('NAXIS3', 0)
-    date_obs = hdr.get('DATE-OB', '0000-00-00T00:00:00.000')
+    date_obs = hdr.get('DATE-OBS', '0000-00-00T00:00:00.000')
     vis_exposure = hdr.get('0_EXPOS', 'UNKNOWN')
     nir1_exposure = hdr.get('1_EXPOS', 'UNKNOWN')
     nir2_exposure = hdr.get('2_EXPOS', 'UNKNOWN')
@@ -115,7 +116,8 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
     nir2_wl = hdr.get('2_WL', 'UNKNOWN')
     swir_wl = hdr.get('3_WL', 'UNKNOWN')
     creation_time = hdr.get('DATE', 'UNKNOWN')
-    channels = hdr.get('CHANNELS', 'UNKNOWN')
+    channels = hdr.get('HIERARCH ASP_CHANNELS', 'UNKNOWN')#channels = hdr.get('CHANNELS', 'UNKNOWN')
+    channels = channels.upper()
         
     # Basic metadata
     filename = os.path.basename(fits_file_path)
@@ -231,6 +233,8 @@ def generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder):
         time_delta = time_delta.total_seconds()
         start_time = start_time + "Z"
     except Exception:
+        print(f"Exception: {sys.exc_info()[0]} -> Setting acquisition start time to UNKNOWN.")
+        print("ASPECT state-data file may be missing or mismatching with the fits.")
         start_time = 'UNKNOWN'
 
     # Determine target type
