@@ -167,8 +167,8 @@ def convert_to_fits(
                 array = np.fromfile(decompressed_output, dtype='<u2').reshape((height, width)) # little-endian 16-bit unsigned
             else:
                 array = np.fromfile(file_path, dtype='<u2').reshape((height, width)) # little-endian 16-bit unsigned
-
             image_data.append(array)
+
 
         data_cube = np.array(image_data) # Stack the images into a cube
         # Differential decoding
@@ -190,9 +190,9 @@ def convert_to_fits(
         primary_hdu.data = data_cube
 
     # Append instrument metadata
-    image_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, missphas=MISSPHAS)
+    instrument_data = utilities.collect_instrument_metadata(telemetry_path=telemetry_path, channel=channel, missphas=MISSPHAS)
 
-    for i, (key, value) in enumerate(image_data.items()):
+    for i, (key, value) in enumerate(instrument_data.items()):
         if key in primary_header:
             comment = primary_header.comments[key]
             card_length = len(key) + len(value) + len(comment) + 4

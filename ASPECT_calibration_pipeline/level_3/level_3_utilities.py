@@ -12,6 +12,7 @@ from scipy.stats import norm
 from level_3.modules._constants import _num_eps
 from sklearn.decomposition import PCA
 from matplotlib.patches import Patch
+from config import reverse_channel_map
 
 import matplotlib.pyplot as plt
 
@@ -25,23 +26,23 @@ def get_wavelengths(header: Header) -> Dict[str, List[int]]:
     Returns:
         Dict[channel, List[wavelengths]]
     """
-    channel_keys = {
-        'VIS': '0_WL',
-        'NIR1': '1_WL',
-        'NIR2': '2_WL',
-        'SWIR': '3_WL'
-    }
-
+    channels = header.get('ASP_CHANNELS').split(',')
     wavelengths = {}
-
-    for channel, key in channel_keys.items():
-        raw_value = header.get(key)
-        if raw_value:
-            try:
-                wl = np.array([int(x.strip()) for x in raw_value.split(',') if x.strip()], dtype=int)
-                wavelengths[channel] = wl
-            except ValueError as e:
-                raise ValueError(f'Could not parse wavelengths for {channel} from header key {key}: {raw_value}')
+    try: 
+        for channel in channels:
+            channel_id = reverse_channel_map[channel]
+            task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+            key = f'AS{channel_id}'
+            for i in range(0, task_number):
+                num = f'{i:03d}' # e.g. 1 -> 001
+                wl = float(header.get(f'AS{channel_id}_WL_{num}'))
+                if key not in wavelengths:
+                    wavelengths[key] = np.array([wl])
+                else:
+                    wavelengths[key] = np.append(wavelengths[key], wl)
+            wavelengths[key] = np.sort(wavelengths[key])
+    except Exception as e:
+        print(f'[WARNING] Could not parse wavelengths for {channel}: {e}')
     return wavelengths
 
 def validate_instrument(instrument: str) -> bool:
@@ -72,7 +73,8 @@ def validate_wl(wl: Dict[str, List[int]], instrument: str) -> bool:
     """
     channels = [str(c).upper() for c in instrument.split('-')]
     for ch in channels:
-        if ch not in wl:
+        channel_id = reverse_channel_map[ch]
+        if f'AS{channel_id}' not in wl:
             raise KeyError(f"Missing wavelengths for '{ch}' in Image HDU header. Required by istrument setting: '{instrument}'")
     return True
 
@@ -232,7 +234,7 @@ def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
     
     return erosion_mask
 
-def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0) -> List[Tuple[np.ndarray, np.ndarray]]:
+def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, visualise: bool = False) -> List[Tuple[np.ndarray, np.ndarray]]:
     """
     Extracts the asteroid spectra from the 3D datacube.
     
@@ -245,7 +247,7 @@ def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0) -> List[Tuple[
     """
     image = image_cube[mask_index]
 
-    mask = asteroid_mask(image)
+    mask = asteroid_mask(image,visualise)
 
     #Store the coordinates of the image where mask has value of non 0
     coords = np.argwhere(mask != 0)

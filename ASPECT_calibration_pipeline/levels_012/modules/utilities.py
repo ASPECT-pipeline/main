@@ -670,6 +670,25 @@ def fpi_temp_conversion(value:float, channel: str, fpi: int) -> Tuple[str, str]:
             k = c + kelvin
             return (f'{c:.2f}', f'{k:.2f}')
 
+def simulated_exposure_conversion(channel: str, task_number):
+    channel_id = reverse_channel_map[channel]
+    match channel_id:
+        case 0:
+            exp = 0.01
+        case 1:
+            exp = 0.02
+        case 2:
+            exp = 0.02
+        case _:
+            exp = 'UNK'
+
+    ex_dict = {}
+    for i in range(0, task_number):
+        num = f'{i:03d}' # e.g. 1 -> 001
+        ex_dict[f'AS{channel_id}_EXP_{num}'] = (str(exp), f'{channel} task {num} exposure [s]')
+    
+    return ex_dict
+
 def exposure_conversion(values: float, channel: str, task_number: int) -> float:
     """
     Converts exposure DN into seconds.
@@ -706,7 +725,7 @@ def exposure_conversion(values: float, channel: str, task_number: int) -> float:
 
     for i in range(0, task_number):
         num = f'{i:03d}' # e.g. 1 -> 001
-        ex_dict[f'AS{channel_id}_TASK_{num}_EXPOS'] = (str(exposures[i]), f'{channel} task {num} exposure [s]')
+        ex_dict[f'AS{channel_id}_EXP_{num}'] = (str(exposures[i]), f'{channel} task {num} exposure [s]')
     
     return ex_dict
 
@@ -818,32 +837,39 @@ def combine_primary_headers(headers: list[Header]) -> Header:
             if key in target:
                 target[key] = (value, comment)
             else:
-                insert_idx = target.index(f'{id}_FPI2')
-                target.insert(insert_idx, (key, value, comment), after=True)
+                insert_idx = target.index(f'AS{id}_FPI_TEMP2')
+                target.insert(insert_idx, (f'HIERARCH {key}', value, comment), after=True)
         else:
-            channel = source.get('CHANNELS')
+            channel = source.get('ASP_CHANNELS')
             print(f"[INFO] Key '{key}' not found in source '{channel}' header; skipping.")
 
     
     try:
-        channel_0 = combined_header.get('CHANNELS')
+        channel_0 = combined_header.get('ASP_CHANNELS')
         channels = [channel_0]
         for hdr in headers[1:]:
-            channel = hdr.get('CHANNELS')
+            channel = hdr.get('ASP_CHANNELS')
             channels.append(channel)
             channel_id = reverse_channel_map[channel]
-            copy_header_key(hdr, combined_header, f'{channel_id}_WL', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_SP3', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_SP2', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_SP1', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_EXPOS', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_ORDER', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_frames', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_CCDTMP', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_FPI1', channel_id)
-            copy_header_key(hdr, combined_header, f'{channel_id}_FPI2', channel_id)
-        channels_string = ','.join(channels)
-        combined_header['CHANNELS'] = (channels_string, 'Instrument channels')
+            task_number = int(hdr.get(f'AS{channel_id}_TASK_NUMBER'))
+            copy_header_key(hdr, combined_header, f'AS{channel_id}_CCDTEMP', channel_id)
+            copy_header_key(hdr, combined_header, f'AS{channel_id}_FPI_TEMP1', channel_id)
+            copy_header_key(hdr, combined_header, f'AS{channel_id}_FPI_TEMP2', channel_id)
+            for i in range(task_number - 1, -1, -1):
+                num = f'{i:03d}' # e.g. 1 -> 001
+                copy_header_key(hdr, combined_header, f'AS{channel_id}_WL_{num}', channel_id)
+            for i in range(task_number - 1, -1, -1):
+                num = f'{i:03d}' # e.g. 1 -> 001
+                copy_header_key(hdr, combined_header, f'AS{channel_id}_EXP_{num}', channel_id)
+            for i in range(task_number - 1, -1, -1):
+                num = f'{i:03d}' # e.g. 1 -> 001
+                copy_header_key(hdr, combined_header, f'AS{channel_id}_TASK_{num}', channel_id)
+            copy_header_key(hdr, combined_header, f'AS{channel_id}_TASK_NUMBER', channel_id)
+            copy_header_key(hdr, combined_header, f'AS{channel_id}_ORDER', channel_id)
+            copy_header_key(hdr, combined_header, f'AS{channel_id}_FRAMES', channel_id)
+        channel_order = ['Vis', 'NIR1', 'NIR2', 'SWIR'] # Ensure the order remains in header
+        channels_string = ','.join(sorted(channels, key=lambda x: channel_order.index(x)))
+        combined_header['ASP_CHANNELS'] = (channels_string, 'Instrument channels')
     except Exception as e:
         print(f"[WARNING] Combining headers failed: {e}")
         print(f'Returning the first header.')
@@ -880,6 +906,12 @@ def convert_to_float64(hdul: HDUList, index: int = 0) -> HDUList:
             hdu.header['BITPIX'] = -64
     else:
         print(f'[WARNING] HDU data is None or not convertable to float64')
+    return hdul
+
+def simulated_data_factor_correction(hdul: HDUList) -> HDUList:
+    hdu = hdul[0]
+    for i, frame in enumerate(hdu.data):
+        hdu.data[i] = frame / 0.16
     return hdul
 
 def convert_to_float32(hdul: HDUList, index: int = 0) -> HDUList:

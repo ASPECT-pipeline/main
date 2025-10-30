@@ -118,10 +118,12 @@ def backToR(dn, qeFunc, wl, darkCurrent, integrationTime,  fullWellCapacity = No
     # Dark current in qe
     dc = darkCurrent * femtoAmpereToQE * integrationTime * 10e-4
 
+    print(f'dark bg: {dcb}')
     vals -= dcb
     if (verbose):
         print(f"After removing dark background: {vals}.")
 
+    print(f'dark current: {dc}')
     vals -= dc
     if (verbose):
         print(f"After removing dark current: {vals}.")

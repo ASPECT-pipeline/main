@@ -2,7 +2,7 @@ import numpy as np
 from astropy.io import fits
 from pathlib import Path
 from astropy.io.fits import HDUList
-from config import reverse_channel_map, calibration_directory
+from config import reverse_channel_map, _path_bad_pixels, _path_sim_bad_pixels
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -45,27 +45,38 @@ def replace_bad_pixels(hdul: HDUList) -> HDUList:
     data = hdu.data
 
     channel = header.get('ASP_CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
+    missphase = header.get('MISSPHAS')
+
     channel_id = reverse_channel_map.get(channel)
     if channel == 'SWIR':
             return hdul
-    # Read the bad pixel mask for this channel
-    try: 
-        cal_dir = Path(calibration_directory)
-        cal_file = Path(cal_dir / f'{channel_id}_bad-pixel_mask.bin')
-        arr = np.fromfile(cal_file, dtype=np.uint16)
-        if channel == 'Vis':
-            w = h = 1024
-            bad_pixel_mask =  arr.reshape((h, w)).astype(np.uint16)
-        elif channel in ('NIR1', 'NIR2'):
-            w = 640
-            h = 512
-            bad_pixel_mask =  arr.reshape((h, w)).astype(np.uint16)
-        else:
-            print(f"[WARNING] incorrect channel '{channel}'")
+    
+
+    if missphase == 'SIMULATED': # For simulated data
+        try: 
+            bp_dir = Path(_path_sim_bad_pixels)
+            bp_file = bp_dir / f'AS{channel_id}_BAD_PIXELS.fits'
+            with fits.open(bp_file) as bp_hdul:
+                bp_mask = bp_hdul[0].data
+        except Exception as e:
+            print(f'[WARNING] Caught Exception while reading bad pixels: {e}')
             return hdul
-    except Exception as e:
-        print(f'[WARNING] Caught Exception while reading bad pixel mask: {e}')
-        return hdul
+    else:
+        order = header.get(f'AS{channel_id}_ORDER')
+        if order not in ('LOW', 'HIGH'):
+            print(f'[WARNING] channel {channel} order is {order}. Bad pixel calibration failed.')
+            return hdul
+        
+        # Read the  Bad pixel mask for this channel and order
+        try: 
+            bp_dir = Path(_path_bad_pixels)
+            bp_file = bp_dir / f'AS{channel_id}_BAD_PIXELS_{order}.fits'
+            with fits.open(bp_file) as bp_hdul:
+                bp_mask = bp_hdul[0].data
+        except Exception as e:
+            print(f'[WARNING] Caught Exception while reading bad pixels: {e}')
+            return hdul
+        
     # bad-pixel correction
     try:
         # To store the bad pixels that did not have 'good' neighbours
@@ -77,7 +88,7 @@ def replace_bad_pixels(hdul: HDUList) -> HDUList:
         # Iterate over all 2D images inside the cube
         for num, frame in enumerate(new_data_cube):
             # Update the mask to remove the already corrected values
-            mask = bad_pixel_mask.copy()
+            mask = bp_mask.copy()
             for i in range(frame.shape[0]):
                 for j in range(frame.shape[1]):
                     if mask[i, j] == 1:

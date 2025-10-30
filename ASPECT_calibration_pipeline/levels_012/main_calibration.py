@@ -116,6 +116,10 @@ def calibration_pipeline(
         # Apply radiometric calibration
         hdul = radiometric.radiometric_calibration(hdul)
 
+        # Correct the simulated data from generation error
+        if MISSPHAS == 'SIMULATED':
+            hdul = utilities.simulated_data_factor_correction(hdul)
+
         stem = fits_file.stem
         suffix = fits_file.suffix
         new_calibration_level = '1B'
@@ -160,7 +164,8 @@ def calibration_pipeline(
     return fits_file
 
 def pipeline_levels_01(
-        input_dir: str | Path, 
+        input_dir: str | Path,
+        acq_dir: str | Path, 
         output_dir: str | Path,
         differential: bool
     ) -> str:
@@ -172,6 +177,7 @@ def pipeline_levels_01(
     
     Parameters:
         input_dir (str | Path):     Directory containing the acquisition files.
+        acq_dir (str | Path):       Directory of the anquisition files.
         output_dir (str | Path):    Directory where a new directory containg all new files will be sotred.
         differential (bool):        True if differnetial encoding is used for the input images.
     
@@ -181,14 +187,6 @@ def pipeline_levels_01(
 
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
-
-    # Verify the existance of directory paths and convert them into Path objects
-    input_dir = utilities.verify_directory_path(input_dir)
-    output_dir = utilities.verify_directory_path(output_dir)
-
-    acq_dir = utilities.verify_acquisition_directory(input_dir)
-    output_dir = Path(output_dir) / acq_dir.name # output directory for this acquisition
-    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
 
     print('Separating acquisition directory into channel specific files.')
     channel_acq = utilities.channel_files(acq_dir) # Dict[channel, (original_channel_name, [files names belongs to this channel])]

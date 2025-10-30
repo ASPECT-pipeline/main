@@ -3,6 +3,7 @@ import levels_012.main_calibration as main_calibration
 import levels_012.modules.utilities as level_012_utilities
 import level_3.main_level_3 as main_level_3
 from pathlib import Path
+import levels_012.modules.utilities as utilities
 
 
 
@@ -31,14 +32,21 @@ def main_pipeline():
     pipeline_steps = [str(s) for s in pipeline.split('-')]
     level_012_utilities.validate_pipeline_steps(pipeline_steps)
 
+    # Verify the existance of directory paths and convert them into Path objects
+    input_dir = utilities.verify_directory_path(input_dir)
+    output_dir = utilities.verify_directory_path(output_dir)
+
+    acq_dir = utilities.verify_acquisition_directory(input_dir)
+    output_dir = Path(output_dir) / OSERV_ID # output directory for this acquisition
+    output_dir = Path(output_dir) / acq_dir.name # output directory for this acquisition
+    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
+
     if '1' in pipeline_steps:
-        output_dir = Path(output_dir) / OSERV_ID # output directory for this acquisition
-        output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
         print()
         print(f'Directory for the acquisition files: {output_dir.resolve()}')
         print()
         print(f'Executing pipeline levels 0 and 1')
-        level_2_input = main_calibration.pipeline_levels_01(input_dir=input_dir, output_dir=output_dir, differential=differential)
+        level_2_input = main_calibration.pipeline_levels_01(input_dir=input_dir, acq_dir=acq_dir, output_dir=output_dir, differential=differential)
         print(f'Calibration levels 0 and 1 completed. New Files created in directory: {level_2_input.resolve()}')
         file_list = [f for f in level_2_input.iterdir() if f.is_file()]
         for file in file_list:

@@ -34,7 +34,7 @@ import pandas as pd
 from scipy.io import loadmat
 from level_3.modules.BAR_BC_method import calc_band_parameters
 import sys
-from config import initGuess, reverse_channel_map
+from config import initGuess, reverse_channel_map, _path_sim_dark
 
 def read_fits_file(path, visualise = False):
     with fits.open(path) as hdul:
@@ -47,15 +47,13 @@ def read_fits_file(path, visualise = False):
             h = hdu.header
             print(repr(h))
 
-            print(hdu.shape)
+            print(hdu.data.shape)
+            frame_0 = hdu.data[0]
+            print(print(f"Min, mean, and max values: {np.min(frame_0)}, {np.mean(frame_0)}, {np.max(frame_0)}"))
 
             # print(f'data shape: {hdu.data.shape}')
             # print(f'data head: {hdu.data[0][0][:5]}')
             spectrum = []
-            for frame in hdu.data:
-                spectrum.append(frame[250][300])
-            print('spectrum:')
-            print(spectrum)
             if visualise:
                 data = hdu.data
 
@@ -130,6 +128,20 @@ def read_bin_file(filePath, channel):
         print(f"File {filePath} not found")
     except Exception as e:
         print(f"An error occured: {e}")
+
+def make_fits_file(binFile, output_path, filename, shape, header_dict=None):
+    bin_path = Path(binFile)
+    output_file = Path(output_path) / filename
+
+    data = np.fromfile(bin_path, dtype=np.uint16).reshape(shape[0], shape[1])
+    hdu = fits.PrimaryHDU(data)
+
+    if header_dict:
+        for key, (value, comment) in header_dict.items():
+            hdu.header[key] = (value, comment)
+    
+    hdu.writeto(output_file, overwrite=True)
+    print(f'Created FITS file: {output_file}')
 
 def update_fits_exposure(path, new_exposure, save_as=None):
     with fits.open(path, mode='update' if save_as is None else 'readonly') as hdul:
@@ -400,6 +412,8 @@ def visualise_alignment(as0: str, as1:str):
     print(f'Visualising alignment')
     vis = as0_data[0]
     nir = as1_data[0]
+    print(f"Min, mean, and max values: {np.min(vis)}, {np.mean(vis)}, {np.max(vis)} W sr^-1 m^-2")
+    print(f"Min, mean, and max values: {np.min(nir)}, {np.mean(nir)}, {np.max(nir)} W sr^-1 m^-2")
 
     vis_f = utilities.normalize_to_8bit(vis)
     nir_f = utilities.normalize_to_8bit(nir)
@@ -1849,8 +1863,8 @@ def analyse_spectra(fits_path):
         header = primary.header
         data = primary.data
 
-    channel = header.get('CHANNELS')
-    wavelengths = level_3_utilities.get_wavelengths(header)
+    channel = header.get('ASP_CHANNELS')
+    wavelengths = level_3_utilities.get_wavelengths(header) 
     print(f'Visualising {channel} spectra')
 
     combined = level_3_utilities.extract_asteroid(data)
@@ -1864,7 +1878,7 @@ def analyse_spectra(fits_path):
     print(f'All wavelengths: {all_wl}')
 
     plt.figure()
-    plt.plot(all_wl, spectras[100000])
+    plt.plot(all_wl, spectras[15000])
     plt.xlabel('Wavelength (nm)')
     plt.ylabel('Radiance (W/m2/sr)')
     plt.title(f"Spectrum")
@@ -2039,6 +2053,14 @@ def spectral_visual():
     # r = test_and_plot_remove_outliers(r, wl)
     # r = test_and_plot_denoise_spectra(r, wl)
 
+def visualise_extract_astroid(fits_path):
+    with fits.open(fits_path) as hdul:
+        primary = hdul[0]
+        header = primary.header
+        data = primary.data
+    
+    asteroid = level_3_utilities.extract_asteroid(data,0,True)
+    
 """
 Simulatred asteroid images
 """
@@ -2078,15 +2100,29 @@ _results = (Path(__file__).parent.parent / 'pipeline_results').resolve()
 _test_data = (Path(__file__).parent.parent / 'test_data').resolve()
 # SIMULATED FILES
 g_test = _test_data / 'AS0_000000_240610T092713_1A.fits'
-as0_0A = _results / 'ASPECT_simulated' / 'Radiance' / 'AS0_000000_270323T060000_0A.fits'
+as0 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS0_000000_270323T060000_0A.fits'
+as1 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS1_000000_270323T060000_1C.fits'
+as2 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS2_000000_270323T060000_1C.fits'
+asp = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_2B.fits'
 
 # in-flight dark 250225
 as0_100 = _results / 'ASPECT_in-flight-dark_250225' /'002_DARKS' / 'acq_000' / 'AS0_000000_250225T014231_1A.fits'
 
 # HSH files
 hsh_0 = _test_data / 'HSH' / 'HSH_0CS083_250312T132505_1A.fits'
-read_fits_file(as0_100)
+# read_fits_file(as0)
+# read_fits_file(as2)
+# read_fits_file(asp)
 
+# visualise_extract_astroid(asp)
+analyse_spectra(asp)
+
+dark_dir = Path(_path_sim_dark)
+dark_file = dark_dir / f'AS1_DARK.fits'
+
+# read_fits_file(dark_file, visualise=True)
+
+# visualise_alignment(as0, as1)
 ###
 # binary files
 test_bin_vis = (Path(__file__).parent / 'levels_012' / 'modules' / 'simulated' / 'Calibration' / 'example-1-vis-10ms-0000.bin').resolve()
@@ -2107,6 +2143,13 @@ as2_250225_1A = aps_250225 / '104' / 'AS2_000000_200101T014800_1A.fits'
 # try_flat_cal(as1_250225_1A)
 # read_flat()
 # read_all_flats()
+
+dark_bin = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/levels_012/modules/simulated/data/dark-frame-NIR1or2-20ms.bin')
+
+header_dict = {
+    'AS2_EXPOS' : ('0.02', 'Exposure in seconds' )
+}
+# make_fits_file(dark_bin, _path_sim_dark, 'AS2_DARK.fits', (512, 640), header_dict)
 
 """
 Alignment Demo

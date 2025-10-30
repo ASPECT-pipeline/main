@@ -2,7 +2,7 @@ import numpy as np
 from astropy.io.fits import HDUList
 from astropy.io import fits
 from pathlib import Path
-from config import reverse_channel_map, _path_dark
+from config import reverse_channel_map, _path_dark, _path_sim_dark
 
 
 def dark_subtraction(hdul: HDUList) -> HDUList:
@@ -22,24 +22,36 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
     header = hdu.header
     data = hdu.data
     channel = header.get('ASP_CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
+    missphase = header.get('MISSPHAS')
+
     channel_id = reverse_channel_map.get(channel)
     # Read Dark frame for this channel
     if channel == 'SWIR':
             return hdul
     
     order = header.get(f'AS{channel_id}_ORDER')
-    if order not in ('LOW', 'HIGH'):
-        print(f'[WARNING] channel {channel} order is {order}. Dark subtraction failed.')
-        return hdul
-    
-    try: 
-        dark_dir = Path(_path_dark)
-        flat_file = dark_dir / f'AS{channel_id}_DARK_{order}.fts'
-        with fits.open(flat_file) as flat_hdul:
-            flat_field = flat_hdul[0].data
-    except Exception as e:
-        print(f'[WARNING] Caught Exception while reading dark frame: {e}')
-        return hdul
+
+    if missphase == 'SIMULATED': # For simulated data
+        try: 
+            dark_dir = Path(_path_sim_dark)
+            dark_file = dark_dir / f'AS{channel_id}_DARK.fits'
+            with fits.open(dark_file) as dark_hdul:
+                dark_frame = dark_hdul[0].data
+        except Exception as e:
+            print(f'[WARNING] Caught Exception while reading dark frame: {e}')
+            return hdul
+    else:
+        if order not in ('LOW', 'HIGH'):
+            print(f'[WARNING] channel {channel} order is {order}. Dark subtraction failed.')
+            return hdul
+        try: 
+            dark_dir = Path(_path_dark)
+            dark_file = dark_dir / f'AS{channel_id}_DARK_{order}.fits'
+            with fits.open(dark_file) as dark_hdul:
+                dark_frame = dark_hdul[0].data
+        except Exception as e:
+            print(f'[WARNING] Caught Exception while reading dark frame: {e}')
+            return hdul
     
     # Do dark fram correction
     try:
@@ -49,7 +61,9 @@ def dark_subtraction(hdul: HDUList) -> HDUList:
         # Loop over the 2D images inside the extension
         for i, image in enumerate(data):
             # Subtract the dark frame from image
-            new_data_cube[i] = image - dark_frame
+            corrected = image - dark_frame
+            corrected = np.clip(corrected, 0, None)
+            new_data_cube[i] = corrected
 
 
         hdul[0].data = new_data_cube

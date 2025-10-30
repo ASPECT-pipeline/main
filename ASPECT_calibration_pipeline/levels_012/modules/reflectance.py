@@ -2,7 +2,7 @@ import numpy as np
 from pathlib import Path
 from astropy.io.fits import HDUList
 from scipy.ndimage import gaussian_filter1d
-from config import reverse_channel_map, calibration_directory
+from config import reverse_channel_map, _path_solar_ssi
 
 def load_ssi_csv(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -45,13 +45,20 @@ def reflectance_calibration(
         primary_header = primary_hdu.header
         data = primary_hdu.data
 
-        if primary_header.get('MISSPHAS') == 'SIMULATED':
-            print(f'[WARNING] skipping I/F for simulated data')
-            return hdul
-
         channel = primary_header.get('ASP_CHANNELS')
         sun_dist = primary_header.get('SOLAR_D')
 
+        if primary_header.get('MISSPHAS') == 'SIMULATED': # For simulated data
+            au = 1.0
+            lambertRadianceAt1au = 217.0
+            c = lambertRadianceAt1au / au**2
+
+            for i, frame in enumerate(data):
+                data[i] = frame / c
+            primary_hdu.data = data
+            print(f'Converted to reflectance')
+            return hdul
+        
         if sun_dist in (None, 'UNK'):
             print(f"[WARNING] Solar distance missing from '{channel}' header. Skipping I/F.'")
             return hdul
@@ -62,19 +69,18 @@ def reflectance_calibration(
             fwhm_nm = 40.0
         
         channel_id = reverse_channel_map.get(channel)
-        frames = primary_header.get(f'AS{channel_id}_FRAMES').split(',')
+        task_number = int(primary_header.get(f'AS{channel_id}_TASK_NUMBER'))
 
         wavelengths = []
-        for f in frames:
-            wavelengths.append(f'AS{channel_id}_{f}')
+        for i in range(0, task_number):
+            num = f'{i:03d}' # e.g. 1 -> 001
+            wavelengths.append(float(primary_header.get(f'AS{channel_id}_WL_{num}')))
 
         if wavelengths[0] in (None, 'UNK', 'N/A'):
             print(f"[WARNING] Wavelengths is not valid for '{channel}' header '{wavelengths}'. Skipping I/F.'")
             return hdul
         
-        calib_dir = Path(calibration_directory)
-        ssi_csv = calib_dir / 'ssi_yearly_avg_e2024_c20250221.csv'
-        wl_nm, ssi_vals = load_ssi_csv(ssi_csv)
+        wl_nm, ssi_vals = load_ssi_csv(_path_solar_ssi)
 
         ssi_gaussian = gaussian_convolution(ssi_vals, wl_nm, fwhm_nm)   
 
@@ -88,6 +94,7 @@ def reflectance_calibration(
         primary_hdu.data = data
     except Exception as e:
         print(f'[WARNING] Reflectance calibration failed: {e}')
+    print(f'Converted to reflectance')
     return hdul
 
 

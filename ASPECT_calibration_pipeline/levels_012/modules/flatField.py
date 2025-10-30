@@ -2,7 +2,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.io.fits import HDUList
 from pathlib import Path
-from config import reverse_channel_map, _path_flat
+from config import reverse_channel_map, _path_flat, _path_sim_flat
 
 
 
@@ -21,26 +21,36 @@ def flat_field_calibration(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     header = hdu.header
     data = hdu.data
-    missphas = header.get('MISSPHAS')
+    missphase = header.get('MISSPHAS')
     channel = header.get('ASP_CHANNELS') # Channel (Vis, NIR1, NIR2, SWIR)
     channel_id = reverse_channel_map.get(channel)
-    if channel == 'SWIR' or missphas == 'SIMULATED':
+    if channel == 'SWIR':
             return hdul
     
-    order = header.get(f'AS{channel_id}_ORDER')
-    if order not in ('LOW', 'HIGH'):
-        print(f'[WARNING] channel {channel} order is {order}. Flat field calibration failed.')
-        return hdul
-    
-    # Read the Flat field for this channel and order
-    try: 
-        flat_dir = Path(_path_flat)
-        flat_file = flat_dir / f'AS{channel_id}_FLAT_{order}.fts'
-        with fits.open(flat_file) as flat_hdul:
-            flat_field = flat_hdul[0].data
-    except Exception as e:
-        print(f'[WARNING] Caught Exception while reading flat field: {e}')
-        return hdul
+    if missphase == 'SIMULATED': # For simulated data
+        try: 
+            flat_dir = Path(_path_sim_flat)
+            flat_file = flat_dir / f'AS{channel_id}_FLAT.fits'
+            with fits.open(flat_file) as flat_hdul:
+                flat_field = flat_hdul[0].data
+        except Exception as e:
+            print(f'[WARNING] Caught Exception while reading flat frame: {e}')
+            return hdul
+    else:
+        order = header.get(f'AS{channel_id}_ORDER')
+        if order not in ('LOW', 'HIGH'):
+            print(f'[WARNING] channel {channel} order is {order}. Flat field calibration failed.')
+            return hdul
+        
+        # Read the Flat field for this channel and order
+        try: 
+            flat_dir = Path(_path_flat)
+            flat_file = flat_dir / f'AS{channel_id}_FLAT_{order}.fits'
+            with fits.open(flat_file) as flat_hdul:
+                flat_field = flat_hdul[0].data
+        except Exception as e:
+            print(f'[WARNING] Caught Exception while reading flat field: {e}')
+            return hdul
     # Flat field correction
     try:
         # To store the calibrated datacube

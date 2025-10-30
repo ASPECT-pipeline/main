@@ -6,11 +6,12 @@ from pathlib import Path
 project_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/"
 
 # INPUT path for the acquisition data
-# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_100"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_100"
 
 # OUTPUT path where the results are saved
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
+# output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated"
 
 
 # Is the data differetially encoded
@@ -19,12 +20,12 @@ differential: bool = False
 # Meta data
 INSTRUME:   str = 'ASPECT'              # Camera ID
 ORIGIN:     str = 'ESA-HERA'            # Hera mission instruments
-MISSPHAS:   str = '002_CRUISE'                    # Hera mission phase ID
-OSERV_ID:   str = '002_DARKS'                    # Hera observation ID                
+MISSPHAS:   str = 'SIMULATED'                    # Hera mission phase ID '002_CRUISE'
+OSERV_ID:   str = 'D1D2_10km'                    # Hera observation ID                
 SWCREATE:   str = 'ASPECTCAL'           # Software identification
 SC_CLK:     str = 'UNK'                 # Spacecraft clock Hera instrument format: '13480572:349872'
-OBJECT:     str = '002_ASP_DARKS'                    # Observed object
-TARGET:     str = ''                    # Observed target (SPICE)
+OBJECT:     str = 'Didymos'                    # Observed object
+TARGET:     str = 'DIDYMOS'                    # Observed target (SPICE)
 
 sc_clock_seconds: int = 0 # Spacecraft clock in seconds
 sc_clock_offset: int = 0  # Offset of sc_clock
@@ -39,10 +40,10 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 # Adjust this to point to the metakernel to be used for FITS header data
 spice_mk = spice_mk_plan
 
-pipeline = '1' # Separate with '-' e.g. '1-2-3'
+pipeline = '1-2' # Separate with '-' e.g. '1-2-3'
 
 # Which instrument channels want to include
-instrument = 'Vis' 
+instrument = 'Vis-NIR1-NIR2' 
 
 models = 'C'
 
@@ -54,14 +55,29 @@ Constants do not change unless you know what your are modifying.
 """
 
 subdirs = {
-    "pipeline" : "ASPECT_calibration_pipeline",
-    "calibration" : "calibration_data",
-    "flat_field" : "FLATS",
-    "dark_frames": "DARKS",
+    "pipeline"      : "ASPECT_calibration_pipeline",
+    "calibration"   : "calibration_data",
+    "flat_field"    : "FLATS",
+    "dark_frames"   : "DARKS",
+    "bad_pixels"    : 'BAD_PIXELS',
+    "simulated"     : "SIMULATED",
+    "solar"         : "SOLAR"
 }
 
-_path_flat = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['flat_field']
+# Paths to calibration files
 _path_dark = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['dark_frames']
+_path_flat = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['flat_field']
+_path_bad_pixels = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['bad_pixels']
+
+_path_solar_ssi = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['solar'] / 'ssi_yearly_avg_e2024_c20250221.csv'
+
+# Paths to simulated calibration files
+_path_sim_dark = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['simulated'] / subdirs['dark_frames']
+_path_sim_flat = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['simulated'] / subdirs['flat_field']
+_path_sim_bad_pixels = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['simulated'] / subdirs['bad_pixels']
+
+_path_sim_coef = Path(project_directory) / subdirs['pipeline'] / subdirs['calibration'] / subdirs['simulated'] / 'COEF'
+
 
 channel_map = {
     0 : 'Vis',

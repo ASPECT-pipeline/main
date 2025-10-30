@@ -43,11 +43,11 @@ def convert_fpi_temp(header, channel, channel_id, suffix):
 
 def convert_exposure_times(header, channel, channel_id):
     try:
+        task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
         missphas = header.get('MISSPHAS')
         if missphas == 'SIMULATED':
-            raise Exception('Simulated')
+            return utilities.simulated_exposure_conversion(channel, task_number)
         
-        task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
         exposures = []
 
         for i in range(0, task_number):
@@ -62,7 +62,7 @@ def convert_exposure_times(header, channel, channel_id):
         unk_dict = {}
         for i in range(0, task_number):
             num = f'{i:03d}' # e.g. 1 -> 001
-            unk_dict[f'AS{channel_id}_WL_{num}'] = ('UNK', '')
+            unk_dict[f'AS{channel_id}_EXP_{num}'] = ('UNK', '')
             return unk_dict
 
     return exp_dict
@@ -73,7 +73,6 @@ def convert_wavelengths(header, channel, channel_id, order):
         simulated = missphas == 'SIMULATED'
 
         task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
-
         setpoint1 = []
 
         for i in range(0, task_number):
@@ -152,7 +151,7 @@ def calibrate_header(fits_path: str | Path, output_dir: str | Path) -> str:
 
             # Conver exposure
             exp_dict = convert_exposure_times(header, channel, channel_id)
-            sorted_exp_dict = dict(sorted(exp_dict.items(), key=lambda x: int(x[0][-9:-6]), reverse=True))
+            sorted_exp_dict = dict(sorted(exp_dict.items(), key=lambda x: int(x[0][-3:]), reverse=True))
 
             for key, (value, comment) in sorted_exp_dict.items():
                 task_idx = header.index(f'AS{channel_id}_TASK_NUMBER')
