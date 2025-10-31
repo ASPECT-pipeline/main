@@ -74,27 +74,23 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
 
     match instrument:
         case 'vis-nir1-nir2': 
-            instrument_wl = np.concatenate([wavelengths['VIS'], wavelengths['NIR1'], wavelengths['NIR2']])
             norm_wl = 1539
             start_idx = 0
-            end_idx = int(np.where(all_wl == wavelengths['NIR2'][-1])[0]) + 1
+            end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
             model_name = 'ASPECT-vis-nir1-nir2-1539'
         case 'vis-nir1-nir2-swir':
-            instrument_wl = np.concatenate([wavelengths['VIS'], wavelengths['NIR1'], wavelengths['NIR2'], wavelengths['SWIR'] ])
             norm_wl = 2348
             start_idx = 0
             end_idx = len(all_wl)
             model_name = 'ASPECT-vis-nir1-nir2-swir-2348'
         case 'nir1-nir2': 
-            instrument_wl = np.concatenate([wavelengths['NIR1'], wavelengths['NIR2']])
             norm_wl = 1539
-            start_idx = int(np.where(all_wl == wavelengths['NIR1'][0])[0])
-            end_idx = int(np.where(all_wl == wavelengths['NIR2'][-1])[0]) + 1
+            start_idx = int(np.where(all_wl == wavelengths['AS1'][0])[0])
+            end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
             model_name = 'ASPECT-nir1-nir2-1539'
         case 'nir1-nir2-swir':
-            instrument_wl = np.concatenate([wavelengths['NIR1'], wavelengths['NIR2'], wavelengths['SWIR']])
             norm_wl = 2348
-            start_idx = int(np.where(all_wl == wavelengths['NIR1'][0])[0])
+            start_idx = int(np.where(all_wl == wavelengths['AS1'][0])[0])
             end_idx = len(all_wl)
             model_name = 'ASPECT-nir1-nir2-swir-2348'
 

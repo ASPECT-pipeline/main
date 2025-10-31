@@ -91,7 +91,9 @@ def backToR(dn, qeFunc, wl, darkCurrent, integrationTime,  fullWellCapacity = No
     """
 
     vals = np.array(dn,dtype='float64')
-
+    print()
+    print(vals)
+    print(f'vals min, mean, max: {np.min(vals)}, {np.mean(vals)}, {np.max(vals)}')
     if (any(vals > bitDepth)):
         print(f"Error, some values are larger than bitdepth of {bitDepth}.")
         return None
@@ -105,7 +107,8 @@ def backToR(dn, qeFunc, wl, darkCurrent, integrationTime,  fullWellCapacity = No
             print(f'Scaling to bitdepth was from full-well {fullWellCapacity} to {bitDepth}.')
             print(f'Values scaled back to detector DNs: {vals}')
 
-    
+    print(f'vals fullwell min, mean, max: {np.min(vals)}, {np.mean(vals)}, {np.max(vals)}')
+    print()
     # Dark constant background
     if darkBackgroundQ is None:
         if darkBackgroundRC is None:
@@ -127,6 +130,8 @@ def backToR(dn, qeFunc, wl, darkCurrent, integrationTime,  fullWellCapacity = No
     vals -= dc
     if (verbose):
         print(f"After removing dark current: {vals}.")
+    
+    print(f'after removing dc and dcb min, mean, max: {np.min(vals)}, {np.mean(vals)}, {np.max(vals)}')
 
     wlLocal = np.array([wl]).flatten()
     qeLoc = qeFunc(wlLocal)

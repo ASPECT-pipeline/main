@@ -27,23 +27,19 @@ distanceToSun = 1.0 # au
 
 def display_vis_image(file_name):
         
-    data = np.fromfile(file_name, dtype='int16') #/0.16
+    data = np.fromfile(file_name, dtype='int16')
     hi = np.max(data)
     mean = np.mean(data)
     lo = np.min(data)
     typ = data.dtype
     shape = data.shape
     head = data[:5]
-
     img = data.reshape(VISDetectorResolution[1],-1)
 
-    print(f'Image DN:')
-    print(f'min : {lo}')
-    print(f'mean : {mean}')
-    print(f'max : {hi}')
-    print(f'type : {typ}')
-    print(f'shape : {shape}')
-    print(f'head : {head}')
+    integrationTime = 10
+    femtoAmpereToQE = 6241.509074460763
+    darkCurrent       =  0.0200272 # dark current in femtoamperes
+
 
     plt.figure()
     plt.imshow(img, cmap='gray', norm=None, vmin=0)
@@ -51,13 +47,15 @@ def display_vis_image(file_name):
     plt.show()
 
     darkVIS = np.fromfile(VISDarkFrameFile,dtype=np.uint16)
-    print(f"Dark Min, mean, and max values: {np.min(darkVIS)}, {np.mean(darkVIS)}, {np.max(darkVIS)}")
+    print(f"Dark bg: {darkVIS}")
     with fits.open(vis_dark_fits) as hdul:
         dark = hdul[0].data
     print(f"FITS Dark Min, mean, and max values: {np.min(dark)}, {np.mean(dark)}, {np.max(dark)}")
-
     
     VISdata1 = data.reshape(1024,1024)-dark
+    VISdata1 = np.array(VISdata1,dtype='float64')
+    # dc = darkCurrent * femtoAmpereToQE * integrationTime * 10e-4
+    # VISdata1 -= dc
     VISdata1 = np.clip(VISdata1, 0, None)
 
     print(f"Min, mean, and max values: {np.min(VISdata1)}, {np.mean(VISdata1)}, {np.max(VISdata1)}")
@@ -79,7 +77,6 @@ def display_vis_image(file_name):
     au = distanceToSun
     c = lambertRadianceAt1au / au**2
 
-
     VISdata3 = VISdata2 / c
 
     print(f"Min, mean, and max values: {np.min(VISdata3)}, {np.mean(VISdata3)}, {np.max(VISdata3)} I/F")
@@ -88,7 +85,7 @@ def display_vis_image(file_name):
     plt.show()
 
 def display_nir_image(file_name):
-    data = np.fromfile(file_name, dtype='int16')/0.16
+    data = np.fromfile(file_name, dtype='int16')
     hi = np.max(data)
     mean = np.mean(data)
     lo = np.min(data)
@@ -103,6 +100,10 @@ def display_nir_image(file_name):
     print(f'shape : {shape}')
     print(f'head : {head}')
 
+    integrationTime = 20
+    femtoAmpereToQE = 6241.509074460763
+    darkCurrent       =  0.5 # dark current in femtoamperes
+
     print(f"min, mean, and max values: {lo}, {mean}, {hi}")
     plt.figure()
     plt.imshow(img, cmap='gray', norm=None, vmin=0)
@@ -114,11 +115,15 @@ def display_nir_image(file_name):
     with fits.open(NIR_dark_fits) as hdul:
         dark = hdul[0].data
     print(f"FITS Dark Min, mean, and max values: {np.min(dark)}, {np.mean(dark)}, {np.max(dark)}")
-
     NIRdata1 = data.reshape(512,640)-dark
+    NIRdata1 = np.array(NIRdata1,dtype='float64')
+
+    dc = darkCurrent * femtoAmpereToQE * integrationTime * 10e-4
+    # NIRdata1 -= dc
+    NIRdata1 /= 0.16
     NIRdata1 = np.clip(NIRdata1, 0, None)
 
-    print(f"Min, mean, and max values: {np.min(NIRdata1)}, {np.mean(NIRdata1)}, {np.max(NIRdata1)}")
+    print(f" After removing dcb Min, mean, and max values: {np.min(NIRdata1)}, {np.mean(NIRdata1)}, {np.max(NIRdata1)}")
     im=plt.imshow(NIRdata1.reshape(NIRDetectorResolution[1],-1), cmap="gray", norm=None, vmin=0)
     plt.colorbar(im)
     plt.show()
@@ -158,7 +163,7 @@ vis_example = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/levels_012/
 nir_example = os.path.join(os.getcwd(), 'ASPECT_calibration_pipeline/levels_012/modules/simulated/calibration/example-1-nir1-20ms-0000.bin')
 
 # display_vis_image(vis1_000)
-display_vis_image(vis_example)
+# display_vis_image(vis_example)
 
-# display_nir_image(nir_example)
+display_nir_image(nir_example)
 # display_nir_image(nir1_000)

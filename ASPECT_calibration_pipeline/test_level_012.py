@@ -2061,6 +2061,53 @@ def visualise_extract_astroid(fits_path):
     
     asteroid = level_3_utilities.extract_asteroid(data,0,True)
     
+def visualise_asteroid_and_spectra(fits_path):
+
+    def show_image_and_spectra(image, coords, spectra):
+
+        colors = ('r', 'g', 'b')
+        wl = [675,690,705,720,735,750,765,780,795,810,825,875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225,1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575]
+        fig, (ax_img, ax_spec) = plt.subplots(1, 2, figsize=(11,5), constrained_layout=True)
+        
+        ax_img.imshow(image, cmap='gray')
+        ax_img.set_title("Image with highlighted pixels")
+
+        for i, ((y, x), color) in enumerate(zip(coords, colors)):
+            ax_img.plot(x, y, 'o', color=color, markersize=4, label=f'Spectra {i+1}')
+
+        # only show legend entries belonging to this axis
+        ax_img.legend(*ax_img.get_legend_handles_labels(), loc='upper right')
+        ax_img.axis('off')
+
+        for i, (spec, color) in enumerate(zip(spectra, colors)):
+            ax_spec.plot(wl,spec, color=color, label=f'Spectra {i+1}')
+
+        ax_spec.set_title("Spectra from selected pixel locations")
+        ax_spec.set_xlabel("Wavelength [nm]")
+        ax_spec.set_ylabel("Reflectance I/F")
+        ax_spec.legend(*ax_spec.get_legend_handles_labels(), loc='upper left')
+
+        plt.tight_layout()
+        plt.show()
+
+    
+    with fits.open(fits_path) as hdul:
+        data = hdul[0].data
+    
+    combined = level_3_utilities.extract_asteroid(data, mask_index=0)
+    coords, spectras = zip(*combined)
+    coords = np.array(coords) 
+    spectras = np.array(spectras)
+
+    three_coords = []
+    three_spectras = []
+    print(f'length of spectras: {len(spectras)}')
+    index = [15000, 50351, 489]
+    for ind in index:
+        three_coords.append(coords[ind])
+        three_spectras.append(spectras[ind])
+
+    show_image_and_spectra(data[0], three_coords, three_spectras)
 """
 Simulatred asteroid images
 """
@@ -2115,7 +2162,8 @@ hsh_0 = _test_data / 'HSH' / 'HSH_0CS083_250312T132505_1A.fits'
 # read_fits_file(asp)
 
 # visualise_extract_astroid(asp)
-analyse_spectra(asp)
+# analyse_spectra(asp)
+visualise_asteroid_and_spectra(asp)
 
 dark_dir = Path(_path_sim_dark)
 dark_file = dark_dir / f'AS1_DARK.fits'

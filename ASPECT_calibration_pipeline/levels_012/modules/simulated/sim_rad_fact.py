@@ -54,8 +54,8 @@ def visualise_vis(file):
     hsData1 = post.backToR(hsData, finalConvFunc, wl, darkCurrent, intTime, fullWellCapacity,
                         darkBackgroundQ=darkBackground, verbose=verbose, bitDepth=bitDepth, extraCoef=1/0.16)
 
-    print(hsData1[:5])
-    print(f"Dark Min, mean, and max values: {np.min(hsData1)}, {np.mean(hsData1)}, {np.max(hsData1)}")
+
+    print(f"Min, mean, and max values: {np.min(hsData1)}, {np.mean(hsData1)}, {np.max(hsData1)} I/F")
 
     im=plt.imshow(hsData1.reshape(detectorResolution[1],-1), cmap="gray", norm=None, vmin=0)
     plt.colorbar(im)
@@ -63,7 +63,7 @@ def visualise_vis(file):
 
     hsData2 = post.backToRadiance(hsData1, distanceToSun)
 
-    print(f"Dark Min, mean, and max values: {np.min(hsData2)}, {np.mean(hsData2)}, {np.max(hsData2)}")
+    print(f"Min, mean, and max values: {np.min(hsData2)}, {np.mean(hsData2)}, {np.max(hsData2)} W sr^-1 m^-2")
 
     im=plt.imshow(hsData2.reshape(detectorResolution[1],-1), cmap="gray", norm=None, vmin=0)
     plt.colorbar(im)
@@ -115,12 +115,13 @@ def visualise_nir(file):
     print(f'Wavelength of the frame is {wl} nm')
 
     hsData = np.fromfile(file, dtype='int16')
-    print(f"Dark Min, mean, and max values: {np.min(hsData)}, {np.mean(hsData)}, {np.max(hsData)}")
+    print(f"org Min, mean, and max values: {np.min(hsData)}, {np.mean(hsData)}, {np.max(hsData)}")
 
     hsData1 = post.backToR(hsData, finalConvFunc, wl, darkCurrent, intTime, fullWellCapacity,
                        darkBackgroundQ=darkBackground, verbose=verbose, bitDepth=bitDepth, extraCoef=1/0.16)
     
-    print(f"Dark Min, mean, and max values: {np.min(hsData1)}, {np.mean(hsData1)}, {np.max(hsData1)}")
+    print(hsData1[:5])
+    print(f"Min, mean, and max values: {np.min(hsData1)}, {np.mean(hsData1)}, {np.max(hsData1)} I/F")
 
     im=plt.imshow(hsData1.reshape(detectorResolution[1],-1), cmap="gray", norm=None, vmin=0)
     plt.colorbar(im)
@@ -128,8 +129,8 @@ def visualise_nir(file):
 
     
     hsData2 = post.backToRadiance(hsData1, distanceToSun)
-
-    print(f"Dark Min, mean, and max values: {np.min(hsData2)}, {np.mean(hsData2)}, {np.max(hsData2)}")
+    print(hsData2[:5])
+    print(f"Min, mean, and max values: {np.min(hsData2)}, {np.mean(hsData2)}, {np.max(hsData2)} W sr^-1 m^-2")
 
     im=plt.imshow(hsData2.reshape(detectorResolution[1],-1), cmap="gray", norm=None, vmin=0)
     plt.colorbar(im)
@@ -148,5 +149,5 @@ data_folder = os.path.join(os.getcwd(), 'test_data/ASPECT_simulated_images/2027-
 nir1_000 = os.path.join(data_folder, 'dc_1_exp_000.bin')
 vis1_000 = os.path.join(data_folder, 'dc_0_exp_000.bin')
 
-# visualise_vis(vis_example)
-visualise_nir(nir_example)
+visualise_vis(vis_example)
+# visualise_nir(nir_example)
