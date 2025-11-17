@@ -111,16 +111,20 @@ def display_nir_image(file_name):
     plt.show()
 
     darkNIR = np.fromfile(NIRDarkFrameFile,dtype=np.uint16)
-    print(f"Dark Min, mean, and max values: {np.min(darkNIR)}, {np.mean(darkNIR)}, {np.max(darkNIR)}")
     with fits.open(NIR_dark_fits) as hdul:
         dark = hdul[0].data
     print(f"FITS Dark Min, mean, and max values: {np.min(dark)}, {np.mean(dark)}, {np.max(dark)}")
-    NIRdata1 = data.reshape(512,640)-dark
-    NIRdata1 = np.array(NIRdata1,dtype='float64')
+    NIRdata1 = np.array(data,dtype='float64')
+    NIRdata1 /= 0.16
+    dark = np.array(dark,dtype='float64')
+    dark /= 0.16
+    print(f"Dark after correction Min, mean, and max values: {np.min(dark)}, {np.mean(dark)}, {np.max(dark)}")
+    print(f"NIR after correction Min, mean, and max values: {np.min(NIRdata1)}, {np.mean(NIRdata1)}, {np.max(NIRdata1)}")
+    NIRdata1 = NIRdata1.reshape(512,640)-dark
 
     dc = darkCurrent * femtoAmpereToQE * integrationTime * 10e-4
     # NIRdata1 -= dc
-    NIRdata1 /= 0.16
+    # NIRdata1 /= 0.16
     NIRdata1 = np.clip(NIRdata1, 0, None)
 
     print(f" After removing dcb Min, mean, and max values: {np.min(NIRdata1)}, {np.mean(NIRdata1)}, {np.max(NIRdata1)}")

@@ -1,39 +1,50 @@
 import cv2
 import os
+import sys
+from pathlib import Path
 import io
+import json
+import re
+import math
+from astropy.io import fits
+import numpy as np
+import pandas as pd
+from pprint import pprint
+from collections import defaultdict
+from typing import List, Union
+
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+matplotlib.use('MacOSX')
+
 import levels_012.modules.utilities as utilities
 import levels_012.modules.convertToFits as convertToFits
 import levels_012.modules.badPixels as badpixels
 import levels_012.modules.darkSubtraction as darksubtraction
 import levels_012.modules.flatField as flatfield
 import levels_012.modules.extractCDS as extractCDS
-from astropy.io import fits
-import numpy as np
-import matplotlib.pyplot as plt
-import json
-from pathlib import Path
-import re
-import math
-from matplotlib.patches import Patch
-from pprint import pprint
-from collections import defaultdict
-from typing import List, Union
+from levels_012.modules.reflectance import reflectance_calibration
+
 import level_3.mgm as mgm
 import level_3.level_3_utilities as level_3_utilities
 from level_3.test_utilities import test_and_plot_nir_connection, test_and_plot_denoise_spectra, test_and_plot_remove_outliers, show_mgm_figures
 from level_3.modules._constants import _project_data
 from level_3.modules.utilities_spectra import normalise_spectra
 from level_3.modules.utilities import my_argmax, gimme_kind
+from level_3.modules.BAR_BC_method import calc_band_parameters
+from level_3.modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
+from level_3.modules.NN_evaluate import evaluate
+from level_3.modules.NN_data import load_transmission
+from level_3.modules.NN_config_taxonomy import classes
+from level_3.modules.utilities import plot_me
+
 from scipy.interpolate import interp1d
 import xarray as xr
 import cftime 
 from datetime import datetime
 from functools import lru_cache
-from levels_012.modules.reflectance import reflectance_calibration
-import pandas as pd
 from scipy.io import loadmat
-from level_3.modules.BAR_BC_method import calc_band_parameters
-import sys
 from config import initGuess, reverse_channel_map, _path_sim_dark
 
 def read_fits_file(path, visualise = False):
@@ -49,7 +60,7 @@ def read_fits_file(path, visualise = False):
 
             print(hdu.data.shape)
             frame_0 = hdu.data[0]
-            print(print(f"Min, mean, and max values: {np.min(frame_0)}, {np.mean(frame_0)}, {np.max(frame_0)}"))
+            print(f"Min, mean, and max values: {np.min(frame_0)}, {np.mean(frame_0)}, {np.max(frame_0)}")
 
             # print(f'data shape: {hdu.data.shape}')
             # print(f'data head: {hdu.data[0][0][:5]}')
@@ -60,6 +71,7 @@ def read_fits_file(path, visualise = False):
                 if data.ndim == 3:
                     # Iterate over frames in a data cube
                     for frame_idx, img in enumerate(data):
+                        matplotlib.use('MacOSX')
                         plt.figure()
                         plt.imshow(img, cmap='gray')
                         plt.title(f'HDU {i} - Slice {frame_idx}')
@@ -111,6 +123,7 @@ def read_bin_file(filePath, channel):
             print(f"Read {len(binaryData)} bytes")
 
             imageArray = np.frombuffer(binaryData, dtype='int16')
+            print(f"Min, mean, and max values: {np.min(imageArray)}, {np.mean(imageArray)}, {np.max(imageArray)}")
             imageArray = imageArray.reshape((height, width))
             # print(f"Min: {imageArray.min()}")
             # print(f"Max: {imageArray.max()}")
@@ -414,7 +427,7 @@ def visualise_alignment(as0: str, as1:str):
     nir = as1_data[0]
     print(f"Min, mean, and max values: {np.min(vis)}, {np.mean(vis)}, {np.max(vis)} W sr^-1 m^-2")
     print(f"Min, mean, and max values: {np.min(nir)}, {np.mean(nir)}, {np.max(nir)} W sr^-1 m^-2")
-
+    matplotlib.use('MacOSX')
     vis_f = utilities.normalize_to_8bit(vis)
     nir_f = utilities.normalize_to_8bit(nir)
 
@@ -517,7 +530,7 @@ def visualise_alignment(as0: str, as1:str):
 
     # Convert back to big_endian float32
     vis_aligned = np.ascontiguousarray(wrapped.astype('>f4'))
-
+    matplotlib.use('MacOSX')
     plt.figure(figsize=(12, 6))
     plt.subplot(1, 2, 1)
     plt.imshow(vis_aligned, cmap='gray')
@@ -869,11 +882,6 @@ def inspect_npz(path, *, show_stats=True, max_list_items=5):
                     print(f"  {k}: {t}(len={len(v)})")
                 else:
                     print(f"  {k}: {t}")
-
-def try_asteroid_mask(path):
-    with fits.open(path) as hdul:
-        data = hdul[0].data
-    combined = level_3_utilities.extract_asteroid(data)
 
 # Rotation 
 def as_native_f32(img: np.ndarray) -> np.ndarray:
@@ -1798,7 +1806,6 @@ def dump_mat_cube_frames(channel, mat_path, out_dir):
     print(f"Wrote {len(written)} files to: {out_dir}")
     print(f"cube dtype={cube.dtype}, shape=(H={H}, W={W}, N={N})")
     return written
-
 """
 spectra
 """
@@ -2053,13 +2060,33 @@ def spectral_visual():
     # r = test_and_plot_remove_outliers(r, wl)
     # r = test_and_plot_denoise_spectra(r, wl)
 
-def visualise_extract_astroid(fits_path):
+def visualise_extract_astroid(fits_path, store=False):
     with fits.open(fits_path) as hdul:
         primary = hdul[0]
         header = primary.header
         data = primary.data
-    
+    matplotlib.use('MacOSX')
     asteroid = level_3_utilities.extract_asteroid(data,0,True)
+    if store:
+        denoised_spectras = []
+        coords, spectra = zip(*asteroid)
+        coords = np.array(coords) 
+        spectra = np.array(spectra)
+
+        wavelengths = level_3_utilities.get_wavelengths(header)
+        all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
+        selected_wl = np.array(list(dict.fromkeys(all_wl)))
+
+        for i, spectra in enumerate(spectra):
+            denoised = np.delete(spectra, 24)
+            denoised_spectras.append(denoised)
+        denoised_spectras = np.array(denoised_spectras) 
+        results = (Path(__file__).parent.parent / 'pipeline_results' / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000').resolve()
+        np.savez_compressed(
+            results / 'coords_spectra.npz',
+            coords=coords,
+            spectra=denoised_spectras
+        )
     
 def visualise_asteroid_and_spectra(fits_path):
 
@@ -2078,7 +2105,6 @@ def visualise_asteroid_and_spectra(fits_path):
         # only show legend entries belonging to this axis
         ax_img.legend(*ax_img.get_legend_handles_labels(), loc='upper right')
         ax_img.axis('off')
-
         for i, (spec, color) in enumerate(zip(spectra, colors)):
             ax_spec.plot(wl,spec, color=color, label=f'Spectra {i+1}')
 
@@ -2102,16 +2128,298 @@ def visualise_asteroid_and_spectra(fits_path):
     three_coords = []
     three_spectras = []
     print(f'length of spectras: {len(spectras)}')
+    # index = [15000, 50351, 489]
+    index = [15002, 50351, 491]
+    for ind in index:
+        three_coords.append(coords[ind])
+        three_spectras.append(spectras[ind])
+    matplotlib.use('MacOSX')
+    show_image_and_spectra(data[0], three_coords, three_spectras)
+    spectras = np.array(spectras)  # shape: (n_spectra, n_wavelengths)
+    median_spectrum = np.median(spectras, axis=0)  
+    wl = [675,690,705,720,735,750,765,780,795,810,825,875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225,1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575]
+    plt.figure()
+    plt.plot(wl, median_spectrum, color='black')
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Reflectance', fontsize=12)
+    plt.title(f'median spectrum')
+    plt.tight_layout()
+    plt.show() 
+
+def visualise_spectra_filtering(fits_path):
+    with fits.open(fits_path) as hdul:
+        data = hdul[0].data
+        primary_header = hdul[0].header
+    
+    wavelengths = level_3_utilities.get_wavelengths(primary_header)
+    
+    all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
+
+    print(all_wl)
+    start_idx = 0
+    end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
+    selected_wl = all_wl[start_idx:end_idx]
+    first_nir1_idx = int(np.where(selected_wl == wavelengths['AS1'][0])[0])
+    nir1_len = len(wavelengths['AS1'])
+    nir2_len = len(wavelengths['AS2'])
+
+    combined = level_3_utilities.extract_asteroid(data, mask_index=0)
+    coords, spectras = zip(*combined)
+    coords = np.array(coords) 
+    spectras = np.array(spectras)
+    nir_overlap = 1225
+
+    three_coords = []
+    three_spectras = []
+    print(f'length of spectras: {len(spectras)}')
     index = [15000, 50351, 489]
     for ind in index:
         three_coords.append(coords[ind])
         three_spectras.append(spectras[ind])
 
-    show_image_and_spectra(data[0], three_coords, three_spectras)
+    print(f'Applying data filtering')
+    denoised_spectras = []
+    for i, spectra in enumerate(three_spectras):
+
+        nir1_spectra = spectra[first_nir1_idx : first_nir1_idx + nir1_len]
+        nir2_spectra = spectra[first_nir1_idx + nir1_len : first_nir1_idx + nir1_len + nir2_len]
+        nir2_offset_correction_result = level_3_utilities.nir2_offset_correction(
+            nir1_wavelengths=wavelengths['AS1'],
+            nir1_spectra=nir1_spectra,
+            nir2_wavelengths=wavelengths['AS2'],
+            nir2_spectra=nir2_spectra,
+            overlap_wavelength=nir_overlap
+        )
+
+        connected = np.concatenate(
+            [spectra[start_idx:first_nir1_idx + nir1_len], nir2_offset_correction_result[0][1:]] +
+            ([spectra[first_nir1_idx + nir1_len + nir2_len:end_idx]])
+        )
+
+        selected_wl = np.array(list(dict.fromkeys(selected_wl)))
+
+        # Remove outliers
+        cleaned = level_3_utilities.remove_outliers(connected, selected_wl, z_thresh=1)[0]
+
+        # Denoise spectra 
+        denoised = level_3_utilities.denoise_spectra(cleaned, selected_wl).flatten()
+
+        denoised_spectras.append(denoised)
+        matplotlib.use('MacOSX')
+        plt.figure()
+        plt.plot(all_wl, spectra, color='black')
+        plt.plot(selected_wl, connected, color='red')
+        plt.plot(selected_wl, cleaned, color='green')
+        plt.plot(selected_wl, denoised, color='blue')
+        plt.xlabel('Wavelength (nm)', fontsize=12)
+        plt.ylabel('Reflectance', fontsize=12)
+        plt.tight_layout()
+        plt.show()
+
+def visualise_spectra_parameters(fits_path, index=40001):
+    with fits.open(fits_path) as hdul:
+        data = hdul[0].data
+        primary_header = hdul[0].header
+    
+    wavelengths = level_3_utilities.get_wavelengths(primary_header)
+    
+    all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
+
+    print(f'all wl: {all_wl}')
+    start_idx = 0
+    end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
+    selected_wl = all_wl[start_idx:end_idx]
+    first_nir1_idx = int(np.where(selected_wl == wavelengths['AS1'][0])[0])
+    nir1_len = len(wavelengths['AS1'])
+    nir2_len = len(wavelengths['AS2'])
+
+    combined = level_3_utilities.extract_asteroid(data, mask_index=0)
+    coords, spectras = zip(*combined)
+    coords = np.array(coords) 
+    spectras = np.array(spectras)
+    nir_overlap = 1225
+
+    coord = coords[index]
+    spectrum = spectras[index]
+
+    print(f'Applying data filtering')
+
+    nir1_spectra = spectrum[first_nir1_idx : first_nir1_idx + nir1_len]
+    nir2_spectra = spectrum[first_nir1_idx + nir1_len : first_nir1_idx + nir1_len + nir2_len]
+    nir2_offset_correction_result = level_3_utilities.nir2_offset_correction(
+        nir1_wavelengths=wavelengths['AS1'],
+        nir1_spectra=nir1_spectra,
+        nir2_wavelengths=wavelengths['AS2'],
+        nir2_spectra=nir2_spectra,
+        overlap_wavelength=nir_overlap
+    )
+
+    connected = np.concatenate(
+        [spectrum[start_idx:first_nir1_idx + nir1_len], nir2_offset_correction_result[0][1:]] +
+        ([spectrum[first_nir1_idx + nir1_len + nir2_len:end_idx]])
+    )
+
+    selected_wl = np.array(list(dict.fromkeys(selected_wl)))
+
+    # Remove outliers
+    cleaned = level_3_utilities.remove_outliers(connected, selected_wl, z_thresh=1)[0]
+
+    # Denoise spectra 
+    denoised = level_3_utilities.denoise_spectra(cleaned, selected_wl, z_factor=1.5).flatten()
+
+    matplotlib.use('MacOSX')
+    plt.figure()
+    plt.plot(all_wl, spectrum, color='black')
+    plt.plot(selected_wl, connected, color='red')
+    plt.plot(selected_wl, cleaned, color='green')
+    plt.plot(selected_wl, denoised, color='blue')
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Reflectance', fontsize=12)
+    plt.tight_layout()
+    plt.show()
+
+    result = calc_band_parameters(selected_wl, denoised, visualise=True)
+    print(result)
+
+def visualise_spectra_analysis(results, image):
+
+    with fits.open(image) as hdul:
+        data = hdul[0].data
+        mask = level_3_utilities.asteroid_mask(data[1])
+        mask = (np.asarray(mask) != 0)
+        # for i, frame in enumerate(data):
+        #     # print(f'Layer {i}, min, mean, max: {frame.min()}, {frame.mean()}, {frame.max()}')
+        #     masked_pixels = np.asarray(frame)[mask]
+        #     print(f'masked Layer {i}, min, mean, max: {masked_pixels.min()}, {masked_pixels.mean()}, {masked_pixels.max()}')
+        #     count_zeros = np.sum(masked_pixels == 0.0)
+        #     print("Number of 0.0 pixels in masked region:", count_zeros)
+        #     zero_coords = np.argwhere((frame == 0.0) & mask)
+
+
+    
+    with fits.open(results) as hdul:
+        data = hdul[0].data
+        header = hdul[0].header
+        for i, frame in enumerate(data):
+            masked_pixels = np.asarray(frame)[mask]
+            # print(len(masked_pixels))
+            # finite = np.isfinite(masked_pixels)
+            # print(f"selected={masked_pixels.size}, finite={finite.sum()}, nan={np.isnan(masked_pixels).sum()}, inf={np.isinf(masked_pixels).sum()}")   
+            vmean = np.nanmean(masked_pixels)
+            title = header.get(f'Layer_0{i}')
+            print(f"Layer {i} mean: {vmean}")
+            matplotlib.use('MacOSX')
+            plt.imshow(frame, cmap='viridis')     # Display image
+            plt.colorbar()       # Add colorbar
+            plt.title(f"{title} (mean: {round(float(vmean), 2)})")
+            plt.show()
+
+def try_taxonomy_nn(csv_path):
+    arr = np.loadtxt(csv_path)
+    wl = arr[:, 0]
+    y  = [arr[:, i] for i in range(1, arr.shape[1])]  # 1-based among spectra == file column index
+    wl = np.array(wl)
+    y = np.array(y)
+
+    print(len(wl))
+    print(len(y))
+    norm_wl = 1539
+    print(f'Normalising spectras at {norm_wl}nm')
+    spectra_normalized = normalise_spectra(
+        data=y,
+        wavelength=wl,
+        wvl_norm_nm=norm_wl
+    )
+
+    print('Taxonomy analysis with Neural Network')
+    model_subdir = os.path.join('taxonomy', 'ASPECT-vis-nir1-nir2-1539_ORIGINAL')
+    model_name = ""
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
+
+    taxonomy = evaluate(model_names, spectra_normalized)
+    print(taxonomy)
+    
+def try_taxonomy_npz(npz_path): 
+    wl = [675,690,705,720,735,750,765,780,795,810,825,875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575] 
+    wl = np.array(wl)
+    coords_spectra = np.load(npz_path)
+    spectra = coords_spectra['spectra']
+    coords = coords_spectra['coords']
+    spectra = np.array(spectra) 
+    spectra[spectra == 0] = 1e-5 # replace 0 values
+    print(len(spectra[0]))
+    print(len(wl))
+    coords = np.array(coords)
+
+    matplotlib.use('MacOSX')
+    # plt.figure()
+    # plt.plot(wl, spectra[501], linewidth=0.8)
+    # plt.xlabel('Wavelength (nm)', fontsize=12)
+    # plt.ylabel('Reflectance', fontsize=12)
+    # plt.tight_layout()
+    # plt.show()
+    mean = np.mean(spectra, axis=0)
+    plt.figure()
+    plt.plot(wl, mean, linewidth=0.8)
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Reflectance', fontsize=12)
+    plt.title('Mean')
+    plt.tight_layout()
+    plt.show()
+
+
+    spectra_normalized = normalise_spectra(
+        data=spectra,
+        wavelength=wl,
+        wvl_norm_nm=1546
+    )
+
+    print('Taxonomy analysis with Neural Network')
+    model_subdir = os.path.join('taxonomy', 'ASPECT-vis-nir1-nir2-1546')
+    model_name = ""
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
+
+    taxonomy = evaluate(model_names, spectra_normalized)
+    taxonomy = np.array(taxonomy)
+    mean_row = np.mean(taxonomy, axis=0) # means of all the results
+    print('Mean:')
+    print(mean_row)
+
+
+def nn(npz_path):
+    data = np.load(npz_path, allow_pickle=True)
+    spectra, coords = data["spectra"], data["coords"]
+    data.close()
+    _, _, wvl_central = load_transmission("ASPECT-vis-nir1-nir2")
+    model_subdir, model_name = "taxonomy/ASPECT-vis-nir1-nir2-1546", "CNN_ASPECT-vis-nir1-nir2-1546_9-1"
+    spectra = normalise_spectra(spectra, wavelength=wvl_central, wvl_norm_nm=float(model_name.split("_")[1].split("-")[-1]))
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
+    predictions = evaluate(model_names, spectra, proportiontocut=0.2, subfolder_model=model_subdir)
+    taxonomy = {k: predictions[:, index] for k, index in classes.items()}
+    # taxonomy = np.array(predictions)
+    # mean_row = np.mean(taxonomy, axis=0) # means of all the results
+    # print('Mean:')
+    # print(mean_row)
+    model_subdir, model_name = "composition/ASPECT-vis-nir1-nir2-1546", "CNN_ASPECT-vis-nir1-nir2-1546_1110-11-110-111-000"
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
+    predictions = evaluate(model_names, spectra, proportiontocut=0.2, subfolder_model=model_subdir)
+    quantities = {"OL": 0, "OPX": 1, "CPX": 2, "Fa": 3, "Fo": 4, "Fs (OPX)": 5, "En (OPX)": 6, "Fs (CPX)": 7, "En (CPX)": 8, "Wo (CPX)": 9}
+    composition = {k: predictions[:, index] for k, index in quantities.items()}
+
+    df = pd.DataFrame(taxonomy | composition)
+
+    print(df.mean())
+
+    # images = np.full((np.shape(df)[1], *np.max(coords + 10, axis=0)), np.nan)  # +10 to have a margin
+    # for i in range(len(coords)):
+    #     images[:, coords[i, 0], coords[i, 1]] = df.iloc[i]
+    # for index, image in enumerate(images):
+    #     fig, ax = plot_me(image)
+    #     ax.set_title(df.keys()[index])
+
 """
 Simulatred asteroid images
 """
-
 def read_sim_binary(file, channel, visualise=True):
     if channel == 'Vis':
         resolution = [1024, 1024]
@@ -2130,6 +2438,75 @@ def read_sim_binary(file, channel, visualise=True):
     
     return im
 
+def create_non_calibrated_spectra(vis, nir1, nir2):
+
+    with fits.open(vis) as vishdu:
+        vis_data = vishdu[0].data
+        vis_data = vis_data.astype(np.float64)
+        # vis_data /= 0.16
+    
+    with fits.open(nir1) as nir1hdu:
+        nir1_data = nir1hdu[0].data
+        nir1_data = nir1_data.astype(np.float64)
+        # nir1_data /= 0.16
+
+    with fits.open(nir2) as nir2hdu:
+        nir2_data = nir2hdu[0].data
+        nir2_data = nir2_data.astype(np.float64)
+        # nir2_data /= 0.16
+
+    transformation_matrix = utilities.estimate_matrix(vis_data[0], nir1_data[0])
+    new_image_data = []
+    for frame in vis_data:
+        # Convert to little-endian float32 for OpenCV
+        little_endian = np.ascontiguousarray(frame.astype('<f4'))
+        wrapped = cv2.warpPerspective(little_endian, transformation_matrix, (640, 512), flags=cv2.INTER_LINEAR )
+        # # Convert back to big_endian float32
+        big_endian = np.ascontiguousarray(wrapped.astype('>f4'))
+
+        new_image_data.append(big_endian)
+    
+    for frame in nir1_data:
+        new_image_data.append(frame)
+    for frame in nir2_data:
+        new_image_data.append(frame)
+
+    print(len(new_image_data))
+    data_array = np.array(new_image_data)
+    matplotlib.use('MacOSX')
+    asteroid = level_3_utilities.extract_asteroid(data_array,0)
+    denoised_spectras = []
+    coords, spectra = zip(*asteroid)
+    coords = np.array(coords) 
+    spectra = np.array(spectra)
+
+    wl = [675,690,705,720,735,750,765,780,795,810,825,875,904,933,963,992,1021,1050,1079,1108,1138,1167,1196,1225,1254,1283,1313,1342,1371,1400,1429,1458,1488,1517,1546,1575] 
+    wl = np.array(wl)
+    for i, spectra in enumerate(spectra):
+        denoised = np.delete(spectra, 24)
+        denoised_spectras.append(denoised)
+    denoised_spectras = np.array(denoised_spectras) 
+    results = (Path(__file__).parent.parent / 'pipeline_results' / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000').resolve()
+    # np.savez_compressed(
+    #     results / 'coords_spectra_uncalibrated.npz',
+    #     coords=coords,
+    #     spectra=denoised_spectras
+    # )
+
+    matplotlib.use('MacOSX')
+    plt.figure()
+    plt.plot(wl, denoised_spectras[500], linewidth=0.8)
+    plt.xlabel('Wavelength (nm)', fontsize=12)
+    plt.ylabel('Reflectance', fontsize=12)
+    plt.tight_layout()
+    plt.show()
+
+
+ 
+    
+
+    
+
 
 # spectral_visual()
 
@@ -2145,25 +2522,55 @@ Function calls after this
 ###
 _results = (Path(__file__).parent.parent / 'pipeline_results').resolve()
 _test_data = (Path(__file__).parent.parent / 'test_data').resolve()
-# SIMULATED FILES
+#### SIMULATED FILES ###
+# FITS
 g_test = _test_data / 'AS0_000000_240610T092713_1A.fits'
 as0 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS0_000000_270323T060000_0A.fits'
-as1 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS1_000000_270323T060000_1C.fits'
-as2 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS2_000000_270323T060000_1C.fits'
+as1 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS1_000000_270323T060000_0A.fits'
+as2 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS2_000000_270323T060000_0A.fits'
 asp = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_2B.fits'
+asp_C = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_3C_Composition.fits'
+asp_T = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_3C_Taxonomy.fits'
+
+spectra_npz = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'coords_spectra.npz'
+spectra_npz_cal = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'coords_spectra_uncalibrated.npz'
+
+# Binary
+as0_bin = _test_data / 'ASPECT_simulated_images' / '2027-03-23_06_00_00-McEwen' / 'acq_000' / 'dc_0_exp_000.bin'
+as1_bin = _test_data / 'ASPECT_simulated_images' / '2027-03-23_06_00_00-McEwen' / 'acq_000' / 'dc_1_exp_000.bin'
+as2_bin = _test_data / 'ASPECT_simulated_images' / '2027-03-23_06_00_00-McEwen' / 'acq_000' / 'dc_2_exp_000.bin'
+
 
 # in-flight dark 250225
 as0_100 = _results / 'ASPECT_in-flight-dark_250225' /'002_DARKS' / 'acq_000' / 'AS0_000000_250225T014231_1A.fits'
 
 # HSH files
 hsh_0 = _test_data / 'HSH' / 'HSH_0CS083_250312T132505_1A.fits'
+
+# read_bin_file(as2_bin, channel='NIR')
+
 # read_fits_file(as0)
 # read_fits_file(as2)
-# read_fits_file(asp)
+# read_fits_file(asp, visualise=True)
+# read_fits_file(asp_C)
+# read_fits_file(asp_T, visualise=True)
 
-# visualise_extract_astroid(asp)
+# create_non_calibrated_spectra(as0, as1, as2)
+# SPECTRAL DATA
+meteorite_spectra = _test_data / '600w_exposures_2500-10000-10000_pixel_reflectances(4-pixel_binning).csv'
+
+# visualise_extract_astroid(asp, store=True)
 # analyse_spectra(asp)
-visualise_asteroid_and_spectra(asp)
+# visualise_asteroid_and_spectra(asp)
+# visualise_spectra_filtering(asp)
+# visualise_spectra_parameters(asp)
+
+# visualise_spectra_analysis(asp_C, asp)
+# visualise_spectra_analysis(asp_T, asp)
+
+# try_taxonomy_nn(meteorite_spectra)
+# try_taxonomy_npz(spectra_npz)
+nn(spectra_npz)
 
 dark_dir = Path(_path_sim_dark)
 dark_file = dark_dir / f'AS1_DARK.fits'

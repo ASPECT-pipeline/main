@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Optional
+import matplotlib
+matplotlib.use('MacOSX')
 import matplotlib.pyplot as plt
 import json
 from astropy.io import fits
@@ -912,6 +914,7 @@ def simulated_data_factor_correction(hdul: HDUList) -> HDUList:
     hdu = hdul[0]
     for i, frame in enumerate(hdu.data):
         hdu.data[i] = frame / 0.16
+        hdu.data[i] = np.clip(hdu.data[i], 0, None)
     return hdul
 
 def convert_to_float32(hdul: HDUList, index: int = 0) -> HDUList:

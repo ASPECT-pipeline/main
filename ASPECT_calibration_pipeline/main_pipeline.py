@@ -1,4 +1,4 @@
-from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument, models, initGuess
+from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument, models, initGuess, data_filtering, z_factor, z_threshold
 import levels_012.main_calibration as main_calibration
 import levels_012.modules.utilities as level_012_utilities
 import level_3.main_level_3 as main_level_3
@@ -36,12 +36,11 @@ def main_pipeline():
     input_dir = utilities.verify_directory_path(input_dir)
     output_dir = utilities.verify_directory_path(output_dir)
 
-    acq_dir = utilities.verify_acquisition_directory(input_dir)
-    output_dir = Path(output_dir) / OSERV_ID # output directory for this acquisition
-    output_dir = Path(output_dir) / acq_dir.name # output directory for this acquisition
-    output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
-
     if '1' in pipeline_steps:
+        acq_dir = utilities.verify_acquisition_directory(input_dir)
+        output_dir = Path(output_dir) / OSERV_ID # output directory for this acquisition
+        output_dir = Path(output_dir) / acq_dir.name # output directory for this acquisition
+        output_dir.mkdir(parents=True, exist_ok=True) # create the directory for this acquisition
         print()
         print(f'Directory for the acquisition files: {output_dir.resolve()}')
         print()
@@ -66,7 +65,7 @@ def main_pipeline():
     if '3' in pipeline_steps:
         print(f'Executing pipeline level 3')
         if level_3_input is not None and Path(level_3_input).is_file():
-            level_3_output = main_level_3.level3(fits_file=level_3_input,output_dir=output_dir, instrument=instrument, models=models, initGuess=initGuess)
+            level_3_output = main_level_3.level3(fits_file=level_3_input, output_dir=output_dir, instrument=instrument, data_filtering=data_filtering, z_thresh=z_threshold, z_factor=z_factor,  models=models, initGuess=initGuess)
         else:
             raise FileNotFoundError(f"Level 3 expects a FITS file with '_2B.fits' ending, but got: {level_3_input}")
 

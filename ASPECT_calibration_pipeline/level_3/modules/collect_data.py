@@ -1186,10 +1186,10 @@ def resave_ASPECT_transmission() -> None:
     # wavelengths = load_xlsx(filename, sheet_name="600W, 10000|2500, LO", skiprows=2)["wl"].to_numpy()
     wavelengths = load_xlsx(filename, sheet_name="ASPECT default wl", skiprows=2)["wl"].to_numpy()
     borders = np.where(~np.isfinite(wavelengths))[0]
-    # wvl_vis = wavelengths[borders[0] + 1:borders[1]]
+    wvl_vis = wavelengths[borders[0] + 1:borders[1]]
     wvl_nir1 = wavelengths[borders[1] + 1:borders[2]]
     wvl_nir2 = wavelengths[borders[2] + 1:]
-    # wvl_swir = safe_arange(1650., 2500., step=30., endpoint=True)
+    wvl_swir = safe_arange(1650., 2500., step=30., endpoint=True)
 
     fwhm_to_sigma = 1. / np.sqrt(8. * np.log(2.))
     # sigma_vis = np.polyval(np.polyfit([np.min(wvl_vis), np.max(wvl_vis)], (20., 20.), 1), wvl_vis) * fwhm_to_sigma
@@ -1220,9 +1220,9 @@ def resave_ASPECT_transmission() -> None:
 
     filename = path.join(_path_data, "ASPECT", f"ASPECT{_sep_out}transmission.npz")
 
-    check_dir(filename)
-    with open(filename, "wb") as f:
-        np.savez_compressed(f, **transmissions)
+    # check_dir(filename)
+    # with open(filename, "wb") as f:
+    #     np.savez_compressed(f, **transmissions)
 
 
 if __name__ == "__main__":

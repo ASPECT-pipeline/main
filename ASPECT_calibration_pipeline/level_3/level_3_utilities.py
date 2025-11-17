@@ -11,11 +11,28 @@ from level_3.modules.utilities import return_ddof, find_outliers, normalise_in_c
 from scipy.stats import norm
 from level_3.modules._constants import _num_eps
 from sklearn.decomposition import PCA
+import matplotlib
+matplotlib.use('MacOSX')
 from matplotlib.patches import Patch
-from config import reverse_channel_map
-
+from config import reverse_channel_map, z_factor, z_threshold
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
+def validate_instrument(instrument: str) -> bool:
+    """
+    Validates if the instrument is one of the 4 options.
+
+    Parameters:
+        istrument (str): instrument as a string
+    
+    Returns:
+        True if instrument syntax is correct, else raises a ValueError
+    """
+    if instrument.lower() in ['vis-nir1-nir2', 'vis-nir1-nir2-swir', 'nir1-nir2', 'nir1-nir2-swir']:
+        return True
+    else:
+        raise ValueError(f"The defined instrument doesn't match any of expected values: {instrument}")
+    
 def get_wavelengths(header: Header) -> Dict[str, List[int]]:
     """
     Extract channel specific wavelengths fro mthe FITS header
@@ -45,21 +62,6 @@ def get_wavelengths(header: Header) -> Dict[str, List[int]]:
         print(f'[WARNING] Could not parse wavelengths for {channel}: {e}')
     return wavelengths
 
-def validate_instrument(instrument: str) -> bool:
-    """
-    Validates if the instrument is one of the 4 options.
-
-    Parameters:
-        istrument (str): instrument as a string
-    
-    Returns:
-        True if instrument syntax is correct, else raises a ValueError
-    """
-    if instrument.lower() in ['vis-nir1-nir2', 'vis-nir1-nir2-swir', 'nir1-nir2', 'nir1-nir2-swir']:
-        return True
-    else:
-        raise ValueError(f"The defined instrument doesn't match any of expected values: {instrument}")
-
 def validate_wl(wl: Dict[str, List[int]], instrument: str) -> bool:
     """
     Validates that all necessary wavelenghts or channels determined by the isntrument are found.
@@ -71,7 +73,7 @@ def validate_wl(wl: Dict[str, List[int]], instrument: str) -> bool:
     Returns:
         True if all channels are found, else raises a ValueError
     """
-    channels = [str(c).upper() for c in instrument.split('-')]
+    channels = [str(c) for c in instrument.split('-')]
     for ch in channels:
         channel_id = reverse_channel_map[ch]
         if f'AS{channel_id}' not in wl:
@@ -261,9 +263,7 @@ def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, visualise: boo
 
 
 """
-
 Connecting segments
-
 """
 
 def nir2_offset_correction(
@@ -438,18 +438,18 @@ def remove_outliers(y: np.ndarray, x: np.ndarray | None = None,
 Denoise array
 """
 
-
 def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
-                  remove_mean: bool = False, sum_or_int: Literal["sum", "int"] = "sum") -> np.ndarray:
+                  z_factor: float = 1, remove_mean: bool = False, sum_or_int: Literal["sum", "int"] = "sum") -> np.ndarray:
     if x is None:
         x = np.arange(0., np.shape(array)[-1])  # 0. to convert it to float
 
     equidistant_measure = np.var(np.diff(x))
-    # print(f'avg step in nm: {np.mean(np.diff(x))}')
+
     if equidistant_measure == 0.:  # equidistant step -> gaussian_filter1d is faster
         step = x[1] - x[0]
         fwhm_to_sigma = 1. / np.sqrt(8. * np.log(2.))
         fwhm = 2 * step
+        fwhm *= z_factor # Optional tweaking
         sigma = fwhm * fwhm_to_sigma 
         correction = gaussian_filter1d(np.ones(len(x)), sigma=sigma / step, mode="constant")
         array_denoised = gaussian_filter1d(array, sigma=sigma / step, mode="constant")
@@ -460,6 +460,7 @@ def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
         # Gaussian filters in columns
         fwhm_to_sigma = 1. / np.sqrt(8. * np.log(2.))
         fwhm = 2 * np.mean(np.diff(x))
+        fwhm *= z_factor # Optional tweaking
         sigma = fwhm * fwhm_to_sigma 
         gaussian = norm.pdf(np.reshape(x, (len(x), 1)), loc=x, scale=sigma)
 
@@ -483,7 +484,7 @@ def denoise_array(array: np.ndarray, sigma: float, x: np.ndarray | None = None,
 
     return array_denoised - mn
 
-def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | None = 7.) -> np.ndarray:
+def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | None = 7., z_factor: float = 1) -> np.ndarray:
     if sigma_nm is None:
         return data
 
@@ -493,7 +494,7 @@ def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | 
     if np.ndim(data) == 1:
         data = np.reshape(data, (1, len(data)))
 
-    return denoise_array(data, sigma=sigma_nm, x=wavelength)
+    return denoise_array(data, sigma=sigma_nm, z_factor=z_factor, x=wavelength)
 
 
 """
@@ -528,6 +529,45 @@ def get_taxonomy_header() -> Dict[str, Tuple[str, str]]:
     }
     return meta_data
 
+
+def spectra_filtering(spectras: np.ndarray, wavelengths: Dict[str, List | None]):
+    vis_wl = wavelengths.get('AS0')
+    nir1_wl = wavelengths.get('AS1')
+    nir2_wl = wavelengths.get('AS2')
+    swir_wl = wavelengths.get('AS3')
+    print(len(vis_wl))
+    print(len(nir1_wl))
+    print(len(nir2_wl))
+    print(len(swir_wl))
+    return
+    denoised_spectras = []
+    for i, spectra in enumerate(tqdm(spectras, desc="Filtering spectra", unit="spec")):
+        #3A
+
+        nir1_spectra = spectra[nir1_start : nir1_start + nir1_len]
+        nir2_spectra = spectra[nir1_start + nir1_len : nir1_start + nir1_len + nir2_len]
+        nir2_offset_correction_result = nir2_offset_correction(
+            nir1_wavelengths=wavelengths['AS1'],
+            nir1_spectra=nir1_spectra,
+            nir2_wavelengths=wavelengths['AS2'],
+            nir2_spectra=nir2_spectra,
+            overlap_wavelength=overlap
+        )
+
+        connected = np.concatenate(
+            [spectra[inst_start:nir1_start + nir1_len], nir2_offset_correction_result[0][1:]] +
+            ([spectra[nir1_start + nir1_len + nir2_len:inst_end]])
+        )
+
+        # Remove outliers
+        cleaned = remove_outliers(connected, wavelengths, z_thresh=z_threshold)[0]
+
+        # denoise spectra 
+        denoised = denoise_spectra(cleaned, wavelengths, z_factor=z_factor).flatten()
+
+        denoised_spectras.append(denoised)
+
+    return(denoised_spectras)
 """
 Testing utilities
 """

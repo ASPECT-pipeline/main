@@ -282,7 +282,6 @@ def find_outliers(y: np.ndarray, x: np.ndarray | None = None,
     x_iterate, y_iterate = x[inds], y[inds]
 
     z_thresh = np.clip(z_thresh, a_min=num_eps, a_max=None)
-
     while True:
         deriv = np.diff(y_iterate) / np.diff(x_iterate)
         mu, sigma = return_mean_std(deriv)

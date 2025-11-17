@@ -1,13 +1,19 @@
 from astropy.io import fits
 import numpy as np
+import pandas as pd
 from pathlib import Path
-from level_3.modules.utilities_spectra import ( denoise_spectra, normalise_spectra, collect_all_models)
-from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, get_wavelengths, validate_wl, validate_instrument, get_composition_header, get_taxonomy_header)
+from level_3.modules.utilities_spectra import ( normalise_spectra, collect_all_models)
+from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, denoise_spectra, get_wavelengths, validate_wl, validate_instrument, get_composition_header, get_taxonomy_header)
 from level_3.modules.NN_evaluate import evaluate
 from level_3.test_utilities import get_reflectances, plot_4_spectra, plot_spectra
 from level_3.mgm import fit, plot
 from level_3.test_utilities import show_mgm_figures, visualise_composition
+from level_3.modules.BAR_BC_method import calc_band_parameters
+from level_3.modules.NN_config_taxonomy import classes
+from tqdm import tqdm
+import time
 import matplotlib
+import matplotlib.pyplot as plt
 matplotlib.use('MacOSX')
 
 import os
@@ -38,13 +44,13 @@ Parameters:
 
 """
 
-def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool = False, models:str = 'C', nir_overlap:int = 1231, z_thresh:int = 1, initGuess: list[list[float]] = [[0.1, 950, 150], [0.01, 1250, 50]], test_with_simulated:bool = False):
+def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool = True, models:str = 'C', nir_overlap:int = 1225, z_thresh:int = 1, z_factor:float = 1, initGuess: list[list[float]] = [[0.1, 950, 150], [0.01, 1250, 50]], test_with_simulated:bool = False):
 
     """
     Execute the steps 3A, 3B, 3C. Opens the FITS file containing the combined data product. Performs data filtering (if applied) and desired analysis algoritms defined in models parameter.
 
     Parameters:
-        fits_file (str) : file path to the fits file with strucutre as output from level 2B. 
+        fits_file (str) : file path to the fits file with strucutre as output from level 2B. xs
         isntrument (str) : defines which channels are included inthe analysis.
         data_filtering (bool) : are connecting NIR segments, removing outliers, and smoothing applied
         models (str) : which analysis are applied C = Composition, T = Taxonomy, M = MGM
@@ -62,40 +68,15 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         primary_hdu = hdul[0]
         primary_header = primary_hdu.header
         primary_data = primary_hdu.data
-
         black_frame = np.zeros_like(primary_data[0]) # Used for analysis results
 
     validate_instrument(instrument)
-        
     wavelengths = get_wavelengths(primary_header)
     validate_wl(wavelengths, instrument)
-    
     all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
 
-    match instrument:
-        case 'vis-nir1-nir2': 
-            norm_wl = 1539
-            start_idx = 0
-            end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
-            model_name = 'ASPECT-vis-nir1-nir2-1539'
-        case 'vis-nir1-nir2-swir':
-            norm_wl = 2348
-            start_idx = 0
-            end_idx = len(all_wl)
-            model_name = 'ASPECT-vis-nir1-nir2-swir-2348'
-        case 'nir1-nir2': 
-            norm_wl = 1539
-            start_idx = int(np.where(all_wl == wavelengths['AS1'][0])[0])
-            end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
-            model_name = 'ASPECT-nir1-nir2-1539'
-        case 'nir1-nir2-swir':
-            norm_wl = 2348
-            start_idx = int(np.where(all_wl == wavelengths['AS1'][0])[0])
-            end_idx = len(all_wl)
-            model_name = 'ASPECT-nir1-nir2-swir-2348'
-
     # Extract the spectrums from data cube
-    print(f'Extracting asteroid spectras')
+    print(f'Extracting asteroid spectra')
     combined = extract_asteroid(primary_data, mask_index=0)
 
     coords, spectras = zip(*combined)
@@ -103,26 +84,62 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
     spectras = np.array(spectras)
     print(f'{len(spectras)} spectras extracted')
 
+    match instrument:
+        case 'Vis-NIR1-NIR2': 
+            norm_wl = 1546
+            start_idx = 0
+            end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
+            model_name = 'ASPECT-vis-nir1-nir2-1546'
+        case 'Vis-NIR1-NIR2-SWIR':
+            norm_wl = 2348
+            start_idx = 0
+            end_idx = len(all_wl)
+            model_name = 'ASPECT-vis-nir1-nir2-swir-2348'
+        case 'NIR1-NIR2': 
+            norm_wl = 1546
+            start_idx = int(np.where(all_wl == wavelengths['AS1'][0])[0])
+            end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
+            model_name = 'ASPECT-nir1-nir2-1546'
+        case 'NIR1-NIR2-SWIR':
+            norm_wl = 2348
+            start_idx = int(np.where(all_wl == wavelengths['AS1'][0])[0])
+            end_idx = len(all_wl)
+            model_name = 'ASPECT-nir1-nir2-swir-2348'
+
     # Select the range based on instrument selection
     selected_wl = all_wl[start_idx:end_idx]
-    first_nir1_idx = int(np.where(selected_wl == wavelengths['NIR1'][0])[0])
-    nir1_len = len(wavelengths['NIR1'])
-    nir2_len = len(wavelengths['NIR2'])
+    first_nir1_idx = int(np.where(selected_wl == wavelengths['AS1'][0])[0])
+    nir1_len = len(wavelengths['AS1'])
+    nir2_len = len(wavelengths['AS2'])
+    selected_wl = np.array(list(dict.fromkeys(selected_wl)))
 
     denoised_spectras = []
     if data_filtering:
         print(f'Applying data filtering')
-        for i, spectra in enumerate(spectras):
+        print(f'outlier threshold: {z_thresh}, denoising factor: {z_factor}')
+        matplotlib.use('MacOSX')
+        mean = np.mean(spectras, axis=0)
+        plt.figure()
+        plt.plot(all_wl, mean, linewidth=0.8)
+        plt.xlabel('Wavelength (nm)', fontsize=12)
+        plt.ylabel('Reflectance', fontsize=12)
+        plt.title('Mean before filtering')
+        plt.tight_layout()
+        plt.show()
+        print(f'selected wl: {len(selected_wl)}')
+        print(f'inst_start: {start_idx}')
+        print(f'inst_end: {end_idx}')
+        print(f'nir1_start: {first_nir1_idx}')
+        print(f'nir1_len: {nir1_len}')
+        print(f'nir2_len: {nir2_len}')
+        for i, spectra in enumerate(tqdm(spectras, desc="Filtering spectra", unit="spec")):
             #3A
-            # spectra[:11] /= 4096
-            # spectra[11:] /= 16384
-
             nir1_spectra = spectra[first_nir1_idx : first_nir1_idx + nir1_len]
             nir2_spectra = spectra[first_nir1_idx + nir1_len : first_nir1_idx + nir1_len + nir2_len]
             nir2_offset_correction_result = nir2_offset_correction(
-                nir1_wavelengths=wavelengths['NIR1'],
+                nir1_wavelengths=wavelengths['AS1'],
                 nir1_spectra=nir1_spectra,
-                nir2_wavelengths=wavelengths['NIR2'],
+                nir2_wavelengths=wavelengths['AS2'],
                 nir2_spectra=nir2_spectra,
                 overlap_wavelength=nir_overlap
             )
@@ -132,32 +149,31 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
                 ([spectra[first_nir1_idx + nir1_len + nir2_len:end_idx]])
             )
 
-            selected_wl = np.array(list(dict.fromkeys(selected_wl)))
-
             # Remove outliers
             cleaned = remove_outliers(connected, selected_wl, z_thresh=z_thresh)[0]
 
             # denoise spectra 
-            denoised = denoise_spectra(cleaned, selected_wl).flatten()
+            denoised = denoise_spectra(cleaned, selected_wl, z_factor=z_factor).flatten()
 
             denoised_spectras.append(denoised)
-            # try:
-            #     if i % 10000 == 0:
-            #         plot_4_spectra(np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len), connected, cleaned, denoised, selected_wl, ['original', 'connected', 'outliers', 'denoised', 'level 3A'])
-            # except KeyboardInterrupt:
-            #     print('Stopped')
+        d_mean = np.mean(denoised_spectras, axis=0)
+        plt.figure()
+        plt.plot(selected_wl, d_mean, linewidth=0.8)
+        plt.xlabel('Wavelength (nm)', fontsize=12)
+        plt.ylabel('Reflectance', fontsize=12)
+        plt.title('Mean after filtering')
+        plt.tight_layout()
+        plt.show()
     else:
         # Only select the range remove the nir1-nir2 ovelap
         for i, spectra in enumerate(spectras):
             #3A
-            # spectra[:11] /= 4096
-            # spectra[11:] /= 16384
             selected_wl = np.array(list(dict.fromkeys(selected_wl)))
             denoised = np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len)
             denoised_spectras.append(denoised)
 
     denoised_spectras = np.array(denoised_spectras)
-    # denoised_spectras = denoised_spectras[45000:45005]
+    # denoised_spectras[denoised_spectras == 0] = 1e-5# replace 0 values
 
     print(f'Normalising spectras at {norm_wl}nm')
     spectra_normalized = normalise_spectra(
@@ -176,9 +192,6 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
 
     if 'M' in model:
         print('MGM analysis')
-
-        denoised_spectras = denoised_spectras[:500]
-        coords = coords[:500]
 
         mgm_results = []
         for i, spectra in enumerate(denoised_spectras):
@@ -241,14 +254,59 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         print(f'New fits file created: {fits_file}')
     
     
+    if 'P' in model:
+        print('Calculating spectral parameters')
+        spect = [denoised_spectras[:3]]
+        all_results = calc_band_parameters(selected_wl, spect, visualise=True)
+        return
+        SLOPES, BIC, BID, BIW, BIAR = all_results
+
+        black = black_frame.copy()
+        cube = np.stack([black] * len(all_results), axis=0)
+
+        for i, result in enumerate(all_results):
+            for j, res in enumerate(result):
+                r = res[j]
+                coordinate = coords[j]
+                cube[coordinate[0], coordinate[1]] = r
+        
+        print('Writing results into files')
+        primary_header['ANALYSIS'] = ('Spectral parameters', 'Type of analysis')
+        primary_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
+        p_file_name = stem[:25] + calibration_lvl + '_SPECTRA_PARM' + suffix
+        p_header = primary_header.copy()
+        p_header['FILENAME'] = p_file_name
+        p_header['LAYER_00'] = ('SLOPE', 'Spectral slope')
+        p_header['LAYER_01'] = ('BIC', 'First band center')
+        p_header['LAYER_02'] = ('BID', 'First band depth')
+        p_header['LAYER_03'] = ('BIW', 'First band width')
+        p_header['LAYER_04'] = ('BIAR', 'First band area')
+        p_hdu = fits.PrimaryHDU(data=cube, header=p_header)
+        fits_file = os.path.join(output_dir, p_file_name)
+        p_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+
+
+
+
     if 'C' in model:
         
         print('Composition analysis with Neural Network')
         model_subdir = os.path.join('composition', model_name)
-        model_name = ""
-        model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
+        prefix = ""
+        model_names = collect_all_models(prefix=prefix, subfolder_model=model_subdir, full_path=True)
         composition = evaluate(model_names, spectra_normalized)
+        composition = np.array(composition)
+        composition = np.nan_to_num(composition, nan=1e-5)   # replaces NaN with 1e-5
+        composition[composition == 0] = 1e-5    
+        zeros = (composition == 0).sum()
+        nans  = np.isnan(composition).sum()
 
+        print("Zeros:", zeros)
+        print("NaNs:", nans)
+        mean_row = np.mean(composition, axis=0) # means of all the results
+        print('Mean:')
+        print(mean_row)
         ol_frame = black_frame.copy()
         opx_frame = black_frame.copy()
         cpx_frame = black_frame.copy()
@@ -311,11 +369,20 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
     if 'T' in model:
         print('Taxonomy analysis with Neural Network')
         model_subdir = os.path.join('taxonomy', model_name)
-        model_name = ""
-        model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=True)
+        prefix = ""
+        model_names = collect_all_models(prefix=prefix, subfolder_model=model_subdir, full_path=True)
 
-        taxonomy = evaluate(model_names, spectra_normalized)
+        predictions = evaluate(model_names, spectra_normalized)
+        taxonomy = {k: predictions[:, index] for k, index in classes.items()}
 
+        df = pd.DataFrame(taxonomy)
+
+        print(df.mean())
+        return
+        taxonomy = np.array(predictions)
+        mean_row = np.mean(taxonomy, axis=0) # means of all the results
+        print('Mean:')
+        print(mean_row)
         layer_count = len(taxonomy[0])
 
         cube = np.stack([black_frame] * layer_count, axis=0)

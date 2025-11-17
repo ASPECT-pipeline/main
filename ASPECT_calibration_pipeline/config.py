@@ -6,12 +6,13 @@ from pathlib import Path
 project_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/"
 
 # INPUT path for the acquisition data
-input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+# input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_simulated_images/2027-03-23_06_00_00-McEwen"
+input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated/D1D2_10km/acq_000"
 # input_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/test_data/ASPECT_in-flight-dark_250225/acqseq_100"
 
 # OUTPUT path where the results are saved
 # output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_in-flight-dark_250225"
-output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated"
+output_directory: str = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/Pipeline/main/pipeline_results/ASPECT_simulated/D1D2_10km/acq_000"
 
 
 # Is the data differetially encoded
@@ -40,14 +41,20 @@ spice_mk_ops = "/Users/valtterimj/Downloads/Työ/Aalto/Hera/hera_spice/kernels/
 # Adjust this to point to the metakernel to be used for FITS header data
 spice_mk = spice_mk_plan
 
-pipeline = '1-2' # Separate with '-' e.g. '1-2-3'
+pipeline = '3' # Separate with '-' e.g. '1-2-3'
 
 # Which instrument channels want to include
 instrument = 'Vis-NIR1-NIR2' 
 
-models = 'C'
+models = 'T'
 
 initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
+
+
+# parameters to tweak the data filtering
+data_filtering = True
+z_factor = 1.0 # increse -> smoother spectra (z_factor * fwhm)
+z_threshold = 1.0 # increase -> less sensitive to outliers ((deriv - mu) / sigma) > z_threshold)
 
 
 """

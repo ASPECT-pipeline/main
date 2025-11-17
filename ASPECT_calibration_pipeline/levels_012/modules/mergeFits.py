@@ -117,14 +117,14 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
             vis_image = vis_data[0]
             nir_image = nir_data[0]
 
-            transforamtion_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
+            transformation_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
             for frame in vis_data:
                 # Convert to little-endian float32 for OpenCV
                 little_endian = np.ascontiguousarray(frame.astype('<f4'))
-                wrapped = cv2.warpPerspective(little_endian, transforamtion_matrix, (640, 512), flags=cv2.INTER_LINEAR )
-
+                wrapped = cv2.warpPerspective(little_endian, transformation_matrix, (640, 512), flags=cv2.INTER_LINEAR )
                 # Convert back to big_endian float32
                 big_endian = np.ascontiguousarray(wrapped.astype('>f4'))
+
                 new_image_data.append(big_endian)
 
         nir1_data = image_dict.get('NIR1')

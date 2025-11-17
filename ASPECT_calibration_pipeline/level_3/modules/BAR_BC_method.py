@@ -8,21 +8,16 @@ from scipy.integrate import trapezoid
 from level_3.modules.utilities import my_argmin, my_argmax, argnearest, gimme_kind
 import matplotlib.pyplot as plt
 
-def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tuple[np.ndarray, ...]:
+def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray, visualise: bool = False) -> tuple[np.ndarray, ...]:
     """
     calculate spectral parameters (slope, band center, band depth, band width, band area) from the spectra
     """
-    pos_max_1 = 640.
-    pos_max_2 = 1600.
+    pos_max_1 = 680.
+    pos_max_2 = 1500.
     pos_max_3 = 2300.
-    # pos_max_1 = 680.
-    # pos_max_2 = 1500.
-    # pos_max_3 = 2300.
 
     pos_min_1 = 950.
     pos_min_2 = 2000.
-    # pos_min_1 = 1000.
-    # pos_min_2 = 2000.
 
     n_points = 2
 
@@ -32,6 +27,7 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tup
     idx = np.argsort(wavelength)
     wavelength, reflectance = wavelength[idx], reflectance[:, idx]
 
+    print(reflectance.shape)
     # Slope, band center, band depth, band width, band area
     SLOPES = np.zeros(len(reflectance))
     BIC = np.zeros(len(reflectance))
@@ -72,39 +68,43 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tup
         fun = interp1d(wavelength, spectrum, kind=gimme_kind(wavelength))
 
         # Slope and continuum line
-        print(f'wvl_max_1: {wvl_max_1}')
-        print(f'wvl_max_2: {wvl_max_2}')
-        print(f'wvl_max_3: {wvl_max_3}')
 
         x1, x2 = wvl_max_1, wvl_max_2
         y1, y2 = fun(wvl_max_1), fun(wvl_max_2)
         slope = (y1 - y2) / (x1 - x2)
         const = (x1 * y2 - x2 * y1) / (x1 - x2)
         line = slope * wavelength + const
+        if visualise:
+            print(f'wvl_max_1: {wvl_max_1}')
+            print(f'wvl_max_2: {wvl_max_2}')
+            print(f'wvl_max_3: {wvl_max_3}')
+            plt.figure(figsize=(8,5))
+            plt.plot(wavelength, spectrum, label="Spectrum")
+            plt.plot([wvl_max_1, wvl_max_2], [y1, y2], 'ro', label="Continuum anchors")
+            plt.plot(wavelength, line, 'k--', label="Continuum line (slope)")
+            plt.xlabel("Wavelength [nm]")
+            plt.ylabel("Reflectance")
+            plt.legend()
+            plt.title("Spectrum with continuum line")
+            plt.show()
+            print(f'slope: {slope}')
 
-        plt.figure(figsize=(8,5))
-        plt.plot(wavelength, spectrum, label="Spectrum")
-        plt.plot([wvl_max_1, wvl_max_2], [y1, y2], 'ro', label="Continuum anchors")
-        plt.plot(wavelength, line, 'k--', label="Continuum line (slope)")
-        plt.xlabel("Wavelength [nm]")
-        plt.ylabel("Reflectance")
-        plt.legend()
-        plt.title("Spectrum with continuum line")
-        plt.show()
-        print(f'slope: {slope}')
         SLOPES[i] = slope
 
         continuum_subtracted = spectrum - line + y1
 
-        plt.figure(figsize=(8,5))
-        plt.plot(wavelength, spectrum, label="Spectrum")
-        plt.plot(wavelength, line, "k--", label="Continuum line")
-        plt.plot(wavelength, continuum_subtracted, label="Continuum subtracted subtracted")
-        plt.xlabel("Wavelength [nm]")
-        plt.ylabel("Reflectance / normalized")
-        plt.legend()
-        plt.title("Slope Corrected Spectrum")
-        plt.show()
+        if visualise:
+            plt.figure(figsize=(8,5))
+            plt.plot(wavelength, spectrum, label="Spectrum")
+            plt.plot(wavelength, line, "k--", label="Continuum line")
+            plt.plot(wavelength, continuum_subtracted, label="Continuum subtracted subtracted")
+            plt.xlabel("Wavelength [nm]")
+            plt.ylabel("Reflectance / normalized")
+            plt.legend()
+            plt.title("Slope Corrected Spectrum")
+            plt.show()
+
+        # ^WORKS WELL 
 
         try:
             BIC[i] = my_argmin(wavelength, continuum_subtracted, x0=pos_min_1, dx=250., n_points=n_points)
@@ -122,7 +122,7 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tup
 
 
         for b_idx, bic in [(1, BIC[i]), (2, BIIC[i])]:
-            print(f'Band center: {b_idx}')
+            print(f'band center: {b_idx}')
             if np.isnan(bic):
                 print(f'skipping this band center')
                 continue
@@ -170,22 +170,23 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tup
             else:
                 BIIW[i] = band_width
 
-            print(f'band width: {band_width}')
-            plt.figure(figsize=(7,5))
-            plt.plot(wavelength, continuum_subtracted, 'b-', label="Continuum subtracted subtracted")
-            plt.plot([wavelength[left_below], wavelength[left_above]], [continuum_subtracted[left_below], continuum_subtracted[left_above]], 'ro', label="left points")
-            plt.plot(left_wl, y_half, 'bo', label="left point")
-            plt.plot([wavelength[right_below], wavelength[right_above]], [continuum_subtracted[right_below], continuum_subtracted[right_above]], 'ro', label="right points")
-            plt.plot(right_wl, y_half, 'go', label="right point")
-            plt.axvline(bic, color='k', linestyle='--', alpha=0.5, label="Band center")
-            plt.axhline(y_half, color='g', linestyle='--', alpha=0.5, label="Half-depth")
-            plt.xlabel("Wavelength [nm]")
-            plt.ylabel("Reflectance")
-            plt.legend()
-            plt.title("Quadratic fit around absorption band")
-            plt.show()
+            if visualise:
+                print(f'band width: {band_width}')
+                plt.figure(figsize=(7,5))
+                plt.plot(wavelength, continuum_subtracted, 'b-', label="Continuum subtracted subtracted")
+                plt.plot([wavelength[left_below], wavelength[left_above]], [continuum_subtracted[left_below], continuum_subtracted[left_above]], 'ro', label="left points")
+                plt.plot(left_wl, y_half, 'bo', label="left point")
+                plt.plot([wavelength[right_below], wavelength[right_above]], [continuum_subtracted[right_below], continuum_subtracted[right_above]], 'ro', label="right points")
+                plt.plot(right_wl, y_half, 'go', label="right point")
+                plt.axvline(bic, color='k', linestyle='--', alpha=0.5, label="Band center")
+                plt.axhline(y_half, color='g', linestyle='--', alpha=0.5, label="Half-depth")
+                plt.xlabel("Wavelength [nm]")
+                plt.ylabel("Reflectance")
+                plt.legend()
+                plt.title("Quadratic fit around absorption band")
+                plt.show()
 
-            print(f'band width points determined')
+                print(f'band width points determined')
 
             # Band area
             arg_wvl_start = argnearest(wavelength, wvl_max_1)[0]
@@ -198,27 +199,28 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray) -> tup
             else:
                 BIIAR[i] = band_area
 
-            print(f'band area: {band_area}') 
+            if visualise:
+                print(f'band area: {band_area}') 
+                xseg = wavelength[arg_wvl_start : arg_wvl_stop+1]
+                y_spec = continuum_subtracted[arg_wvl_start : arg_wvl_stop+1]
+                y_cont = y1
 
-            xseg = wavelength[arg_wvl_start : arg_wvl_stop+1]
-            y_spec = continuum_subtracted[arg_wvl_start : arg_wvl_stop+1]
-            y_cont = y1
+                fig, ax = plt.subplots(figsize=(7,4))
+                ax.plot(wavelength, continuum_subtracted, label='Spectrum')
+                ax.fill_between(xseg, y_spec, y_cont, alpha=0.3, label=f"Band area = {band_area:.3g}")
 
-            fig, ax = plt.subplots(figsize=(7,4))
-            ax.plot(wavelength, continuum_subtracted, label='Spectrum')
-            ax.fill_between(xseg, y_spec, y_cont, alpha=0.3, label=f"Band area = {band_area:.3g}")
+                ax.axvline(wvl_max_1, ls=':', color="k", alpha=0.5)
+                ax.axvline(wvl_max_2, ls=':', color="k", alpha=0.5)
 
-            ax.axvline(wvl_max_1, ls=':', color="k", alpha=0.5)
-            ax.axvline(wvl_max_2, ls=':', color="k", alpha=0.5)
-
-            ax.set_xlabel("wavelength")
-            ax.set_ylabel("Intensity")
-            ax.set_title("Band area visualization")
-            ax.legend()
-            plt.show()
+                ax.set_xlabel("wavelength")
+                ax.set_ylabel("Intensity")
+                ax.set_title("Band area visualization")
+                ax.legend()
+                plt.show()
 
 
-    return(SLOPES, BIC, BID, BIW, BIAR, BIIC, BIIAR, BIID, BIIW)
+    # return(SLOPES, BIC, BID, BIW, BIAR, BIIC, BIIAR, BIID, BIIW)
+    return(SLOPES, BIC, BID, BIW, BIAR)
          
 
 
