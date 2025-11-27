@@ -83,6 +83,7 @@ def read_fits_file(path, visualise = False):
                             break
                 elif data.ndim == 2:
                     # Display single 2D image
+                    matplotlib.use('MacOSX')
                     plt.figure()
                     plt.imshow(data, cmap='gray')
                     plt.title(f'2D Image')
@@ -107,28 +108,25 @@ def read_bin_file(filePath, channel):
             imageArray = np.frombuffer(binaryData, dtype='>u2')
             print(imageArray)
             return
-
-    # print(f"height: {height} \nwidht: {width}")
-
-    # bytes_per_pixel, bit_depth = utilities.estimate_bit_depth(filePath, width, height)
-    # print(f'{channel} bytes per pixel: {bytes_per_pixel}')
-    # print(f'{channel} bit depth: {bit_depth}')
-    # effective_max = 2**bit_depth - 1
-    # print(f'effective max: {effective_max}')
     
 
     try:
         with open(filePath, 'rb') as file:
             binaryData = file.read()
             print(f"Read {len(binaryData)} bytes")
-
             imageArray = np.frombuffer(binaryData, dtype='int16')
+            print(f"Min, mean, and max values: {np.min(imageArray)}, {np.mean(imageArray)}, {np.max(imageArray)}")
+            au = 1.0
+            lambertRadianceAt1au = 217.0
+            c = lambertRadianceAt1au / au**2
+            imageArray = imageArray / c
             print(f"Min, mean, and max values: {np.min(imageArray)}, {np.mean(imageArray)}, {np.max(imageArray)}")
             imageArray = imageArray.reshape((height, width))
             # print(f"Min: {imageArray.min()}")
             # print(f"Max: {imageArray.max()}")
             print(f'head: {imageArray[0][:5]}')
             #Visualise
+            matplotlib.use('MacOSX')
             plt.figure(figsize=(8,5))
             plt.imshow(imageArray, cmap='gray')
             plt.title(f'channel {channel} little_endian')
@@ -769,119 +767,64 @@ def remove_header_entries(fits_path: Union[str, os.PathLike], keys: List[str], h
                 del header[key]
         hdul.flush()
 
-def inspect_npz(path, *, show_stats=True, max_list_items=5):
+def inspect_npz_stats(path):
     """
-    Print a readable summary of an .npz archive.
-    - Unwraps 0-D object arrays (common when dicts are pickled into .npz).
-    - Recurses into dicts/lists/tuples and shows array shapes/dtypes.
-    - For likely transmission bundles (e.g., keys like 'wavelengths', 'transmissions'),
-      prints quick stats (length, min/max).
+    For each ndarray inside an .npz file (including arrays inside dicts/lists/tuples),
+    print its shape, dtype, and numeric stats: min, mean, max.
     """
     path = Path(path)
 
-    def is_array(x): return isinstance(x, np.ndarray)
-    def is_scalar_object_array(x): return is_array(x) and x.dtype == object and x.shape == ()
+    def is_array(x):
+        return isinstance(x, np.ndarray)
+
+    def is_scalar_object_array(x):
+        return is_array(x) and x.dtype == object and x.shape == ()
+
     def safe_item(x):
         try:
             return x.item()
         except Exception:
             return x
 
-    def arr_stats(a):
-        if not show_stats or not np.issubdtype(a.dtype, np.number) or a.size == 0:
-            return ""
-        try:
-            amin = np.nanmin(a)
-            amax = np.nanmax(a)
-            return f" (min={amin:g}, max={amax:g})"
-        except Exception:
-            return ""
-
-    def print_kv(k, v, indent=2):
+    def print_stats(name, v, indent=2):
         pad = " " * indent
 
-        # Unwrap 0-D object arrays (often a dict)
+        # Unwrap 0-D object arrays (often a dict or similar)
         if is_scalar_object_array(v):
             v = safe_item(v)
 
-        # Numpy array
+        # Plain ndarray
         if is_array(v):
-            print(f"{pad}- {k}: ndarray shape={v.shape}, dtype={v.dtype}{arr_stats(v)}")
+            if np.issubdtype(v.dtype, np.number) and v.size > 0:
+                v_min = np.nanmin(v)
+                v_mean = np.nanmean(v)
+                v_max = np.nanmax(v)
+                print(f"{pad}{name}: shape={v.shape}, dtype={v.dtype}, "
+                      f"min={v_min:g}, mean={v_mean:g}, max={v_max:g}")
+            else:
+                print(f"{pad}{name}: shape={v.shape}, dtype={v.dtype} (non-numeric or empty)")
             return
 
-        # Dict-like
+        # Dict: recurse into values
         if isinstance(v, dict):
-            print(f"{pad}- {k}: dict with {len(v)} key(s)")
-            # Special: look for common spectrum keys
-            for sk in sorted(v.keys()):
-                sv = v[sk]
-                if is_scalar_object_array(sv):
-                    sv = safe_item(sv)
-                if is_array(sv):
-                    extra = arr_stats(sv)
-                    print(f"{pad}    • {sk}: ndarray shape={sv.shape}, dtype={sv.dtype}{extra}")
-                else:
-                    # brief preview for scalars/strings/other
-                    preview = sv
-                    if isinstance(sv, (list, tuple)):
-                        preview = f"{type(sv).__name__}[{len(sv)}]"
-                    elif isinstance(sv, (str, bytes)):
-                        preview = f"{type(sv).__name__}(len={len(sv)})"
-                    print(f"{pad}    • {sk}: {preview}")
+            print(f"{pad}{name}: dict with {len(v)} key(s)")
+            for subk, subv in v.items():
+                print_stats(f"{subk}", subv, indent + 2)
             return
 
-        # List/tuple: show a few items
+        # List/tuple: recurse into items
         if isinstance(v, (list, tuple)):
-            print(f"{pad}- {k}: {type(v).__name__} with {len(v)} item(s)")
-            for i, item in enumerate(v[:max_list_items]):
-                it = safe_item(item) if is_scalar_object_array(item) else item
-                if is_array(it):
-                    print(f"{pad}    [{i}]: ndarray shape={it.shape}, dtype={it.dtype}{arr_stats(it)}")
-                elif isinstance(it, dict):
-                    print(f"{pad}    [{i}]: dict with {len(it)} key(s)")
-                else:
-                    t = type(it).__name__
-                    s = f"{t}(len={len(it)})" if isinstance(it, (str, bytes)) else t
-                    print(f"{pad}    [{i}]: {s}")
-            if len(v) > max_list_items:
-                print(f"{pad}    … ({len(v)-max_list_items} more)")
+            print(f"{pad}{name}: {type(v).__name__} with {len(v)} item(s)")
+            for i, item in enumerate(v):
+                print_stats(f"[{i}]", item, indent + 2)
             return
-
-        # Fallback: plain scalar / other object
-        t = type(v).__name__
-        if isinstance(v, (str, bytes)):
-            print(f"{pad}- {k}: {t}(len={len(v)})")
-        else:
-            print(f"{pad}- {k}: {t}")
+        # Other leaf types are ignored
 
     with np.load(path, allow_pickle=True) as z:
-        print(f"{path} — {len(z.files)} item(s)")
-        # top-level keys
+        print(f"{path} — {len(z.files)} top-level item(s)")
         for k in z.files:
             v = z[k]
-            # show top-level summary and recurse one level
-            if is_scalar_object_array(v):
-                v = safe_item(v)
-
-            if is_array(v):
-                print(f"  {k}: ndarray shape={v.shape}, dtype={v.dtype}{arr_stats(v)}")
-            elif isinstance(v, dict):
-                print(f"  {k}: dict with {len(v)} key(s)")
-                # print inner keys
-                for sk in sorted(v.keys()):
-                    print_kv(sk, v[sk], indent=4)
-            elif isinstance(v, (list, tuple)):
-                print(f"  {k}: {type(v).__name__} with {len(v)} item(s)")
-                for i, item in enumerate(v[:max_list_items]):
-                    print_kv(f"[{i}]", item, indent=4)
-                if len(v) > max_list_items:
-                    print(f"      … ({len(v)-max_list_items} more)")
-            else:
-                t = type(v).__name__
-                if isinstance(v, (str,bytes)):
-                    print(f"  {k}: {t}(len={len(v)})")
-                else:
-                    print(f"  {k}: {t}")
+            print_stats(k, v, indent=2)
 
 # Rotation 
 def as_native_f32(img: np.ndarray) -> np.ndarray:
@@ -1638,6 +1581,73 @@ def compare_resampled_to_pds3(pds3_source, bins_nm, y_resampled):
         "median_abs_percent_diff": median_abs_pct,
     }
 
+def compare_npz(file_a, file_b, max_locs=20):
+    data_a = np.load(file_a, allow_pickle=True)
+    data_b = np.load(file_b, allow_pickle=True)
+
+    va = data_a['vis']
+    vb = data_b['vis']
+
+
+    for key in data_a.files:
+        print(f"\nKey: {key}")
+
+        va = data_a[key]
+        vb = data_b[key]
+
+        # If this is a 0-D object array holding a dict, pull out 'transmissions'
+        if va.shape == () and va.dtype == object:
+            da = va.item()  # this is your dict: {'transmissions': ..., 'central_wavelengths': ...}
+            db = vb.item()
+            a = da['transmissions']
+            b = db['transmissions']
+        else:
+            # plain arrays (like 'wavelengths')
+            a = va
+            b = vb
+
+        print("  shape a:", a.shape)
+        print("  shape b:", b.shape)
+
+        # Means (handle non-numeric / object arrays safely)
+        try:
+            mean_a = np.mean(a)
+        except TypeError:
+            mean_a = "N/A (non-numeric)"
+        try:
+            mean_b = np.mean(b)
+        except TypeError:
+            mean_b = "N/A (non-numeric)"
+
+        print("  mean a:", mean_a)
+        print("  mean b:", mean_b)
+
+        # Flatten for simple comparison
+        a_flat = np.ravel(a)
+        b_flat = np.ravel(b)
+
+        if a_flat.shape != b_flat.shape:
+            print("  total size differs, cannot compare elementwise")
+            continue
+
+        # Elementwise difference (works for numbers, strings, dicts, etc.)
+        diff_mask = a_flat != b_flat
+        n_diff = int(np.count_nonzero(diff_mask))
+        print("  number of differing elements:", n_diff)
+
+        if n_diff > 0:
+            diff_flat_idx = np.nonzero(diff_mask)[0]
+            # Convert flat indices back to multi-d indices
+            locs = [np.unravel_index(i, a.shape) for i in diff_flat_idx[:max_locs]]
+            print(f"  differing locations (up to {max_locs}): {locs}")
+            # Print actual values
+            for loc in locs[:5]:
+                i, j = loc
+                print(f"    at {loc}: a={a[i,j]}, b={b[i,j]}")
+            # max absolute difference
+            max_diff = np.max(np.abs(a - b))
+            print("  max absolute difference:", max_diff)
+  
 """
 calibration
 """
@@ -1806,6 +1816,28 @@ def dump_mat_cube_frames(channel, mat_path, out_dir):
     print(f"Wrote {len(written)} files to: {out_dir}")
     print(f"cube dtype={cube.dtype}, shape=(H={H}, W={W}, N={N})")
     return written
+
+from PIL import Image
+def png_to_bin(folder):
+    folder = Path(folder)
+    png_files = list(folder.glob("*.png"))
+    out_dir = folder / "bin_files"
+    out_dir.mkdir(exist_ok=True)
+    for png in png_files:
+        img = Image.open(png)
+
+        # Force grayscale: one value per pixel
+        img = img.convert("L")   # mode "L" = 8-bit pixels, black and white
+
+        arr = np.array(img)      # shape: (H, W), dtype=uint8
+
+        # Cast to 16-bit unsigned, little-endian – values stay numerically the same
+        arr16 = arr.astype(np.uint16).newbyteorder("<")  # dtype '<u2'
+
+        bin_path = out_dir / (png.stem + ".bin")
+        arr16.tofile(bin_path)
+
+
 """
 spectra
 """
@@ -2060,7 +2092,7 @@ def spectral_visual():
     # r = test_and_plot_remove_outliers(r, wl)
     # r = test_and_plot_denoise_spectra(r, wl)
 
-def visualise_extract_astroid(fits_path, store=False):
+def visualise_extract_astroid(fits_path, store=False, remove_overlap=False):
     with fits.open(fits_path) as hdul:
         primary = hdul[0]
         header = primary.header
@@ -2068,25 +2100,36 @@ def visualise_extract_astroid(fits_path, store=False):
     matplotlib.use('MacOSX')
     asteroid = level_3_utilities.extract_asteroid(data,0,True)
     if store:
-        denoised_spectras = []
-        coords, spectra = zip(*asteroid)
-        coords = np.array(coords) 
-        spectra = np.array(spectra)
+        if remove_overlap:
+            denoised_spectras = []
+            coords, spectra = zip(*asteroid)
+            coords = np.array(coords) 
+            spectra = np.array(spectra)
 
-        wavelengths = level_3_utilities.get_wavelengths(header)
-        all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
-        selected_wl = np.array(list(dict.fromkeys(all_wl)))
+            wavelengths = level_3_utilities.get_wavelengths(header)
+            all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
+            selected_wl = np.array(list(dict.fromkeys(all_wl)))
 
-        for i, spectra in enumerate(spectra):
-            denoised = np.delete(spectra, 24)
-            denoised_spectras.append(denoised)
-        denoised_spectras = np.array(denoised_spectras) 
-        results = (Path(__file__).parent.parent / 'pipeline_results' / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000').resolve()
-        np.savez_compressed(
-            results / 'coords_spectra.npz',
-            coords=coords,
-            spectra=denoised_spectras
-        )
+            for i, spectra in enumerate(spectra):
+                denoised = np.delete(spectra, 24)
+                denoised_spectras.append(denoised)
+            denoised_spectras = np.array(denoised_spectras) 
+            results = (Path(__file__).parent.parent / 'pipeline_results' / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000').resolve()
+            np.savez_compressed(
+                results / 'coords_spectra.npz',
+                coords=coords,
+                spectra=denoised_spectras
+            )
+        else:
+            coords, spectra = zip(*asteroid)
+            coords = np.array(coords) 
+            spectra = np.array(spectra)
+            results = (Path(__file__).parent.parent / 'pipeline_results' / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000').resolve()
+            np.savez_compressed(
+                results / 'coords_spectra_calibrated_unfiltered.npz',
+                coords=coords,
+                spectra=spectra
+            )
     
 def visualise_asteroid_and_spectra(fits_path):
 
@@ -2216,7 +2259,7 @@ def visualise_spectra_filtering(fits_path):
         plt.tight_layout()
         plt.show()
 
-def visualise_spectra_parameters(fits_path, index=40001):
+def visualise_spectra_parameters(fits_path, index=40002):
     with fits.open(fits_path) as hdul:
         data = hdul[0].data
         primary_header = hdul[0].header
@@ -2296,23 +2339,30 @@ def visualise_spectra_analysis(results, image):
         #     zero_coords = np.argwhere((frame == 0.0) & mask)
 
 
-    
     with fits.open(results) as hdul:
         data = hdul[0].data
         header = hdul[0].header
+        plt.figure(figsize=(15, 6))  # wide layout
+        matplotlib.use('MacOSX')
         for i, frame in enumerate(data):
             masked_pixels = np.asarray(frame)[mask]
             # print(len(masked_pixels))
             # finite = np.isfinite(masked_pixels)
             # print(f"selected={masked_pixels.size}, finite={finite.sum()}, nan={np.isnan(masked_pixels).sum()}, inf={np.isinf(masked_pixels).sum()}")   
             vmean = np.nanmean(masked_pixels)
+            percents = vmean * 100
+            per = round(float(percents), 2)
             title = header.get(f'Layer_0{i}')
+            title = title.split(' ')[0]
             print(f"Layer {i} mean: {vmean}")
-            matplotlib.use('MacOSX')
+            plt.subplot(2, 5, i + 1)
             plt.imshow(frame, cmap='viridis')     # Display image
-            plt.colorbar()       # Add colorbar
-            plt.title(f"{title} (mean: {round(float(vmean), 2)})")
-            plt.show()
+            plt.title(f"{title} ({per})", fontsize=11)
+            plt.axis("off")
+
+        plt.suptitle('Filtered composition percentages')
+        plt.tight_layout()
+        plt.show()
 
 def try_taxonomy_nn(csv_path):
     arr = np.loadtxt(csv_path)
@@ -2385,30 +2435,103 @@ def try_taxonomy_npz(npz_path):
     print('Mean:')
     print(mean_row)
 
-
 def nn(npz_path):
     data = np.load(npz_path, allow_pickle=True)
     spectra, coords = data["spectra"], data["coords"]
     data.close()
+
+    # print(spectra.shape)
+    count_all_lt_005 = np.sum(np.any(spectra < 0.10, axis=1))
+    mask = ~np.any(spectra < 0.10, axis=1)  
+    spectra_clean = spectra[mask] 
+    print(count_all_lt_005)
+
     _, _, wvl_central = load_transmission("ASPECT-vis-nir1-nir2")
     model_subdir, model_name = "taxonomy/ASPECT-vis-nir1-nir2-1546", "CNN_ASPECT-vis-nir1-nir2-1546_9-1"
-    spectra = normalise_spectra(spectra, wavelength=wvl_central, wvl_norm_nm=float(model_name.split("_")[1].split("-")[-1]))
-    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
-    predictions = evaluate(model_names, spectra, proportiontocut=0.2, subfolder_model=model_subdir)
-    taxonomy = {k: predictions[:, index] for k, index in classes.items()}
-    # taxonomy = np.array(predictions)
-    # mean_row = np.mean(taxonomy, axis=0) # means of all the results
-    # print('Mean:')
-    # print(mean_row)
+    spectra_norm = normalise_spectra(spectra_clean, wavelength=wvl_central, wvl_norm_nm=float(model_name.split("_")[1].split("-")[-1]))
+    # model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
+    # predictions = evaluate(model_names, spectra, proportiontocut=0.2, subfolder_model=model_subdir)
+    # taxonomy = {k: predictions[:, index] for k, index in classes.items()}
     model_subdir, model_name = "composition/ASPECT-vis-nir1-nir2-1546", "CNN_ASPECT-vis-nir1-nir2-1546_1110-11-110-111-000"
     model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
-    predictions = evaluate(model_names, spectra, proportiontocut=0.2, subfolder_model=model_subdir)
+    predictions = evaluate(model_names, spectra_norm, proportiontocut=0.2, subfolder_model=model_subdir)
     quantities = {"OL": 0, "OPX": 1, "CPX": 2, "Fa": 3, "Fo": 4, "Fs (OPX)": 5, "En (OPX)": 6, "Fs (CPX)": 7, "En (CPX)": 8, "Wo (CPX)": 9}
     composition = {k: predictions[:, index] for k, index in quantities.items()}
 
-    df = pd.DataFrame(taxonomy | composition)
+    df = pd.DataFrame(composition)
 
     print(df.mean())
+
+    pred_cols = ['OL', 'OPX', 'CPX']
+
+    winner = df[pred_cols].idxmax(axis=1)
+
+    for col in pred_cols:
+        mask = (winner == col)
+        count = mask.sum()  
+
+        if not mask.any():
+            print(f'No spectra classified')
+            continue
+
+        # mean_spec = spectra_clean[mask].mean(axis=0)
+
+        idx_best = df.loc[mask, col].idxmax()
+        best_spec = spectra_clean[idx_best]
+        best_score = df.loc[idx_best, col] 
+        best_score = round(float(best_score), 3)
+
+        idx_worst = df.loc[mask, col].idxmin()
+        worst_spec = spectra_clean[idx_worst]
+        worst_score = df.loc[idx_worst, col] 
+        worst_score = round(float(worst_score), 3)
+
+        group = spectra_clean[mask]          # all spectra of this mineral, shape (M, n_bands)
+        mean_spec = group.mean(axis=0)       # mean spectrum
+        mean_score = df.loc[mask, col].mean()
+        mean_score = round(float(mean_score), 3)
+        if col == 'OL':
+            other = 'CPX'
+        else:
+            other = 'OL'
+
+        # Random spectra
+        n_rand = min(5, count)
+        rand_indices = df.loc[mask].sample(n=n_rand, replace=False).index
+        matplotlib.use('MacOSX')
+        for i, idx in enumerate(rand_indices, start=1):
+            spec = spectra_clean[idx]
+            score = df.loc[idx, col]  # prediction for this mineral
+            other_score = df.loc[idx, other]
+            plt.plot(
+                wvl_central,
+                spec,
+                alpha=0.7,
+                label=f"rand {i},{col}: {score:.2f}, ({other}: {other_score:.2f})"
+            )
+
+        plt.title(f"{col}: {n_rand} random spectra")
+        plt.xlabel("Wavelength [nm]")
+        plt.ylabel("Reflectance")
+        plt.legend(fontsize=8)
+        plt.tight_layout()
+        plt.show()
+
+        matplotlib.use('MacOSX')
+        plt.figure(figsize=(7, 5))
+        plt.plot(wvl_central, best_spec, label=f"Best {col} spectrum ({best_score})", linewidth=2)
+        plt.plot(wvl_central, mean_spec, label=f"Mean {col} spectrum ({mean_score})", linestyle="--")
+        plt.plot(wvl_central, worst_spec, label=f"Lowest {col} spectrum ({worst_score})", linewidth=2)
+
+        plt.title(f"{col}: {count} / {len(spectra_clean)}")
+        # plt.title(f"{col}: {score}")
+        # plt.title(f"{col}: spectra envelope and mean")
+        plt.xlabel("Wavelength [nm]")
+        plt.ylabel("Reflectance")
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
 
     # images = np.full((np.shape(df)[1], *np.max(coords + 10, axis=0)), np.nan)  # +10 to have a margin
     # for i in range(len(coords)):
@@ -2501,10 +2624,22 @@ def create_non_calibrated_spectra(vis, nir1, nir2):
     plt.tight_layout()
     plt.show()
 
+def train_taxonomy():
+    from level_3.main_taxonomy import pipeline
+    train_new_model = True  # If you have a trained model, just run evaluate(model_names, filename_data_or_data)
+    tune_hyperparameters = False  # if you just want to tune hp
+    from tqdm import tqdm
 
- 
+    if tune_hyperparameters:
+        pipeline()
+    elif train_new_model:
+        for _ in tqdm(range(10)):
+            y_pred = pipeline()
+    else:
+        y_pred = pipeline()
     
 
+# train_taxonomy()
     
 
 
@@ -2525,15 +2660,19 @@ _test_data = (Path(__file__).parent.parent / 'test_data').resolve()
 #### SIMULATED FILES ###
 # FITS
 g_test = _test_data / 'AS0_000000_240610T092713_1A.fits'
-as0 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS0_000000_270323T060000_0A.fits'
+as0 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS0_000000_270323T060000_1B.fits'
 as1 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS1_000000_270323T060000_0A.fits'
 as2 = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'AS2_000000_270323T060000_0A.fits'
 asp = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_2B.fits'
 asp_C = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_3C_Composition.fits'
+asp_C_OL = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_3C_OL_comp.fits'
 asp_T = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_3C_Taxonomy.fits'
+
+as0_rotation_10 = _test_data / 'ASPECT_simulated_images' / 'vis-2027-03-23-06-00-00' / 'vis-2027-03-23-06-00-00.fits'
 
 spectra_npz = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'coords_spectra.npz'
 spectra_npz_cal = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'coords_spectra_uncalibrated.npz'
+spectra_npz_fil = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'coords_spectra_filtered.npz'
 
 # Binary
 as0_bin = _test_data / 'ASPECT_simulated_images' / '2027-03-23_06_00_00-McEwen' / 'acq_000' / 'dc_0_exp_000.bin'
@@ -2549,10 +2688,10 @@ hsh_0 = _test_data / 'HSH' / 'HSH_0CS083_250312T132505_1A.fits'
 
 # read_bin_file(as2_bin, channel='NIR')
 
-# read_fits_file(as0)
+# read_fits_file(as0_rotation_10, visualise=True)
 # read_fits_file(as2)
 # read_fits_file(asp, visualise=True)
-# read_fits_file(asp_C)
+# read_fits_file(asp_C_OL, visualise=True)
 # read_fits_file(asp_T, visualise=True)
 
 # create_non_calibrated_spectra(as0, as1, as2)
@@ -2570,7 +2709,29 @@ meteorite_spectra = _test_data / '600w_exposures_2500-10000-10000_pixel_reflecta
 
 # try_taxonomy_nn(meteorite_spectra)
 # try_taxonomy_npz(spectra_npz)
-nn(spectra_npz)
+nn(spectra_npz_fil)
+
+vis_rotation_10 = _test_data / 'ASPECT_simulated_images' / 'vis-2027-03-24-00-00-00'
+
+vis_r_bin = _test_data / 'ASPECT_simulated_images' / 'vis-2027-03-24-00-00-00' / 'bin_files' / 'vis-2027-03-24-00-00-00.bin'
+# read_bin_file(vis_r_bin, 'Vis')
+
+# png_to_bin(vis_rotation_10)
+
+_datasets = (Path(__file__).parent / 'level_3' / 'datasets').resolve()
+asp_tansmissions = _datasets / 'ASPECT' / 'ASPECT_transmission.npz'
+asp_tansmissions_david = _datasets / 'ASPECT' / 'ASPECT_transmission_david.npz'
+asp_tansmissions_v3 = _datasets / 'ASPECT' / 'ASPECT_transmission_v3.npz'
+
+asp_spectra_9_david = _datasets / 'asteroid-spectra_9_reduced_denoised_norm.npz'
+asp_spectra_15_david = _datasets / 'asteroid-spectra_15_reduced_denoised_norm_david.npz'
+asp_spectra_15 = _datasets / 'asteroid-spectra_15_reduced_denoised_norm.npz'
+asp_spectra = _datasets / 'asteroid-spectra_denoised_norm.npz'
+
+# compare_npz(asp_tansmissions, asp_tansmissions_david)
+
+# inspect_npz_stats(asp_spectra_9_david)
+# inspect_npz_stats(asp_spectra)
 
 dark_dir = Path(_path_sim_dark)
 dark_file = dark_dir / f'AS1_DARK.fits'

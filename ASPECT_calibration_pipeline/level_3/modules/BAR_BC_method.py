@@ -21,6 +21,8 @@ def calc_band_parameters(wavelength: np.ndarray, reflectance: np.ndarray, visual
 
     n_points = 2
 
+    print(len(wavelength))
+    print(len(reflectance))
     reflectance = np.reshape(reflectance, (-1, len(wavelength)))
 
     # sort wavelengths

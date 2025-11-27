@@ -14,7 +14,7 @@ from sklearn.decomposition import PCA
 import matplotlib
 matplotlib.use('MacOSX')
 from matplotlib.patches import Patch
-from config import reverse_channel_map, z_factor, z_threshold
+from config import reverse_channel_map, z_factor, z_thresh
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -48,10 +48,12 @@ def get_wavelengths(header: Header) -> Dict[str, List[int]]:
     try: 
         for channel in channels:
             channel_id = reverse_channel_map[channel]
-            task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+            # task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+            frame_nums = header.get(f'AS{channel_id}_FRAMES').split(',')
             key = f'AS{channel_id}'
-            for i in range(0, task_number):
-                num = f'{i:03d}' # e.g. 1 -> 001
+            # for i in range(0, task_number):
+            for num in frame_nums:
+                # num = f'{i:03d}' # e.g. 1 -> 001
                 wl = float(header.get(f'AS{channel_id}_WL_{num}'))
                 if key not in wavelengths:
                     wavelengths[key] = np.array([wl])
@@ -74,11 +76,13 @@ def validate_wl(wl: Dict[str, List[int]], instrument: str) -> bool:
         True if all channels are found, else raises a ValueError
     """
     channels = [str(c) for c in instrument.split('-')]
+    channel_ids = []
     for ch in channels:
         channel_id = reverse_channel_map[ch]
+        channel_ids.append(channel_id)
         if f'AS{channel_id}' not in wl:
             raise KeyError(f"Missing wavelengths for '{ch}' in Image HDU header. Required by istrument setting: '{instrument}'")
-    return True
+    return channel_ids
 
 def normalize_to_8bit(img: np.ndarray) -> np.ndarray:
     # Compute min and max values in the image
@@ -174,7 +178,7 @@ def asteroid_mask_two(image: np.ndarray):
     plt.tight_layout()
     plt.show()
 
-def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
+def asteroid_mask(image: np.ndarray, erode: int = 2, visualise: bool = False) -> np.ndarray:
     """
     Creates a mask the asteroid. 
     """
@@ -200,18 +204,18 @@ def asteroid_mask(image: np.ndarray, visualise: bool = False) -> np.ndarray:
     eros_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15,15))
     erosion_mask = cv2.morphologyEx(asteroid_mask, cv2.MORPH_ERODE, eros_kernel, iterations=1 )
     eros_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9))
-    erosion_mask = cv2.morphologyEx(erosion_mask, cv2.MORPH_ERODE, eros_kernel, iterations=2 )
+    erosion_mask = cv2.morphologyEx(erosion_mask, cv2.MORPH_ERODE, eros_kernel, iterations=erode )
 
     if visualise:
         fig, axs = plt.subplots(1, 5, figsize=(20, 4))
         axs[0].imshow(original, cmap='gray')
-        axs[0].set_title("Original (float32)")
+        axs[0].set_title("Original")
         axs[1].imshow(binary_mask, cmap='gray')
-        axs[1].set_title("Edges (uint8 clipped)")
+        axs[1].set_title("Edges")
         axs[2].imshow(dilated_mask, cmap='gray')
-        axs[2].set_title("Morphological Dilated")
+        axs[2].set_title("Dilated")
         axs[3].imshow(closed_mask, cmap='gray')
-        axs[3].set_title("Morphological Closing")
+        axs[3].set_title("Closing")
         axs[4].imshow(erosion_mask, cmap='gray')
         axs[4].set_title("Final Mask")
         for ax in axs:
@@ -248,8 +252,7 @@ def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, visualise: boo
         List[Tuple[coords, spectra]]: coords are the coordinates of which the spectras are extracted. Coords are a list of 2 e.g. [y, x]
     """
     image = image_cube[mask_index]
-
-    mask = asteroid_mask(image,visualise)
+    mask = asteroid_mask(image, erode=2, visualise=visualise)
 
     #Store the coordinates of the image where mask has value of non 0
     coords = np.argwhere(mask != 0)
@@ -261,6 +264,54 @@ def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, visualise: boo
 
     return combined
 
+def find_channel_and_local_index(I: int, channel_ids: List, frame_counts: Dict[str, int]):
+    cum = 0
+    for ch in channel_ids:
+        count = frame_counts[f'AS{ch}']
+        if I < cum + count:
+            return ch, I - cum
+            break
+        cum += count
+    raise ValueError(f'Index out of range')
+
+def remove_index_from_header(header: Header, index: int) -> Header:
+
+    print(f'removing information about frame index: {index}')
+    try: 
+        channels = header.get('ASP_CHANNELS').split(',')
+        channel_ids = sorted([reverse_channel_map[c] for c in channels])
+        total_frames = 0
+        frames_per_channel = {}
+        for id in channel_ids:
+            task_number = int(header.get(f'AS{id}_TASK_NUMBER'))
+            total_frames += task_number
+            frames_per_channel[f'AS{id}'] = task_number
+        
+        print(f'total num of frames: {total_frames}')
+        print(frames_per_channel)
+        if index > total_frames:
+            raise ValueError(f'inndex must be smaller or equal to number of frames {index} <= {total_frames}')
+
+        channel_of_interest, local_index = find_channel_and_local_index(index, channel_ids=channel_ids, frame_counts=frames_per_channel)
+        print(f'frame to be removed: channel {channel_of_interest}, index {local_index}')
+        num = f'{local_index:03d}'
+        print(f'frame_num: {num}')
+        val = header[f'AS{channel_of_interest}_TASK_NUMBER']
+        header[f'AS{channel_of_interest}_TASK_NUMBER'] = str(int(val)-1)
+        frames = header.get(f'AS{channel_of_interest}_FRAMES').split(',')
+        print(f'channel {channel_of_interest} frames:')
+        print(frames)
+        frames.remove(num)
+        print(f'new frames:')
+        print(frames)
+        header[f'AS{channel_of_interest}_FRAMES'] = ','.join(frames)
+        del header[f'AS{channel_of_interest}_TASK_{num}']
+        del header[f'AS{channel_of_interest}_EXP_{num}']
+        del header[f'AS{channel_of_interest}_WL_{num}']
+
+        return header
+    except Exception as e:
+        raise ValueError(f'Removing index {index} from header failed: {e}.')
 
 """
 Connecting segments
@@ -297,7 +348,7 @@ def nir2_offset_correction(
 
 
     offset = f_nir1 - f_nir2
-    corrected_nir2 = nir2_spectra + offset
+    corrected_nir2 = np.clip(nir2_spectra + offset, 0, None)
         
     return corrected_nir2, offset
 
@@ -500,6 +551,15 @@ def denoise_spectra(data: np.ndarray, wavelength: np.ndarray, sigma_nm: float | 
 """
 Analysis results
 """
+def get_aspect_default_wl():
+    wl_dict = {
+        'AS0' : [675., 690., 705., 720., 735., 750., 765., 780., 795., 810., 825.,],
+        'AS1' : [875., 904.20738725, 933.40538359, 962.41926832, 991.59052354, 1020.78790557, 1050., 1079.21475545, 1108.41876944, 1137.40366510, 1166.57594038, 1195.77918273, 1225.],
+        'AS2' : [1225., 1254.22427930, 1283.43620514, 1312.38308545, 1341.55680112, 1370.76774434, 1400., 1429.23686478, 1458.45946423, 1487.35519223, 1516.53104350, 1545.75237632, 1575.],
+        'AS3' : [1675., 1711.363636, 1747.727273, 1784.090909, 1820.454545, 1856.818182 ,1893.181818, 1929.545455, 1965.909091, 2002.272727, 2038.636364, 2075., 2111.363636, 2147.727273, 2184.090909, 2220.454545, 2256.818182, 2293.181818, 2329.545455, 2365.909091, 2402.272727, 2438.636364, 2475.]
+    }
+    return wl_dict
+
 def get_composition_header() -> Dict[str, Tuple[str, str]]:
     meta_data = {
         'LAYER_00'  :   ('OL (vol%)' , 'Olivine volume percentage'),
@@ -526,48 +586,62 @@ def get_taxonomy_header() -> Dict[str, Tuple[str, str]]:
         'LAYER_06'  :   ('S+ = S + Sqw + Sr + Srw + Sw' , ''),
         'LAYER_07'  :   ('V+ = V + Vw' , ''),
         'LAYER_08'  :   ('X+ = X + Xc + Xe + Xk' , ''),
+        'LAYER_09'  :   ('Other' , ''),
     }
     return meta_data
 
+def spectra_filtering(spectras: np.ndarray, wavelengths: Dict[str, List] | None, instrument: str = 'Vis-NIR1-NIR2'):
+    if wavelengths == None: 
+        wavelengths = get_aspect_default_wl()
+    validate_instrument(instrument=instrument)
+    channel_ids = validate_wl(wl=wavelengths, instrument=instrument)
+    print(f'Filterin instrument channels {channel_ids}')
+    AS0_wl = wavelengths.get('AS0')
+    AS1_wl = wavelengths.get('AS1')
+    AS2_wl = wavelengths.get('AS2')
+    AS3_wl = wavelengths.get('AS3')
+    
+    selected_wl = []
+    for c in channel_ids:
+        selected_wl.append(wavelengths.get(f'AS{c}'))
+    
+    selected_wl = [wl for channel in selected_wl for wl in channel]
+    if not len(selected_wl) == len(spectras[0]):
+        raise ValueError(f'missmatch between wavelengths and spectra: {len(selected_wl)} != {len(spectras[0])}')
 
-def spectra_filtering(spectras: np.ndarray, wavelengths: Dict[str, List | None]):
-    vis_wl = wavelengths.get('AS0')
-    nir1_wl = wavelengths.get('AS1')
-    nir2_wl = wavelengths.get('AS2')
-    swir_wl = wavelengths.get('AS3')
-    print(len(vis_wl))
-    print(len(nir1_wl))
-    print(len(nir2_wl))
-    print(len(swir_wl))
-    return
+    AS1_start = len(AS0_wl) if 0 in channel_ids else 0 
+    AS1_len = len(AS1_wl)
+    AS2_len = len(AS2_wl)
+
     denoised_spectras = []
     for i, spectra in enumerate(tqdm(spectras, desc="Filtering spectra", unit="spec")):
         #3A
-
-        nir1_spectra = spectra[nir1_start : nir1_start + nir1_len]
-        nir2_spectra = spectra[nir1_start + nir1_len : nir1_start + nir1_len + nir2_len]
+        AS1_spectra = spectra[AS1_start : AS1_start + AS1_len]
+        AS2_spectra = spectra[AS1_start + AS1_len : AS1_start + AS1_len + AS1_len]
         nir2_offset_correction_result = nir2_offset_correction(
-            nir1_wavelengths=wavelengths['AS1'],
-            nir1_spectra=nir1_spectra,
-            nir2_wavelengths=wavelengths['AS2'],
-            nir2_spectra=nir2_spectra,
-            overlap_wavelength=overlap
+            nir1_wavelengths=AS1_wl,
+            nir1_spectra=AS1_spectra,
+            nir2_wavelengths=AS2_wl,
+            nir2_spectra=AS2_spectra,
+            overlap_wavelength=1225.
         )
 
         connected = np.concatenate(
-            [spectra[inst_start:nir1_start + nir1_len], nir2_offset_correction_result[0][1:]] +
-            ([spectra[nir1_start + nir1_len + nir2_len:inst_end]])
+            [spectra[ : AS1_start + AS1_len], nir2_offset_correction_result[0][1:]] +
+            ([spectra[AS1_start + AS1_len + AS2_len :]])
         )
-
-        # Remove outliers
-        cleaned = remove_outliers(connected, wavelengths, z_thresh=z_threshold)[0]
+        
+        cleaned_wl = np.array(list(dict.fromkeys(selected_wl))) # remove overlap wl
+        # # Remove outliers
+        cleaned = remove_outliers(connected, cleaned_wl, z_thresh=z_thresh)[0]
 
         # denoise spectra 
-        denoised = denoise_spectra(cleaned, wavelengths, z_factor=z_factor).flatten()
+        denoised = denoise_spectra(cleaned, cleaned_wl, z_factor=z_factor).flatten()
 
         denoised_spectras.append(denoised)
 
-    return(denoised_spectras)
+    return(denoised_spectras, cleaned_wl)
+
 """
 Testing utilities
 """

@@ -1,4 +1,4 @@
-from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument, models, initGuess, data_filtering, z_factor, z_threshold
+from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument
 import levels_012.main_calibration as main_calibration
 import levels_012.modules.utilities as level_012_utilities
 import level_3.main_level_3 as main_level_3
@@ -65,7 +65,7 @@ def main_pipeline():
     if '3' in pipeline_steps:
         print(f'Executing pipeline level 3')
         if level_3_input is not None and Path(level_3_input).is_file():
-            level_3_output = main_level_3.level3(fits_file=level_3_input, output_dir=output_dir, instrument=instrument, data_filtering=data_filtering, z_thresh=z_threshold, z_factor=z_factor,  models=models, initGuess=initGuess)
+            level_3_output = main_level_3.level3(fits_file=level_3_input, output_dir=output_dir)
         else:
             raise FileNotFoundError(f"Level 3 expects a FITS file with '_2B.fits' ending, but got: {level_3_input}")
 

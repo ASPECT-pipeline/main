@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from level_3.modules.utilities_spectra import ( normalise_spectra, collect_all_models)
-from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, denoise_spectra, get_wavelengths, validate_wl, validate_instrument, get_composition_header, get_taxonomy_header)
+from level_3.level_3_utilities import (extract_asteroid, nir2_offset_correction, remove_outliers, denoise_spectra, get_wavelengths, validate_wl, validate_instrument, get_composition_header, get_taxonomy_header, remove_index_from_header)
 from level_3.modules.NN_evaluate import evaluate
 from level_3.test_utilities import get_reflectances, plot_4_spectra, plot_spectra
 from level_3.mgm import fit, plot
@@ -14,6 +14,7 @@ from tqdm import tqdm
 import time
 import matplotlib
 import matplotlib.pyplot as plt
+from config import output_directory, instrument, models, initGuess, data_filtering, z_factor, nir_overlap, z_thresh, save_filtered
 matplotlib.use('MacOSX')
 
 import os
@@ -44,7 +45,7 @@ Parameters:
 
 """
 
-def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', data_filtering:bool = True, models:str = 'C', nir_overlap:int = 1225, z_thresh:int = 1, z_factor:float = 1, initGuess: list[list[float]] = [[0.1, 950, 150], [0.01, 1250, 50]], test_with_simulated:bool = False):
+def level3( fits_file:str, output_dir:str):
 
     """
     Execute the steps 3A, 3B, 3C. Opens the FITS file containing the combined data product. Performs data filtering (if applied) and desired analysis algoritms defined in models parameter.
@@ -111,27 +112,13 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
     first_nir1_idx = int(np.where(selected_wl == wavelengths['AS1'][0])[0])
     nir1_len = len(wavelengths['AS1'])
     nir2_len = len(wavelengths['AS2'])
+    first_nir2_idx = first_nir1_idx + nir1_len
     selected_wl = np.array(list(dict.fromkeys(selected_wl)))
 
     denoised_spectras = []
     if data_filtering:
         print(f'Applying data filtering')
         print(f'outlier threshold: {z_thresh}, denoising factor: {z_factor}')
-        matplotlib.use('MacOSX')
-        mean = np.mean(spectras, axis=0)
-        plt.figure()
-        plt.plot(all_wl, mean, linewidth=0.8)
-        plt.xlabel('Wavelength (nm)', fontsize=12)
-        plt.ylabel('Reflectance', fontsize=12)
-        plt.title('Mean before filtering')
-        plt.tight_layout()
-        plt.show()
-        print(f'selected wl: {len(selected_wl)}')
-        print(f'inst_start: {start_idx}')
-        print(f'inst_end: {end_idx}')
-        print(f'nir1_start: {first_nir1_idx}')
-        print(f'nir1_len: {nir1_len}')
-        print(f'nir2_len: {nir2_len}')
         for i, spectra in enumerate(tqdm(spectras, desc="Filtering spectra", unit="spec")):
             #3A
             nir1_spectra = spectra[first_nir1_idx : first_nir1_idx + nir1_len]
@@ -156,14 +143,7 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
             denoised = denoise_spectra(cleaned, selected_wl, z_factor=z_factor).flatten()
 
             denoised_spectras.append(denoised)
-        d_mean = np.mean(denoised_spectras, axis=0)
-        plt.figure()
-        plt.plot(selected_wl, d_mean, linewidth=0.8)
-        plt.xlabel('Wavelength (nm)', fontsize=12)
-        plt.ylabel('Reflectance', fontsize=12)
-        plt.title('Mean after filtering')
-        plt.tight_layout()
-        plt.show()
+
     else:
         # Only select the range remove the nir1-nir2 ovelap
         for i, spectra in enumerate(spectras):
@@ -173,7 +153,32 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
             denoised_spectras.append(denoised)
 
     denoised_spectras = np.array(denoised_spectras)
-    # denoised_spectras[denoised_spectras == 0] = 1e-5# replace 0 values
+
+    #Metadata
+    stem = fits_file.stem
+    suffix = fits_file.suffix
+    calibration_lvl = '3C'
+    primary_header['PROCLEVL'] = calibration_lvl
+
+    if save_filtered:
+        print(f'Saving denoised spectra')
+        hdr = primary_header.copy()
+        denoised_header = remove_index_from_header(hdr, first_nir2_idx)
+        
+        denoised_bands = denoised_spectras.shape[1]
+        height, width = primary_data.shape[1:]
+        new_cube = np.zeros((denoised_bands, height, width), dtype=primary_data.dtype)
+        for i, (y, x) in enumerate(coords):
+            new_cube[:, y, x] = denoised_spectras[i]
+
+        denoised_file_name = stem[:25] + calibration_lvl + '_Denoised' + suffix
+        denoised_header['FILENAME'] = denoised_file_name
+        denoised_hdu = fits.PrimaryHDU(data=new_cube, header=denoised_header)
+        fits_file = os.path.join(output_dir, denoised_file_name)
+        denoised_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+
+    denoised_spectras[denoised_spectras == 0] = 1e-5# replace 0 values
 
     print(f'Normalising spectras at {norm_wl}nm')
     spectra_normalized = normalise_spectra(
@@ -181,12 +186,6 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         wavelength=selected_wl,
         wvl_norm_nm=norm_wl
     )
-
-    #Metadata
-    stem = fits_file.stem
-    suffix = fits_file.suffix
-    calibration_lvl = '3C'
-    primary_header['PROCLEVL'] = calibration_lvl
 
     model = [str(m).upper() for m in models.split('-')] # Analysis to be executed
 
@@ -376,13 +375,7 @@ def level3( fits_file:str, output_dir:str, instrument:str = 'vis-nir1-nir2', dat
         taxonomy = {k: predictions[:, index] for k, index in classes.items()}
 
         df = pd.DataFrame(taxonomy)
-
-        print(df.mean())
-        return
         taxonomy = np.array(predictions)
-        mean_row = np.mean(taxonomy, axis=0) # means of all the results
-        print('Mean:')
-        print(mean_row)
         layer_count = len(taxonomy[0])
 
         cube = np.stack([black_frame] * layer_count, axis=0)

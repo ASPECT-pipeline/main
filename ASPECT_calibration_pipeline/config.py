@@ -46,16 +46,17 @@ pipeline = '3' # Separate with '-' e.g. '1-2-3'
 # Which instrument channels want to include
 instrument = 'Vis-NIR1-NIR2' 
 
-models = 'T'
+models = 'C'
 
 initGuess = [[0.1, 950, 150], [0.01, 1250, 50]] # for MGM
 
 
 # parameters to tweak the data filtering
 data_filtering = True
+save_filtered = True
+nir_overlap = 1225
+z_thresh = 1.0 # increase -> less sensitive to outliers ((deriv - mu) / sigma) > z_threshold)
 z_factor = 1.0 # increse -> smoother spectra (z_factor * fwhm)
-z_threshold = 1.0 # increase -> less sensitive to outliers ((deriv - mu) / sigma) > z_threshold)
-
 
 """
 Constants do not change unless you know what your are modifying.

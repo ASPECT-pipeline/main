@@ -118,13 +118,13 @@ def gimme_model_grid(instrument: str | None, interpolate_to: str | None,
             if "HS-H" in instrument:
                 new_wvl_grid_normalisation = 753.8210951243377
             elif "swir" in instrument:
-                new_wvl_grid_normalisation = 2348.2704323918992
+                new_wvl_grid_normalisation = 2365.8750065045033
             elif "nir2" in instrument:
-                new_wvl_grid_normalisation = 1538.602977169707
+                new_wvl_grid_normalisation = 1545.7523763171312
             elif "vis" in instrument:
-                new_wvl_grid_normalisation = 743.9567391593046
+                new_wvl_grid_normalisation = 750.0
             elif "nir1" in instrument:
-                new_wvl_grid_normalisation = 942.2298860692123
+                new_wvl_grid_normalisation = 962.4192683220438
 
         if new_wvl_grid_normalisation is None:
             norm_for_grid = None

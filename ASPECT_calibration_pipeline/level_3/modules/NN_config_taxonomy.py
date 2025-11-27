@@ -5,7 +5,7 @@ from level_3.modules.utilities import safe_arange
 from level_3.modules._constants import _sep_out
 
 tax_output_setup = {
-    "use_unknown_class": False  # Add extra "unknown" class for weird spectra
+    "use_unknown_class": True  # Add extra "unknown" class for weird spectra
 }
 
 # Re-interpolate input data to different resolutions (see reinterpolate_data in load_data.py)
@@ -15,7 +15,7 @@ tax_grid_setup = {
     "interpolate_to": None, #"full",  # "full", "Itokawa", "Eros"; only if "instrument" is None
 
     # used when "instrument" is None and interpolate_to is unknown
-    "wvl_grid": safe_arange(650., 2450., 30., endpoint=True),
+    "wvl_grid": safe_arange(820., 1600., 20., endpoint=True),
     # used when interpolate_to is unknown
     "wvl_norm": "adaptive"  # float or "adaptive" (there are no non-normalised data for training)
 }
