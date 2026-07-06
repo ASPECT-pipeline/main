@@ -7,6 +7,7 @@ import levels_012.modules.utilities as utilities
 from pathlib import Path
 from typing import List
 from pathlib import Path
+from config import save_transformation_matrix, use_transformation_matrix, trans_matrix_filename, _path_sim_tans_matrix, OSERV_ID
 
 
 """
@@ -117,7 +118,28 @@ def merge_fits_files(files: List[str | Path], output_dir: str | Path) -> str:
             vis_image = vis_data[0]
             nir_image = nir_data[0]
 
-            transformation_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
+            if use_transformation_matrix:
+                try:
+                    t_matrix_file = Path(_path_sim_tans_matrix) / trans_matrix_filename
+                    with fits.open(t_matrix_file) as t_matrix_hdu:
+                        matrix = np.array(t_matrix_hdu[0].data).astype(np.float64)
+                    transformation_matrix = matrix
+                except Exception as e:
+                    print(f'[WARNING] Transformation matrix could not be read. Calculating it..')
+                    transformation_matrix = utilities.estimate_matrix(vis_image, nir_image)
+            else:
+                transformation_matrix = utilities.estimate_matrix(vis_image, nir_image) # Alignment transformation matrix
+
+            if save_transformation_matrix:
+                try:
+                    matrix_hdu = fits.PrimaryHDU(transformation_matrix)
+                    save_path = Path(_path_sim_tans_matrix) / f'{OSERV_ID}.fits'
+                    matrix_hdu_list = fits.HDUList(matrix_hdu)
+                    matrix_hdu_list.writeto(save_path, overwrite=True)
+                    print(f'Transformation matrix saved to: {save_path}')
+                except Exception as e:
+                    print(f'[WARNING] Trasnformation matrix could not be saved: {e}')
+
             for frame in vis_data:
                 # Convert to little-endian float32 for OpenCV
                 little_endian = np.ascontiguousarray(frame.astype('<f4'))

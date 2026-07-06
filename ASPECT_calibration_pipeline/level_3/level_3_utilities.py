@@ -149,34 +149,53 @@ def overlay_images(image1, image2, mode='red-green', title='Image Overlay'):
 
     return(rgb)
 
-def asteroid_mask_two(image: np.ndarray):
+def asteroid_mask_two(image: np.ndarray, visualise: bool = True):
 
-    image= cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    g = cv2.GaussianBlur(image, (0.0), 1.0)
+    original = image.copy()
+    img = np.asarray(image)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (101,101))
-    bg = cv2.morphologyEx(g, cv2.MORPH_OPEN, kernel)
-    nrm = cv2.subtract(g, bg)
+    img = img.astype(np.float32, copy=False)
+    img_norm = normalize_to_8bit(img)
 
-    _, th = cv2.threshold(nrm, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    blurred = cv2.GaussianBlur(img_norm, (5,5), 0)
 
-    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5)))
-    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9)))
-    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15,15)))
-    th = cv2.morphologyEx(th, cv2.MORPH_DILATE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3)))
-    
+    _, th = cv2.threshold(
+        blurred, 0, 255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
 
-    fig, axs = plt.subplots(1, 3, figsize=(20, 4))
-    axs[0].imshow(image, cmap='gray')
-    axs[0].set_title("Original (float32)")
-    axs[1].imshow(g, cmap='gray')
-    axs[1].set_title("Guassian)")
-    axs[2].imshow(th, cmap='gray')
-    axs[2].set_title("th")
-    for ax in axs:
-        ax.axis('off')
-    plt.tight_layout()
-    plt.show()
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15,17)))
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7)))
+    th = cv2.morphologyEx(th, cv2.MORPH_ERODE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15,15)))
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7)))
+
+    if visualise:
+
+        fig, axs = plt.subplots(1, 2, figsize=(20, 4))
+        axs[0].imshow(img_norm, cmap='gray')
+        axs[0].set_title("Original (normalised)")
+        axs[1].imshow(th, cmap='gray')
+        axs[1].set_title("Otsu threshold")
+        for ax in axs:
+            ax.axis('off')
+        plt.tight_layout()
+        plt.show()
+
+        legend_elements = [
+            Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
+            Patch(facecolor='red', edgecolor='black', label='Only in original'),
+            Patch(facecolor='green', edgecolor='black', label='mask')
+        ]
+
+        overlay = overlay_images(original, th)
+        plt.figure()
+        plt.suptitle('Vis and Nir frame overlay', fontsize=16)
+        plt.imshow(overlay)
+        plt.axis('off')      
+        plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+        plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+        plt.show()
+    return th
 
 def asteroid_mask(image: np.ndarray, erode: int = 2, visualise: bool = False) -> np.ndarray:
     """
@@ -252,7 +271,8 @@ def extract_asteroid(image_cube: np.ndarray, mask_index: int = 0, visualise: boo
         List[Tuple[coords, spectra]]: coords are the coordinates of which the spectras are extracted. Coords are a list of 2 e.g. [y, x]
     """
     image = image_cube[mask_index]
-    mask = asteroid_mask(image, erode=2, visualise=visualise)
+    # mask = asteroid_mask(image, erode=2, visualise=visualise)
+    mask = asteroid_mask_two(image, visualise=visualise)
 
     #Store the coordinates of the image where mask has value of non 0
     coords = np.argwhere(mask != 0)
@@ -287,23 +307,16 @@ def remove_index_from_header(header: Header, index: int) -> Header:
             total_frames += task_number
             frames_per_channel[f'AS{id}'] = task_number
         
-        print(f'total num of frames: {total_frames}')
-        print(frames_per_channel)
         if index > total_frames:
             raise ValueError(f'inndex must be smaller or equal to number of frames {index} <= {total_frames}')
 
         channel_of_interest, local_index = find_channel_and_local_index(index, channel_ids=channel_ids, frame_counts=frames_per_channel)
         print(f'frame to be removed: channel {channel_of_interest}, index {local_index}')
         num = f'{local_index:03d}'
-        print(f'frame_num: {num}')
         val = header[f'AS{channel_of_interest}_TASK_NUMBER']
         header[f'AS{channel_of_interest}_TASK_NUMBER'] = str(int(val)-1)
         frames = header.get(f'AS{channel_of_interest}_FRAMES').split(',')
-        print(f'channel {channel_of_interest} frames:')
-        print(frames)
         frames.remove(num)
-        print(f'new frames:')
-        print(frames)
         header[f'AS{channel_of_interest}_FRAMES'] = ','.join(frames)
         del header[f'AS{channel_of_interest}_TASK_{num}']
         del header[f'AS{channel_of_interest}_EXP_{num}']

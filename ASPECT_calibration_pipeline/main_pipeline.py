@@ -1,4 +1,4 @@
-from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument
+from config import input_directory, output_directory, OSERV_ID, differential, pipeline, instrument, data_filtering
 import levels_012.main_calibration as main_calibration
 import levels_012.modules.utilities as level_012_utilities
 import level_3.main_level_3 as main_level_3
@@ -34,7 +34,6 @@ def main_pipeline():
 
     # Verify the existance of directory paths and convert them into Path objects
     input_dir = utilities.verify_directory_path(input_dir)
-    output_dir = utilities.verify_directory_path(output_dir)
 
     if '1' in pipeline_steps:
         acq_dir = utilities.verify_acquisition_directory(input_dir)
@@ -57,15 +56,21 @@ def main_pipeline():
     
     if '2' in pipeline_steps:
         print(f'Executing pipeline level 2')
+        output_dir = utilities.verify_directory_path(output_dir)
         level_2_output = main_calibration.pipeline_level_02(input_dir=level_2_input, output_dir=output_dir, instrument=instru)
         level_3_input = level_2_output
     else: 
         level_3_input = next(level_2_input.glob("*_2B.fits"), None)
-    
+
     if '3' in pipeline_steps:
         print(f'Executing pipeline level 3')
-        if level_3_input is not None and Path(level_3_input).is_file():
-            level_3_output = main_level_3.level3(fits_file=level_3_input, output_dir=output_dir)
+        output_dir = utilities.verify_directory_path(output_dir)
+        already_filtered = next(level_2_input.glob("*_3A.fits"), None)
+        if data_filtering and already_filtered is not None and Path(already_filtered).is_file():
+            print(f'A denoised file already exists. Using file: {already_filtered}')
+            level_3_output = main_level_3.level3(fits_file=already_filtered, output_dir=output_dir, data_filtering=False)
+        elif level_3_input is not None and Path(level_3_input).is_file():
+            level_3_output = main_level_3.level3(fits_file=level_3_input, output_dir=output_dir, data_filtering=data_filtering)
         else:
             raise FileNotFoundError(f"Level 3 expects a FITS file with '_2B.fits' ending, but got: {level_3_input}")
 

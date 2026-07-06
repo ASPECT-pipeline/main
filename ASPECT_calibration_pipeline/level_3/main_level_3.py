@@ -8,13 +8,13 @@ from level_3.modules.NN_evaluate import evaluate
 from level_3.test_utilities import get_reflectances, plot_4_spectra, plot_spectra
 from level_3.mgm import fit, plot
 from level_3.test_utilities import show_mgm_figures, visualise_composition
-from level_3.modules.BAR_BC_method import calc_band_parameters
+from level_3.modules.BAR_BC_method import calc_spect_params
 from level_3.modules.NN_config_taxonomy import classes
 from tqdm import tqdm
 import time
 import matplotlib
 import matplotlib.pyplot as plt
-from config import output_directory, instrument, models, initGuess, data_filtering, z_factor, nir_overlap, z_thresh, save_filtered
+from config import output_directory, instrument, models, initGuess, z_factor, nir_overlap, z_thresh, save_filtered
 matplotlib.use('MacOSX')
 
 import os
@@ -45,7 +45,7 @@ Parameters:
 
 """
 
-def level3( fits_file:str, output_dir:str):
+def level3( fits_file:str, output_dir:str, data_filtering: bool = True):
 
     """
     Execute the steps 3A, 3B, 3C. Opens the FITS file containing the combined data product. Performs data filtering (if applied) and desired analysis algoritms defined in models parameter.
@@ -146,19 +146,18 @@ def level3( fits_file:str, output_dir:str):
 
     else:
         # Only select the range remove the nir1-nir2 ovelap
-        for i, spectra in enumerate(spectras):
-            #3A
-            selected_wl = np.array(list(dict.fromkeys(selected_wl)))
-            denoised = np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len)
-            denoised_spectras.append(denoised)
+        selected_wl = np.array(list(dict.fromkeys(selected_wl)))
+        if nir1_len + nir2_len == 26: # Remove the overlapping wl 
+            for i, spectra in enumerate(spectras):
+                #3A
+                denoised = np.delete(spectra[start_idx:end_idx], first_nir1_idx + nir1_len)
+        denoised_spectras = spectras
 
     denoised_spectras = np.array(denoised_spectras)
 
     #Metadata
     stem = fits_file.stem
     suffix = fits_file.suffix
-    calibration_lvl = '3C'
-    primary_header['PROCLEVL'] = calibration_lvl
 
     if save_filtered:
         print(f'Saving denoised spectra')
@@ -171,41 +170,62 @@ def level3( fits_file:str, output_dir:str):
         for i, (y, x) in enumerate(coords):
             new_cube[:, y, x] = denoised_spectras[i]
 
-        denoised_file_name = stem[:25] + calibration_lvl + '_Denoised' + suffix
+        calibration_lvl = '3A'
+        primary_header['PROCLEVL'] = calibration_lvl
+        denoised_file_name = stem[:25] + calibration_lvl + suffix
         denoised_header['FILENAME'] = denoised_file_name
         denoised_hdu = fits.PrimaryHDU(data=new_cube, header=denoised_header)
         fits_file = os.path.join(output_dir, denoised_file_name)
         denoised_hdu.writeto(fits_file, overwrite=True)
         print(f'New fits file created: {fits_file}')
 
-    denoised_spectras[denoised_spectras == 0] = 1e-5# replace 0 values
-
-    print(f'Normalising spectras at {norm_wl}nm')
-    spectra_normalized = normalise_spectra(
-        data=denoised_spectras,
-        wavelength=selected_wl,
-        wvl_norm_nm=norm_wl
-    )
+    # denoised_spectras[denoised_spectras == 0] = 1e-5# replace 0 values
 
     model = [str(m).upper() for m in models.split('-')] # Analysis to be executed
 
+    if 'P' in model:
+        print('Calculating spectral parameters')
+        calibration_lvl = '3B'
+        all_results = calc_spect_params(selected_wl, denoised_spectras, visualise=False)
+        SLOPES, BIC, BID, BIW, BIAR = all_results
+
+        template_frame = np.full_like(black_frame, np.nan)
+        layer_count = len(all_results)
+        cube = np.stack([template_frame] * layer_count, axis=0)
+
+        for n, result in enumerate(all_results):
+            for i, val in enumerate(result):
+                coordinate = coords[i]
+                cube[n, coordinate[0], coordinate[1]] = val
+        
+        print('Writing results into files')
+        primary_header['ANALYSIS'] = ('Spectral parameters', 'Type of analysis')
+        primary_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
+        p_file_name = stem[:25] + calibration_lvl + suffix
+        p_header = primary_header.copy()
+        p_header['FILENAME'] = p_file_name
+        p_header['LAYER_00'] = ('SLOPE', 'Spectral slope')
+        p_header['LAYER_01'] = ('BIC', 'First band center')
+        p_header['LAYER_02'] = ('BID', 'First band depth')
+        p_header['LAYER_03'] = ('BIW', 'First band width')
+        p_header['LAYER_04'] = ('BIAR', 'First band area')
+        p_hdu = fits.PrimaryHDU(data=cube, header=p_header)
+        fits_file = os.path.join(output_dir, p_file_name)
+        p_hdu.writeto(fits_file, overwrite=True)
+        print(f'New fits file created: {fits_file}')
+    
+    calibration_lvl = '3C'
+    primary_header['PROCLEVL'] = calibration_lvl
+
     if 'M' in model:
         print('MGM analysis')
-
+        print(denoised_spectras.shape)
+        print(len(denoised_spectras))
         mgm_results = []
-        for i, spectra in enumerate(denoised_spectras):
+        for i, spectra in enumerate(tqdm(denoised_spectras[:5000])):
             combined = np.column_stack((selected_wl, spectra))
             result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
             mgm_results.append(result)
-            #     print(i)
-            #     result = fit(combined, initGuess, contLinDeg=0, eps=0.01)
-            #     mgm_results.append(result)
-            #     figs = plot(combined, result)
-            #     show_mgm_figures(figs)
-        
-        # combined = np.column_stack((selected_wl, denoised_spectras[50000]))
-        # figs = plot(combined,mgm_results[0])
-        # show_mgm_figures(figs)
 
         _, _band_parameters, _continuum, _p_values = mgm_results[0]
         len_of_bp = len(_band_parameters)
@@ -230,7 +250,7 @@ def level3( fits_file:str, output_dir:str):
             continuum_p_values[i] = cont_pvals
 
         cols = fits.ColDefs([
-            fits.Column(name='COORDS', format='2J', array=coordinates),
+            fits.Column(name='COORDS', format='2J', array=coordinates[:5000]),
             fits.Column(name='RMS', format=f'E', array=rms_array),
             fits.Column(name='BANDPRM', format='6E', dim='(3,2)', array=band_parameters),
             fits.Column(name='CONTPRM', format=f'{len_of_cont}E', array=continuum_parameters),
@@ -251,42 +271,14 @@ def level3( fits_file:str, output_dir:str):
         fits_file = os.path.join(output_dir, mgm_name)
         new_hdul.writeto(fits_file, overwrite=True)
         print(f'New fits file created: {fits_file}')
-    
-    
-    if 'P' in model:
-        print('Calculating spectral parameters')
-        spect = [denoised_spectras[:3]]
-        all_results = calc_band_parameters(selected_wl, spect, visualise=True)
-        return
-        SLOPES, BIC, BID, BIW, BIAR = all_results
 
-        black = black_frame.copy()
-        cube = np.stack([black] * len(all_results), axis=0)
-
-        for i, result in enumerate(all_results):
-            for j, res in enumerate(result):
-                r = res[j]
-                coordinate = coords[j]
-                cube[coordinate[0], coordinate[1]] = r
-        
-        print('Writing results into files')
-        primary_header['ANALYSIS'] = ('Spectral parameters', 'Type of analysis')
-        primary_header.insert('ANALYSIS', ('COMMENT', ' - - - - - - - - Data Analysis - - - - - - - -'), after=False)
-        p_file_name = stem[:25] + calibration_lvl + '_SPECTRA_PARM' + suffix
-        p_header = primary_header.copy()
-        p_header['FILENAME'] = p_file_name
-        p_header['LAYER_00'] = ('SLOPE', 'Spectral slope')
-        p_header['LAYER_01'] = ('BIC', 'First band center')
-        p_header['LAYER_02'] = ('BID', 'First band depth')
-        p_header['LAYER_03'] = ('BIW', 'First band width')
-        p_header['LAYER_04'] = ('BIAR', 'First band area')
-        p_hdu = fits.PrimaryHDU(data=cube, header=p_header)
-        fits_file = os.path.join(output_dir, p_file_name)
-        p_hdu.writeto(fits_file, overwrite=True)
-        print(f'New fits file created: {fits_file}')
-
-
-
+    if 'C' in model or 'T' in model:
+        print(f'Normalising spectras at {norm_wl}nm')
+        spectra_normalized = normalise_spectra(
+            data=denoised_spectras,
+            wavelength=selected_wl,
+            wvl_norm_nm=norm_wl
+        )
 
     if 'C' in model:
         

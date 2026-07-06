@@ -246,7 +246,6 @@ def get_header_template() -> Dict[str, Tuple[str, str]]:
         'CAM_DEC'   : ('UNK', 'Camera axis DEC [deg]'),
         'CAM_NAZ'   : ('UNK', 'Camera axis north azimuth [deg]'),
         'SOL_ELNG'  : ('UNK', 'Solar elongation'),
-        'CALPHASE'  : ('', 'Calibration phase'),
         'HIERARCH ASP_ACQDATE'      : ('Invalid', 'Telemetry ACQ_DATE'),
         'HIERARCH ASP_CHANNELS'     : ('UNK', 'Channels in this file'),
         'HIERARCH AS0_CCDTEMP'      : ('UNK', 'Vis detector temperature [DN]'),
@@ -532,15 +531,20 @@ def collect_instrument_specific_metadata(config_path: Path, channel: str, frame_
         print(f'[WARNING] Failed to parse task file values: {e}')
         sp_expos_values = ['UNK, UNK, UNK, UNK'] * len(frame_numbers)
         order = 'UNK'
-    
-    meta_data[f'AS{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
+    if missphas == 'SIMULATED':
+        meta_data[f'AS{channel_id}_ORDER'] = ('N/A', 'LOW / HIGH')
+    else:
+        meta_data[f'AS{channel_id}_ORDER'] = (str(order), 'LOW / HIGH')
     meta_data[f'AS{channel_id}_TASK_NUMBER'] = (str(task_number), f'Number of {channel} imiging tasks')
     if task_number != len(frame_numbers):
         print(f'[WARNING] The number of tasks is different to number of frames')
     for i, task in enumerate(sp_expos_values):
         n = taskValues[i][0]
         num = f'{n:03d}' # e.g. 1 -> 001
-        meta_data[f'AS{channel_id}_TASK_{num}'] = (' '.join(str(x) for x in task), 'SP1 SP2 SP3 ExpDn')
+        if missphas == 'SIMULATED':
+            meta_data[f'AS{channel_id}_TASK_{num}'] = ('N/A', 'SP1 SP2 SP3 ExpDn')
+        else:
+            meta_data[f'AS{channel_id}_TASK_{num}'] = (' '.join(str(x) for x in task), 'SP1 SP2 SP3 ExpDn')
 
     # if missphas == 'SIMULATED':
     #     meta_data[f'{channel_id}_ORDER'] = ('N/A', 'LOW / HIGH')
@@ -731,7 +735,7 @@ def exposure_conversion(values: float, channel: str, task_number: int) -> float:
     
     return ex_dict
 
-def wavelength_conversion(channel: str, order: str, sp_values: List[float], task_number: int, simulated: bool) -> Dict[str, Tuple[str, str]]:
+def wavelength_conversion(channel: str, order: str, sp_values: List[float] | None, task_number: int, simulated: bool) -> Dict[str, Tuple[str, str]]:
     """
     Calculates the wavelengths from setpoint values
 
@@ -765,6 +769,11 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float], task
         #     unk_dict[f'{channel_id}_WL{frames[i]}'] = ('UNK', f'task setpoint: {sp_values[i]}')
         # return unk_dict
     
+        """
+        ADD CORRECTION FACTORS 
+
+        Read correction factors from config.py and if exists add them to the wavelengths e.g. 0.1244 * (sp_values[i] - Correction value) - 1498.2
+        """
         match (channel, order):
             # The correct values for the corretion needed
             case 'Vis', 'HIGH':
@@ -791,7 +800,7 @@ def wavelength_conversion(channel: str, order: str, sp_values: List[float], task
                 for i in range(0, len(sp_values)):
                     wavelength = round(0.2366 * sp_values[i] - 2925.8)
                     wavelengths.append(wavelength)
-            case 'SWIR', '':
+            case 'SWIR', 'N/A':
                 for i in range(0, len(sp_values)):
                     wavelength = round(0.2869 * sp_values[i] - 3847.2)
                     wavelengths.append(wavelength)
@@ -1009,7 +1018,7 @@ def filter_by_orientation(matches, keypoints1, keypoints2, threshold=10) -> List
     return filtered_matches
 
 def filter_by_distance(matches: List[List[cv2.DMatch]]) -> List[cv2.DMatch]:
-    ratio_thresh = 0.90  # Adjustable
+    ratio_thresh = 0.85  # Adjustable
     good_matches = []
     for m in matches:
         if len(m) == 2:
@@ -1019,7 +1028,7 @@ def filter_by_distance(matches: List[List[cv2.DMatch]]) -> List[cv2.DMatch]:
         elif len(m) == 1:
             match1 = m[0]
             good_matches.append(match1)
-    distance_thresh = 65  # Adjustable
+    distance_thresh = 60  # Adjustable
     good_matches = [m for m in good_matches if m.distance < distance_thresh]
     return good_matches
 

@@ -7,9 +7,13 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from astropy.io import fits 
 import cv2
+from typing import Union
+import imageio.v3 as iio
 
 # level 2 imports
-from levels_012.modules.utilities import normalize_to_8bit, laplacian, filter_by_distance, overlay_images
+from levels_012.modules.utilities import normalize_to_8bit, laplacian, filter_by_distance, overlay_images, estimate_matrix
+from levels_012.modules.badPixels import replace_bad_pixels
+from levels_012.modules.radiometric import radiometric_calibration
 
 # Level 3 imports
 from level_3.modules.utilities_spectra import (normalise_spectra, collect_all_models, load_xlsx)
@@ -17,9 +21,13 @@ from level_3.modules.NN_evaluate import evaluate
 from level_3.modules.NN_data import load_transmission
 from level_3.modules.collect_data import resave_ASPECT_transmission
 from level_3.modules.NN_config_taxonomy import classes
-from level_3.level_3_utilities import spectra_filtering, validate_wl, get_wavelengths, extract_asteroid, remove_index_from_header, asteroid_mask
-from level_3.modules.BAR_BC_method import calc_band_parameters
+from level_3.level_3_utilities import spectra_filtering, validate_wl, get_wavelengths, extract_asteroid, nir2_offset_correction, remove_outliers, denoise_spectra, remove_index_from_header, asteroid_mask
+from level_3.modules.BAR_BC_method import calc_BAR_BC, calc_spect_params
 from config import instrument
+
+
+# Level 4 imports
+from pds4_labels.generate_pds4_label import generate_pds4_label
 
 unfiltered_vis_nir1_nir2_wl = [675., 690., 705., 720., 735., 750., 765., 780., 795., 810., 825., 875., 904.20738725, 933.40538359, 962.41926832, 991.59052354, 1020.78790557, 1050., 1079.21475545, 1108.41876944, 1137.40366510, 1166.57594038, 1195.77918273, 1225., 1225., 1254.22427930, 1283.43620514, 1312.38308545, 1341.55680112, 1370.76774434, 1400., 1429.23686478, 1458.45946423, 1487.35519223, 1516.53104350, 1545.75237632, 1575.]
 filtered_vis_nir1_nir2_wl = [675., 690., 705., 720., 735., 750., 765., 780., 795., 810., 825., 875., 904.20738725, 933.40538359, 962.41926832, 991.59052354, 1020.78790557, 1050., 1079.21475545, 1108.41876944, 1137.40366510, 1166.57594038, 1195.77918273, 1225., 1254.22427930, 1283.43620514, 1312.38308545, 1341.55680112, 1370.76774434, 1400., 1429.23686478, 1458.45946423, 1487.35519223, 1516.53104350, 1545.75237632, 1575.]
@@ -33,6 +41,73 @@ def get_aspect_wl():
     }
     return wl_dict
 
+def read_bin_file(filePath, channel):
+    if channel == "Vis": 
+        height = 1024
+        width = 1024
+    elif channel == "NIR":
+        height = 518
+        width = 648
+    elif channel == 'SIMULATED':
+        height = 512
+        width = 640
+    else:
+        with open(filePath, 'rb') as file:
+            binaryData = file.read()
+            print(f"Read {len(binaryData)} bytes")
+            imageArray = np.frombuffer(binaryData, dtype='>u2')
+            print(imageArray)
+            return
+    
+
+    with open(filePath, 'rb') as file:
+        binaryData = file.read()
+        print(f"Read {len(binaryData)} bytes")
+        imageArray = np.frombuffer(binaryData, dtype='<u2')
+        print(f"Min, mean, and max values: {np.min(imageArray)}, {np.mean(imageArray)}, {np.max(imageArray)}")
+        imageArray = imageArray.reshape(height, width)
+
+        # png_output = _results / 'nir1_10km.png'
+        # iio.imwrite(png_output, imageArray)
+
+        plt.figure(figsize=(8,5))
+        plt.imshow(imageArray, cmap='gray')
+        plt.title(f'channel {channel} little_endian')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.show()
+
+
+def try_bad_pixels(fits_path):
+
+    with fits.open(fits_path) as hdul:
+        hdr = hdul[0].header.copy()
+    
+    frame = np.arange(100, dtype=np.float64).reshape(10, 10)  # 0..99, 10 per row
+    cube = np.stack([frame.copy() for _ in range(1)], axis=0)  # (n_frames, 10, 10)
+
+    # Make a new primary HDU with copied header and dummy data
+    hdu = fits.PrimaryHDU(data=cube, header=hdr)
+    result = replace_bad_pixels(fits.HDUList([hdu]))
+
+    print(result[0].data[0])
+
+def try_radiometric(fits_path):
+    with fits.open(fits_path) as hdul:
+        hdr = hdul[0].header.copy()
+    
+        result = radiometric_calibration(hdul)
+
+def replace_header_value_with_custom(fits_path: Union[str, os.PathLike], key_to_replace: str, value, comment: Union[None, str]) -> None:
+    with fits.open(fits_path, mode='update') as hdul:
+        for hdu in hdul:
+            header = hdu.header
+            if key_to_replace in header:
+                if comment == None:
+                    comment = header.comments[key_to_replace]
+                header[key_to_replace] = (value, comment)
+        hdul.flush()
+
 """
 Plot functions
 """
@@ -45,6 +120,7 @@ def visualise_fits(file, cmap='gray'):
     
     print(repr(header))
     
+    print(f"Dtype       : {data.dtype}")
     n_frames = data.shape[0]
     
     fig, ax = plt.subplots()
@@ -80,17 +156,147 @@ def visualise_fits(file, cmap='gray'):
     print("Use left/right arrow keys or 'a'/'d' to move between frames.")
     plt.show()
 
+def visualise_parameters_fits(file):
+    with fits.open(file) as hdul:
+        data = hdul[0].data
+        header = hdul[0].header
+    
+    print(repr(header))
+    records = []
+    min_coords = []
+    min_values  = []
+    for i, frame in enumerate(data):
+        # Flatten and mask invalid values (0 or NaN)
+        frame = frame.astype(float)
+        mask = (frame != 0) & ~np.isnan(frame)
+        valid = frame[mask]
+
+        if valid.size == 0:
+            # No valid pixels → return NaNs
+            min_coords.append(None)
+            min_values.append(np.nan)
+            rec = {
+                "frame": i,
+                "count": 0,
+                "min": np.nan,
+                "mean": np.nan,
+                "max": np.nan
+            }
+        else:
+            frame_min = valid.min()
+            min_values.append(frame_min)
+
+            # Location of that value in the 2D frame
+            row, col = np.unravel_index(np.nanargmin(frame), frame.shape)
+            min_coords.append((row, col))
+            rec = {
+                "frame": i,
+                "count": valid.size,
+                "min": np.min(valid),
+                "mean": np.mean(valid),
+                "max": np.max(valid)
+            }
+
+        records.append(rec)
+
+        title_map = {
+            0 : 'SLOPE',
+            1 : 'Band Center',
+            2 : 'Band Depth',
+            3 : 'Band Width',
+            4 : 'Band Area'
+        }
+        vmin, vmax = valid.min(), valid.max()
+        disp = np.full_like(frame, np.nan, dtype=float)
+        disp[mask] = frame[mask]
+
+        title = title_map.get(i)
+        plt.figure(figsize=(9, 6))
+        im = plt.imshow(disp, cmap='turbo', vmin=vmin, vmax=vmax, interpolation='nearest')
+        plt.title(title)
+        plt.colorbar(im)
+        plt.tight_layout()
+        plt.show()
+    
+    stats_df = pd.DataFrame(records)  # data.shape == (N, H, W)
+    print(stats_df)
+    print(min_values)
+    print(min_coords) 
+
+def visualise_mgm_fits(file):
+
+    with fits.open(file) as hdul:
+        data = hdul[1].data
+        header = hdul[0].header
+    
+    print(repr(header))
+    print()
+    print("Columns:", data.names)
+
+    # Extract columns
+    coords = np.array(data["COORDS"])      # shape (N, 2)
+    rms = np.array(data["RMS"])            # shape (N,)
+    bandprm = np.array(data["BANDPRM"])    # shape (N, 6) or (N, 3, 2) depending on astropy
+    contprm = np.array(data["CONTPRM"])
+    contpval = np.array(data["CONTPVAL"])
+
+    print("COORDS shape:", coords.shape)
+    print("RMS shape:", rms.shape)
+    print("BANDPRM shape:", bandprm.shape)
+    print("CONTPRM shape:", contprm.shape)
+    print("CONTPVAL shape:", contpval.shape)
+
+
+    idx = 0  # choose which spectrum / pixel to inspect
+    idx = len(bandprm) - 1
+    bp = bandprm[-1]        # shape (2, 3)
+    bp = bp.T                # now shape (3, 2) -> 3 bands × 2 params
+
+    df = pd.DataFrame(
+        bp,
+        index=[f"Band {i}" for i in range(1, 4)],
+        columns=["Param 1", "Param 2"]
+    )
+
+    print(f"\nCOORDS[{idx}]: {coords[idx]}")
+    print(f"RMS[{idx}]: {rms[idx]}")
+    print("BANDPRM for this row:")
+    print(df)
+
+    print(f"\nCONTPRM[{idx}]: {contprm[idx]}")
+    print(f"CONTPVAL[{idx}]: {contpval[idx]}")
+    
 def plot_spectra(spectra: np.ndarray, wl: np.ndarray, y_label: str = 'Reflectance (I/F)', x_label: str = 'Wavelengths (nm)', title: str = 'Spectrum'):
     if not len(spectra) == len(wl):
         raise ValueError(f'Shape missmatch: mean spectra {len(spectra)} , wl {len(wl)}')
     
+    # plt.figure(figsize=(16, 8))
+    # plt.plot(wl, spectra, color='red', linewidth=2)
+    # plt.ylabel(y_label)
+    # plt.xlabel(x_label)
+    # plt.title(title)
+    # plt.tight_layout
+    # plt.show()
     plt.figure(figsize=(16, 8))
-    plt.plot(wl, spectra)
-    plt.ylabel(y_label)
+    plt.plot(wl, spectra, color='red', linewidth=2)
+
+    # Axis labels
     plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    # Remove tick labels (values)
+    plt.xticks([])
+    plt.yticks([])
+
+    # Move y-axis label to the right
+    ax = plt.gca()
+    ax.yaxis.set_label_position("right")
+    ax.yaxis.tick_right()
+
     plt.title(title)
-    plt.tight_layout
+    plt.tight_layout()
     plt.show()
+    
 
 def plot_mean_spectra(spectra: np.ndarray | Path, wl: np.ndarray, y_label: str = 'Reflectance (I/F)', x_label: str = 'Wavelengths (nm)', title: str = 'Mean spectrum'):
 
@@ -107,6 +313,29 @@ def plot_mean_spectra(spectra: np.ndarray | Path, wl: np.ndarray, y_label: str =
         print(f'Plotting mean spectra failed: {e}')
     
     return mean
+
+def plot_spectra_from_fits(file: Path, wl: np.ndarray | None, idx: np.ndarray, y_label: str = 'Reflectance (I/F)', x_label: str = 'Wavelengths (nm)'):
+
+    with fits.open(file) as hdul:
+        data = hdul[0].data
+        header = hdul[0].header
+    
+    combined = extract_asteroid(data, 0, visualise=False)
+    coords, spectra = zip(*combined)
+    coords = np.array(coords) 
+    spectra = np.array(spectra)
+
+
+    print(len(spectra))
+
+    if wl == None:
+        wl = get_wavelengths(header)
+    
+    for i in idx:
+        plot_spectra(spectra[i], wl, title=f'Spectra at index {i}')
+    
+    plot_mean_spectra(spectra, wl)
+
 
 def plot_composition(img: np.ndarray | Path, type: str = 'OL'):
     if not type in ('OL', 'OPX', 'CPX'):
@@ -143,17 +372,125 @@ def plot_composition(img: np.ndarray | Path, type: str = 'OL'):
     plt.axis('off')
     plt.show()
 
-def plot_taxonomiy(img: np.ndarray | Path, type: str = 'S'):
+def plot_all_composition(fits_path: Path):
+
+    with fits.open(fits_path) as hdul:
+        img = hdul[0].data
+    
+
+    # Rest of the background stays black
+    ol_im = img[0].copy()
+    opx_im = img[1].copy()
+    cpx_im = img[2].copy()
+    ol_im[ol_im  == 0] = np.nan
+    opx_im[opx_im  == 0] = np.nan
+    cpx_im[cpx_im  == 0] = np.nan
+
+    ol_mean = round(float(np.nanmean(ol_im)), 2)
+    opx_mean = round(float(np.nanmean(opx_im)), 2)
+    cpx_mean = round(float(np.nanmean(cpx_im)), 2)
+
+    plt.figure(figsize=(16,10))
+    plt.subplot(1, 3, 1)
+    plt.imshow(ol_im, cmap=plt.cm.turbo.reversed().set_bad('black'))
+    plt.title(f'Olivine abundance ({ol_mean})')
+    plt.colorbar()
+    plt.axis('off')
+
+    plt.subplot(1, 3, 2)
+    plt.imshow(opx_im, cmap=plt.cm.turbo.set_bad('black'))
+    plt.title(f'Orthopyroxene abundance ({opx_mean})')
+    plt.colorbar()
+    plt.axis('off')
+
+    plt.subplot(1, 3, 3)
+    plt.imshow(cpx_im, cmap=plt.cm.turbo.set_bad('black'))
+    plt.title(f'Clinopyroxene abundance ({cpx_mean})')
+    plt.colorbar()
+    plt.axis('off')
+    
+    plt.show()
+
+def plot_all_nn_results(composition: Path, taxonomy: Path, title: str = 'Composition and taxonomy results'):
+
+    with fits.open(composition) as c_hdul:
+        c_data = c_hdul[0].data
+        c_hdr = c_hdul[0].header
+    
+    with fits.open(taxonomy) as t_hdul:
+        t_data = t_hdul[0].data
+        t_gdr = t_hdul[0].header
+    
+    ol = c_data[0].copy()
+    ol[ol == 0] = np.nan
+    ol_mean = round(float(np.nanmean(ol)), 2)
+
+    opx = c_data[1].copy()
+    opx[opx == 0] = np.nan
+    opx_mean = round(float(np.nanmean(opx)), 2)
+    
+    cpx = c_data[2].copy()
+    cpx[cpx == 0] = np.nan
+    cpx_mean = round(float(np.nanmean(cpx)), 2)
+
+    s = t_data[6].copy()
+    s[s == 0] = np.nan
+    s_mean = round(float(np.nanmean(s)), 2)
+
+    q = t_data[5].copy()
+    q[q == 0] = np.nan
+    q_mean = round(float(np.nanmean(q)), 2)
+
+    l = t_data[4].copy()
+    l[l == 0] = np.nan
+    l_mean = round(float(np.nanmean(l)), 2)
+
+
+    fig, axs = plt.subplots(2, 3, figsize=(20, 8))
+    ol_img = axs[0, 0].imshow(ol, cmap=plt.cm.turbo.reversed())
+    axs[0, 0].set_title(f"OL ({ol_mean})")
+    fig.colorbar(ol_img, ax=axs[0, 0])
+    opx_img = axs[0, 1].imshow(opx, cmap=plt.cm.turbo)
+    axs[0, 1].set_title(f"OPX ({opx_mean})")
+    fig.colorbar(opx_img, ax=axs[0, 1])
+    cpx_img = axs[0, 2].imshow(cpx, cmap=plt.cm.turbo)
+    axs[0, 2].set_title(f"CPX ({cpx_mean})")
+    fig.colorbar(cpx_img, ax=axs[0, 2])
+
+    s_img = axs[1, 0].imshow(s, cmap=plt.cm.turbo)
+    axs[1, 0].set_title(f"S+ ({s_mean})")
+    fig.colorbar(s_img, ax=axs[1, 0])
+    q_img = axs[1, 1].imshow(q, cmap=plt.cm.turbo.reversed())
+    axs[1, 1].set_title(f"Q ({q_mean})")
+    fig.colorbar(q_img, ax=axs[1, 1])
+    l_img = axs[1, 2].imshow(l, cmap=plt.cm.turbo.reversed())
+    axs[1, 2].set_title(f"L ({l_mean})")
+    fig.colorbar(l_img, ax=axs[1, 2])
+    for ax in axs.ravel():
+        ax.axis('off')
+    fig.suptitle(title, fontsize=18)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_taxonomy(img: np.ndarray | Path, type: str = 'S'):
     if not type in ('S', 'Q', 'L'):
         raise ValueError('Composition type must be one of (S, Q, L)')
     
     if isinstance(img, Path):
         with fits.open(img) as hdul:
             img = hdul[0].data
+            print(repr(hdul[0].header))
     
         
     # Rest of the background stays black
-    data = img[4].copy()
+    match type:
+        case 'S': idx = 6
+        case 'Q': idx = 5
+        case 'L': idx = 4
+
+
+    data = img[idx].copy()
     data[data == 0] = np.nan
     mean = round(float(np.nanmean(data)), 2)
 
@@ -395,13 +732,94 @@ def spectral_parameters(img: np.ndarray | Path, wl):
     else:
         all_wl = filtered_vis_nir1_nir2_wl
     coords = np.argwhere(img[0] != 0)
+    # coords = [(323, 451), (295, 499), (398, 228), (297, 491), (391, 213)]
     #Extract the corresponding spectra for coords
     spectra = np.array([img[:, y, x] for y, x in coords])
     print(len(spectra))
+    # all_results = calc_band_parameters(all_wl, spect, visualise=True)
+    # all_results = calc_BAR_BC(all_wl, spect)
+    all_results = calc_spect_params(all_wl, spectra[50351], visualise=True)
+    print(f'slope: {np.sum(~np.isnan(all_results[0]))}')
+    print(f'BIC: {np.sum(~np.isnan(all_results[1]))}')
+    print(f'BID: {np.sum(~np.isnan(all_results[2]))}')
+    print(f'DIW: {np.sum(~np.isnan(all_results[3]))}')
+    print(f'BIAR: {np.sum(~np.isnan(all_results[4]))}')
 
-    spect = spectra[45999]
-    all_results = calc_band_parameters(all_wl, spect, visualise=True)
+def visualise_spectra_filtering(fits_path):
+    with fits.open(fits_path) as hdul:
+        data = hdul[0].data
+        primary_header = hdul[0].header
+    
+    wavelengths = get_wavelengths(primary_header)
+    
+    all_wl = np.sort(np.concatenate([wavelengths[ch] for ch in wavelengths.keys()]))
 
+    print(all_wl)
+    start_idx = 0
+    end_idx = int(np.where(all_wl == wavelengths['AS2'][-1])[0]) + 1
+    selected_wl = all_wl[start_idx:end_idx]
+    first_nir1_idx = int(np.where(selected_wl == wavelengths['AS1'][0])[0])
+    nir1_len = len(wavelengths['AS1'])
+    nir2_len = len(wavelengths['AS2'])
+
+    combined = extract_asteroid(data, mask_index=0)
+    coords, spectras = zip(*combined)
+    coords = np.array(coords) 
+    spectras = np.array(spectras)
+    nir_overlap = 1225
+
+    three_coords = []
+    three_spectras = []
+    print(f'length of spectras: {len(spectras)}')
+    index = [50351]
+    for ind in index:
+        three_coords.append(coords[ind])
+        three_spectras.append(spectras[ind])
+
+    print(f'Applying data filtering')
+    denoised_spectras = []
+    for i, spectra in enumerate(three_spectras):
+
+        nir1_spectra = spectra[first_nir1_idx : first_nir1_idx + nir1_len]
+        nir2_spectra = spectra[first_nir1_idx + nir1_len : first_nir1_idx + nir1_len + nir2_len]
+        nir2_offset_correction_result = nir2_offset_correction(
+            nir1_wavelengths=wavelengths['AS1'],
+            nir1_spectra=nir1_spectra,
+            nir2_wavelengths=wavelengths['AS2'],
+            nir2_spectra=nir2_spectra,
+            overlap_wavelength=nir_overlap
+        )
+
+        connected = np.concatenate(
+            [spectra[start_idx:first_nir1_idx + nir1_len], nir2_offset_correction_result[0][1:]] +
+            ([spectra[first_nir1_idx + nir1_len + nir2_len:end_idx]])
+        )
+
+        selected_wl = np.array(list(dict.fromkeys(selected_wl)))
+
+        # Remove outliers
+        cleaned = remove_outliers(connected, selected_wl, z_thresh=1)[0]
+
+        # Denoise spectra 
+        denoised = denoise_spectra(cleaned, selected_wl, z_factor=1.2).flatten()
+
+        denoised_spectras.append(denoised)
+        matplotlib.use('MacOSX')
+        plt.figure()
+        plt.plot(all_wl, spectra, color='black', label='Original')
+        plt.plot(selected_wl, connected, color='red', label='Segments connected')
+        plt.plot(selected_wl, cleaned, color='green', label='Outliers removed')
+        plt.plot(selected_wl, denoised, color='blue', linewidth=2.5, label='Denoised')
+        plt.xlabel('Wavelength (nm)', fontsize=12)
+        plt.ylabel('Reflectance', fontsize=12)
+
+        plt.legend(
+            loc='best',
+            frameon=True,
+            fontsize=15
+        )
+        plt.tight_layout()
+        plt.show()
 """
 Channel alignment
 """
@@ -425,24 +843,26 @@ def visualise_alignment(as0: str, as1:str):
     plt.figure(figsize=(10, 5))
     plt.subplot(1, 2, 1)
     plt.imshow(vis, cmap='gray')
-    plt.title(f'VIS Frame_0')
+    plt.title(f'Vis 675nm')
     plt.axis('off')
 
     plt.subplot(1, 2, 2)
     plt.imshow(nir, cmap='gray')
-    plt.title(f'NIR1 Frame_0')
+    plt.title(f'NIR1 875nm')
     plt.axis('off')
     plt.suptitle('Comparison of VIS and NIR Channels') 
     plt.show()
 
     # Step 1: Edge detection
-    edges1 = laplacian(vis)
-    edges2 = laplacian(nir)
+    # edges1 = laplacian(vis)
+    # edges2 = laplacian(nir)
+    edges1 = vis_f
+    edges2 = nir_f
 
     plt.figure(figsize=(10, 5))
     plt.subplot(1, 2, 1)
     plt.imshow(edges1, cmap='gray')
-    plt.title(f'VIS')
+    plt.title(f'Vis')
     plt.axis('off')
 
     plt.subplot(1, 2, 2)
@@ -455,22 +875,22 @@ def visualise_alignment(as0: str, as1:str):
     # Step 2: Feature detection using ORB
     orb = cv2.ORB_create(nfeatures=5000) # create ORB feature detector
     # keypoints and binary descriptions
-    keypoints1, descriptors1 = orb.detectAndCompute(edges1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(edges2, None)
+    keypoints1, descriptors1 = orb.detectAndCompute(vis_f, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(nir_f, None)
     # Draw keypoints on each image
-    image1_with_kp = cv2.drawKeypoints(vis_f, keypoints1, None, color=(0, 255, 0), flags=0)
-    image2_with_kp = cv2.drawKeypoints(nir_f, keypoints2, None, color=(0, 255, 0), flags=0)
+    image1_with_kp = cv2.drawKeypoints(edges1, keypoints1, None, color=(0, 255, 0), flags=0)
+    image2_with_kp = cv2.drawKeypoints(edges2, keypoints2, None, color=(0, 255, 0), flags=0)
 
     # Display using matplotlib
     plt.figure(figsize=(12, 6))
     plt.subplot(1, 2, 1)
     plt.imshow(image1_with_kp, cmap='gray')
-    plt.title(f'ORB Keypoints ({len(keypoints1)}) - VIS')
+    plt.title(f'ORB Keypoints ({len(keypoints1)}) - Vis')
     plt.axis('off')
 
     plt.subplot(1, 2, 2)
     plt.imshow(image2_with_kp, cmap='gray')
-    plt.title(f'ORB Keypoints ({len(keypoints2)}) - NIR')
+    plt.title(f'ORB Keypoints ({len(keypoints2)}) - NIR1')
     plt.axis('off')
     plt.suptitle('ORB Feature Keypoints')
     plt.show()
@@ -486,8 +906,7 @@ def visualise_alignment(as0: str, as1:str):
     print(f'FLANN matches before filtering: {len(flann_matches)}')
     matches = filter_by_distance(flann_matches)
     print(f'FLANN matches after filtering: {len(matches)}')
-    N = 1000
-    matches_to_draw = matches[:N]
+    matches_to_draw = matches
     # Draw matches on combined image
     matched_img = cv2.drawMatches(
         vis_f, keypoints1,
@@ -499,7 +918,7 @@ def visualise_alignment(as0: str, as1:str):
     # Show the match visualization
     plt.figure(figsize=(15, 8))
     plt.imshow(matched_img)
-    plt.title(f'{N} FLANN feature matches')
+    plt.title(f'FLANN feature matches ({len(matches)})')
     plt.axis('off')
     plt.show()
 
@@ -521,34 +940,66 @@ def visualise_alignment(as0: str, as1:str):
 
     # Convert back to big_endian float32
     vis_aligned = np.ascontiguousarray(warpped.astype('>f4'))
-    matplotlib.use('MacOSX')
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
-    plt.imshow(vis_aligned, cmap='gray')
-    plt.title(f'Aligned VIS')
-    plt.axis('off')
+    # matplotlib.use('MacOSX')
+    # plt.figure(figsize=(12, 6))
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(vis_aligned, cmap='gray')
+    # plt.title(f'Aligned VIS')
+    # plt.axis('off')
 
-    plt.subplot(1, 2, 2)
-    plt.imshow(nir, cmap='gray')
-    plt.title(f' NIR')
-    plt.axis('off')
-    plt.suptitle('Images after Alignment')
-    plt.show()
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(nir, cmap='gray')
+    # plt.title(f' NIR')
+    # plt.axis('off')
+    # plt.suptitle('Images after Alignment')
+    # plt.show()
 
     print('Visualising the results of alignment')
     legend_elements = [
         Patch(facecolor='yellow', edgecolor='black', label='Aligned regions'),
-        Patch(facecolor='red', edgecolor='black', label='Only in vis image'),
-        Patch(facecolor='green', edgecolor='black', label='Only in nir image')
+        Patch(facecolor='red', edgecolor='black', label='Vis'),
+        Patch(facecolor='green', edgecolor='black', label='NIR1')
     ]
     overlay = overlay_images(vis_aligned, nir)
-    plt.figure()
-    plt.suptitle('Vis and Nir frame overlay', fontsize=16)
-    plt.imshow(overlay)
-    plt.axis('off')      
-    plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
-    plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+    # plt.figure()
+    # plt.suptitle('Vis and Nir frame overlay', fontsize=16)
+    # plt.imshow(overlay)
+    # plt.axis('off')      
+    # plt.figlegend(handles=legend_elements, loc='lower center', ncol=3, frameon=True, fontsize='medium')
+    # plt.tight_layout()#rect=[0, 0.05, 1, 0.95])  # Adjust to make room for legend and title
+    # plt.show()
+
+    fig, axs = plt.subplots(
+        1, 3,
+        figsize=(12, 6),
+        constrained_layout=True
+    )
+
+    axs[0].imshow(overlay)
+    axs[0].set_title('Vis and NIR1 overlay')
+    axs[0].axis('off')
+
+    axs[0].legend(
+        handles=legend_elements,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0),
+        ncol=3,
+        frameon=True,
+        fontsize=9,          # legend text
+        title_fontsize=9 
+    )
+
+    axs[1].imshow(vis_aligned, cmap='gray')
+    axs[1].set_title('Aligned VIS')
+    axs[1].axis('off')
+
+    axs[2].imshow(nir, cmap='gray')
+    axs[2].set_title('NIR1')
+    axs[2].axis('off')
+
+    fig.suptitle('Images after Alignment')
     plt.show()
+
 
     # Check the difference
     aligned_vis = []
@@ -605,9 +1056,114 @@ def visualise_alignment(as0: str, as1:str):
     plt.show()
 
 
+def use_other_matrix(as0, as1, refer_as0, refer_as1):
+    with fits.open(as0) as as0_hdul:
+        as0_data = as0_hdul[0].data
+    with fits.open(as1) as as1_hdul:
+        as1_data = as1_hdul[0].data
+
+    with fits.open(refer_as0) as refer_as0_hdul:
+        refer_as0_data = refer_as0_hdul[0].data
+    with fits.open(refer_as1) as refer_as1_hdul:
+        refer_as1_data = refer_as1_hdul[0].data
+    
+    transformation_matrix = estimate_matrix(refer_as0_data[0], refer_as1_data[0]) # Alignment transformation matrix
+
+    print(transformation_matrix.shape)
+    print(transformation_matrix)
+    new_image_data = []
+    for frame in as0_data:
+        # Convert to little-endian float32 for OpenCV
+        little_endian = np.ascontiguousarray(frame.astype('<f4'))
+        wrapped = cv2.warpPerspective(little_endian, transformation_matrix, (640, 512), flags=cv2.INTER_LINEAR )
+        # Convert back to big_endian float32
+        big_endian = np.ascontiguousarray(wrapped.astype('>f4'))
+
+        new_image_data.append(big_endian)
+    
+    for frame in as1_data:
+        new_image_data.append(frame)
+
+    
+    n_frames = len(new_image_data)
+    
+    fig, ax = plt.subplots()
+    plt.subplots_adjust(bottom=0.15)
+
+    idx = 0
+
+    im = ax.imshow(new_image_data[idx], cmap='gray')
+    title = ax.set_title(f"Frame {idx+1} /{n_frames}")
+
+    def on_key(event):
+        nonlocal idx
+        if event.key in ["right", "d"]:
+            idx = (idx + 1) % n_frames
+        elif event.key in ["left", "a"]:
+            idx = (idx - 1) % n_frames
+        else:
+            return
+
+        frame = new_image_data[idx]
+
+        # Count how many are negative
+        min = round(np.min(frame), 2)
+        mean = round(np.mean(frame), 2)
+        max = round(np.max(frame),2)
+        print(f"Frame {idx + 1}: min, mean, max: {min}, {mean}, {max}")
+        im.set_data(new_image_data[idx])
+        title.set_text(f"Frame {idx+1}/{n_frames}")
+        fig.canvas.draw_idle()
+    
+    fig.canvas.mpl_connect("key_press_event", on_key)
+
+    print("Use left/right arrow keys or 'a'/'d' to move between frames.")
+    plt.show()
+
+def visualise_extract_asteroid(fits_path):
+    with fits.open(fits_path) as hdul:
+        data = hdul[0].data
+    
+    combined = extract_asteroid(image_cube=data, mask_index=0, visualise=True)
+        
 """
 Neural Network
 """
+
+def test_nn(fits_path):
+    with fits.open(fits_path) as hdul:
+        data = hdul[0].data
+        hdr = hdul[0].header
+
+    combined = extract_asteroid(data)
+    coords, spectra = zip(*combined)
+    coords = np.array(coords)
+    spectra = np.array(spectra)
+
+    if len(spectra[0]) == 37:
+        print('delteting overlaping wl')
+        spectra = [np.delete(s, 24) for s in spectra]
+        spectra = np.array(spectra)
+        print(spectra.shape)
+    
+    _, _, wvl_central = load_transmission("ASPECT-vis-nir1-nir2")
+
+    model_subdir, model_name = "taxonomy/ASPECT-vis-nir1-nir2-1546", "CNN_ASPECT-vis-nir1-nir2-1546_9-1"
+    spectra_norm = normalise_spectra(spectra, wavelength=wvl_central, wvl_norm_nm=float(model_name.split("_")[1].split("-")[-1]))
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
+    predictions = evaluate(model_names, spectra_norm, proportiontocut=0.2, subfolder_model=model_subdir)
+    taxonomy = {k: predictions[:, index] for k, index in classes.items()}
+
+    model_subdir, model_name = "composition/ASPECT-vis-nir1-nir2-1546", "CNN_ASPECT-vis-nir1-nir2-1546_1110-11-110-111-000"
+    model_names = collect_all_models(prefix=model_name, subfolder_model=model_subdir, full_path=False)
+    predictions = evaluate(model_names, spectra_norm, proportiontocut=0.2, subfolder_model=model_subdir)
+    quantities = {"OL": 0, "OPX": 1, "CPX": 2, "Fa": 3, "Fo": 4, "Fs (OPX)": 5, "En (OPX)": 6, "Fs (CPX)": 7, "En (CPX)": 8, "Wo (CPX)": 9}
+    composition = {k: predictions[:, index] for k, index in quantities.items()}
+
+    df = pd.DataFrame(taxonomy | composition)
+
+    df_percent = df * 100
+    print(df_percent.mean())
 
 def nn(npz_path):
     data = np.load(npz_path, allow_pickle=True)
@@ -643,6 +1199,19 @@ def nn(npz_path):
 
     df_percent = df * 100
     print(df_percent.mean())
+
+
+"""
+PDS4
+"""
+def test_generate_pds4_label(fits_file_path):
+    aspect_state_data = (Path(__file__).parent / 'pds4_labels' / 'ASPECT state-data-2025-08-22 18_29_07.csv').resolve()
+    xml_output_folder = ''
+
+    output = generate_pds4_label(fits_file_path, aspect_state_data, xml_output_folder)
+
+    print(output)
+
 """
 Asteroid rotation correction
 """
@@ -1019,26 +1588,66 @@ def rotation_correction(fits_file):
     return aligned_images
 
 
+def checksimilarity(one, two):
+
+    with fits.open(one) as hdul:
+        data = hdul[0].data
+
+    with fits.open(two) as hdul_2:
+        data_2 = hdul_2[0].data
+    
+    print((data[0] == data_2[0]).all())
+
 
 
 
 
 """ 
-Python3 ASPECT_calibration_pipeline/test_functions.py
+python3 ASPECT_calibration_pipeline/test_functions.py
 """
 
 ### Path library
 
 _results = (Path(__file__).parent.parent / 'pipeline_results').resolve()
-D1D2_10km = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000'
 _test_data = (Path(__file__).parent.parent / 'test_data').resolve()
 
-# D1D2
-as0 = D1D2_10km / 'AS0_000000_270323T060000_1C.fits'
-as1 = D1D2_10km / 'AS1_000000_270323T060000_1C.fits'
-as2 = D1D2_10km / 'AS2_000000_270323T060000_1C.fits'
-asp = D1D2_10km / 'ASP_000000_270323T060000_2B.fits'
-asp_denoised = D1D2_10km / 'ASP_000000_270323T060000_3C_Denoised.fits'
+D1D2_10km = _results / 'ASPECT_simulated_images' / 'didy-boulders-didysmoothed-10km' / 'D1D2-10km' / 'acq_000'
+
+asp_D1D2_10km = D1D2_10km / 'ASP_000000_270323T060000_3A.fits'
+
+# replace_header_value_with_custom(asp_D1D2_10km, 'PROCLEVL', '3B', None)
+# visualise_fits(asp_D1D2_10km)
+
+# plot_spectra_from_fits(asp_D1D2_10km, filtered_vis_nir1_nir2_wl, idx=[50002])
+as0_D1D2_10km = D1D2_10km / 'AS0_000000_270323T060000_1C.fits'
+as1_D1D2_10km = D1D2_10km / 'AS1_000000_270323T060000_1C.fits'
+
+asp_bin = _test_data / 'ASPECT_simulated_images' / 'didy-boulders-didysmoothed-10km' / 'acq_000' / 'dc_1_exp_001.bin'
+png_output = _results / 'nir1_5km.png'
+# binary_to_png(asp_bin, png_output, (640, 512))
+# read_bin_file(asp_bin, 'SIMULATED')
+# DARKS
+acq_100_dark = _results / 'ASPECT_in-flight-dark_20250225' / 'acqseq_100' / '002_DARKS' / 'acq_000' / 'AS0_000000_250225T014231_1C.fits'
+acq_104_dark = _results / 'ASPECT_in-flight-dark_20250225' / 'acqseq_104' / '002_DARKS' / 'acq_000' / 'AS2_000000_200101T014800_0A.fits'
+
+acq_105_dark = _results / 'ASPECT_in-flight-dark_20250225' / 'acqseq_105' / 'DARKS' / 'acq_000' / 'AS2_000000_200101T015039_1B.fits'
+
+noboulders = _results / 'ASPECT_simulated_images' / 'didy-noboulders-didysmoothed-10km' / 'AS2_000000_270323T060000_1C.fits'
+visualise_fits(noboulders)
+# try_radiometric(acq_100_dark)
+
+# visualise_fits((Path(__file__).parent / 'calibration_data' / 'FLATS' / 'AS1_FLAT_HIGH.fits').resolve())
+# visualise_fits(acq_104_dark)
+# visualise_mgm_fits(asp_D1D2_10km)
+# test_generate_pds4_label(asp_D1D2_10km)
+
+# visualise_spectra_filtering(asp_D1D2_10km)
+# spectral_parameters(asp_D1D2_10km, filtered_vis_nir1_nir2_wl)
+# plot_composition(asp_D1D2_10km, type='CPX')
+# plot_taxonomy(asp_D1D2_10km, type='L')
+
+# plot_all_composition(asp_D1D2_10km)
+
 
 # Spectra
 spectra_npz = _results / 'ASPECT_simulated' / 'D1D2_10km' / 'acq_000' / 'coords_spectra_calibrated_unfiltered.npz'
@@ -1053,19 +1662,55 @@ vis_24 = _test_data / 'ASPECT_simulated_images' / 'vis-2027-03-24-00-00-00' / 'b
 vis_rotation_10 = _test_data / 'ASPECT_simulated_images' / 'vis-2027-03-23-06-00-00' / 'vis-2027-03-23-06-00-00.fits'
 vis_rotation_5 = _test_data / 'ASPECT_simulated_images' / 'vis-2027-03-24-00-00-00' / 'vis-2027-03-24-00-00-00.fits'
 
+# No boulders
+sphere = _test_data / 'ASPECT_simulated_images' / 'sphere-noboulders-Stype-10km' / 'acq_000'
+didy_5km_noboulders_results = _results / 'ASPECT_simulated' / 'didy-boulders-didysmoothed-D1D2_5km' / 'acq_000'
+didy_5km_noboulders_2b = didy_5km_noboulders_results / 'ASP_000000_270323T060000_2B.fits'
+didy_5km_noboulders_3C = didy_5km_noboulders_results / 'ASP_000000_270323T060000_3C_Denoised.fits'
+noboulder_5km_composition = didy_5km_noboulders_results / 'ASP_000000_270323T060000_3C_Composition.fits'
+noboulder_5km_taxonomy = didy_5km_noboulders_results / 'ASP_000000_270323T060000_3C_Taxonomy.fits'
+
+didy_10km_noboulders = _results / 'ASPECT_simulated' / 'didy-noboulders-didysmoothed-D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_2B.fits'
+didy_10km_noboulders = _results / 'ASPECT_simulated' / 'didy-noboulders-didysmoothed-D1D2_10km' / 'acq_000' / 'ASP_000000_270323T060000_2B.fits'
+didy_10km_boulders = _results / 'ASPECT_simulated' / 'didy-boulders-didysmoothed-D1D2_10km' / 'acq_000' / 'AS1_000000_270323T060000_1C.fits'
+
+boulder_bin = _test_data / 'ASPECT_simulated_images' / 'didy-boulders-didysmoothed-10km' / 'acq_000' / 'dc_0_exp_000.bin'
+
+# read_bin_file(didy_10km_bin, channel='Vis')
+# visualise_fits(didy_10km_boulders)
+
+# read_bin_file(boulder_bin, 'Vis')
+# visualise_parameters_fits(didy_10km_noboulders)
+
+# plot_all_nn_results(noboulder_5km_composition, noboulder_5km_taxonomy, title='Didymos no-boulders didysmoothed 5km')
+
+# visualise_extract_asteroid(didy_5km_noboulders_2b)
+# visualise_fits(asp_2)
+# visualise_fits(asp)
+
+# test_generate_pds4_label(as1_D1D2_10km)
+
+
+
 ### Function calls
+
+# test_nn(didy_5km_noboulders_3C)
 # test_filtering_and_nn(npz_path=spectra_npz)
 
 # plot_composition(cpx, 'CPX')
-# plot_taxonomiy(taxonomies, type='L')
+# plot_composition(sphere_stype_10km_comp, 'CPX')
+# plot_taxonomy(taxonomies, type='L')
+# plot_taxonomy(sphere_stype_10km_taxonomy, type='S')
+
+# plot_all_nn_results(sphere_stype_10km_composition, didy_10km_taxonomy, title='didy boulders Qtype 10km')
 
 # plot_spectra_by_type(asp_denoised, model='C')
-# visualise_fits(as2)
+# visualise_fits(as0)
 
 # vis_spectral_change(as0, asp)
 
 # spectral_parameters(asp_denoised, None)
 
-# visualise_alignment(as0, as1)
+# visualise_alignment(as0_D1D2_10km, as1_D1D2_10km)
 
-nn(spectra_npz)
+# nn(spectra_npz)

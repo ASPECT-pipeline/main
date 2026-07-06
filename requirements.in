@@ -25,3 +25,5 @@ statsmodels
 tabulate
 openpyxl
 xarray[io]
+jinja2
+imageio>=2.31

@@ -23,12 +23,12 @@ from config import MISSPHAS, instrument
         - Converts the piezo setpoint values from config files ino corresponding wavelengths.
     3. Extract diagnostic pixels from NIR (Level 1A)
         - Diagnostic pixels are extracted and added as an extension to NIR FITS files.
-    4. Removing bad pixels (Level 1A)
-        - Remove bad pixels of all 2D images.
-    5. Dark background subtraction (Level 1A)
+    4. Dark background subtraction (Level 1A)
         - Subtract a dark background of all 2D images.
-    6. Flat field calibration (Level 1A)
+    5. Flat field calibration (Level 1A)
         - Apply flatfield correction to all 2D images.
+    6. Removing bad pixels (Level 1A)
+        - Remove bad pixels of all 2D images.
     7. Radiometric correction (Level 1B)
         - Correct the pixel values into scientific units.
     8. Align & resample to uniform grid (Level 2B)

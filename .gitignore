@@ -12,3 +12,8 @@ __pycache__/
 
 # Folder for data that exceeds the git size limit
 test_data/levels_012_test/test_output/ASPECT_DIFF
+
+# Pipeline results kept locally only, not pushed to save remote storage
+pipeline_results/ASPECT_simulated_images/didy-noboulders-didysmoothed-10km/
+pipeline_results/ASPECT_in-flight-dark_20250225/acqseq_101/
+pipeline_results/ASPECT_in-flight-dark_20250225/acqseq_105/

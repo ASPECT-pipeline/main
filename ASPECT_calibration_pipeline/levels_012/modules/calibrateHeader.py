@@ -70,20 +70,20 @@ def convert_exposure_times(header, channel, channel_id):
 def convert_wavelengths(header, channel, channel_id, order):
     try:
         missphas = header.get('MISSPHAS')
-        simulated = missphas == 'SIMULATED'
+        if missphas == 'SIMULATED':
+            task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+            wl_dict = utilities.wavelength_conversion(channel, order, None, task_number, simulated=True) # get correct wl by frame
+        else:
+            task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
+            setpoint1 = []
 
-        task_number = int(header.get(f'AS{channel_id}_TASK_NUMBER'))
-        setpoint1 = []
+            for i in range(0, task_number):
+                num = f'{i:03d}'
+                setpoint1.append(header.get(f'AS{channel_id}_TASK_{num}').split(' ')[0])
 
-        for i in range(0, task_number):
-            num = f'{i:03d}'
-            setpoint1.append(header.get(f'AS{channel_id}_TASK_{num}').split(' ')[0])
+            values = [float(value) for value in setpoint1] # convert the values to numbers
 
-        values = [float(value) for value in setpoint1] # convert the values to numbers
-
-        # if len(values) != len(frames):
-        #     raise Exception('The number of piezo setpoint 1 values missmatch with the number of frames.')
-        wl_dict = utilities.wavelength_conversion(channel, order, values, task_number, simulated) # get correct wl by frame
+            wl_dict = utilities.wavelength_conversion(channel, order, values, task_number, simulated=False) # get correct wl by frame
 
     except Exception as e:
         print(f'[WARNING] {channel} wavelenght conversion failed: {e}')

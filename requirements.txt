@@ -73,6 +73,8 @@ h5py==3.8.0
     #   tensorflow
 idna==3.10
     # via requests
+imageio==2.37.2
+    # via -r requirements.in
 ipython==8.37.0
     # via keras-tuner
 jax==0.4.30
@@ -81,6 +83,8 @@ jaxlib==0.4.30
     # via jax
 jedi==0.19.2
     # via ipython
+jinja2==3.1.6
+    # via -r requirements.in
 joblib==1.5.1
     # via scikit-learn
 keras==2.12.0
@@ -98,7 +102,9 @@ libclang==18.1.1
 markdown==3.8
     # via tensorboard
 markupsafe==3.0.2
-    # via werkzeug
+    # via
+    #   jinja2
+    #   werkzeug
 matplotlib==3.7.1
     # via
     #   -r requirements.in
@@ -120,6 +126,7 @@ numpy==1.23.5
     #   cftime
     #   contourpy
     #   h5py
+    #   imageio
     #   jax
     #   jaxlib
     #   keras-tuner
@@ -175,7 +182,9 @@ patsy==1.0.1
 pexpect==4.9.0
     # via ipython
 pillow==11.2.1
-    # via matplotlib
+    # via
+    #   imageio
+    #   matplotlib
 platformdirs==4.3.8
     # via pooch
 pooch==1.8.2

@@ -543,7 +543,7 @@ def my_argextreme(min_or_max: Literal["min", "max"], x: np.ndarray, y: np.ndarra
     x_fit = (x_ext - x_mean) / x_std
     y_fit = (y_ext - y_mean) / y_std
 
-    if len(x_fit) == 3:  # not enough points -> use numpy
+    if len(x_fit) < 10:  # not enough points -> use numpy
         params = my_polyfit(x_fit, y_fit, 2, method="numpy")
         try_numpy = False
 
@@ -577,7 +577,6 @@ def my_argextreme(min_or_max: Literal["min", "max"], x: np.ndarray, y: np.ndarra
 
         if np.abs(extreme - x[ix0]) <= step:
             return extreme
-
     return x[ix0]
 
 def my_argmin(x: np.ndarray, y: np.ndarray, x0: float | None = None, dx: float = 50.,
